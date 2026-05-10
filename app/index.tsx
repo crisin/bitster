@@ -15,6 +15,7 @@ import { COLORS, SIZES } from "@/utils/constants";
 import { sanitizeRoomCodeInput, isValidRoomCode } from "@/utils/roomCode";
 import { generateRoomCode } from "@/game/logic";
 import { useGameStore } from "@/game/store";
+import * as p2p from "@/p2p/connection";
 
 type Mode = "idle" | "join";
 
@@ -47,6 +48,7 @@ export default function HomeScreen() {
     setLoading(true);
     const code = generateRoomCode();
     setRoomCodeStore(code);
+    p2p.createRoom(code, name.trim());
     router.push(`/game?code=${code}&host=true&name=${encodeURIComponent(name.trim())}`);
     setLoading(false);
   }, [name, setRoomCodeStore]);
@@ -63,6 +65,7 @@ export default function HomeScreen() {
     setError("");
     setLoading(true);
     setRoomCodeStore(roomCode);
+    p2p.joinRoom(roomCode, name.trim());
     router.push(`/game?code=${roomCode}&host=false&name=${encodeURIComponent(name.trim())}`);
     setLoading(false);
   }, [name, roomCode, setRoomCodeStore]);

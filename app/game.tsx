@@ -1,10 +1,11 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { View, Text, ScrollView, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, router } from "expo-router";
 import { useGameStore } from "@/game/store";
 import { useCurrentPlayer } from "@/hooks/useCurrentPlayer";
 import { useConnectionStatus } from "@/hooks/useConnectionStatus";
+import { dispatch, leave } from "@/p2p/connection";
 import { StatusDot } from "@/components/ui/StatusDot";
 import { Button } from "@/components/ui/Button";
 import { BottomBar } from "@/components/ui/BottomBar";
@@ -36,27 +37,39 @@ export default function GameScreen() {
 
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [selectedGap, setSelectedGap] = useState<number | null>(null);
-  const [placing, setPlacing] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      leave();
+    };
+  }, []);
 
   const handleGapSelect = useCallback((position: number) => {
     setSelectedGap(position);
   }, []);
 
   const handleConfirmPlacement = useCallback(() => {
-    if (selectedGap === null || placing) return;
-    setPlacing(true);
-    // TODO: emit place-song via P2P
+    if (selectedGap === null) return;
+    dispatch({ type: "place-song", payload: { position: selectedGap } });
     setSelectedGap(null);
-  }, [selectedGap, placing]);
+  }, [selectedGap]);
 
   const handleNextRound = useCallback(() => {
-    // TODO: emit next-round via P2P
+    dispatch({ type: "next-round" });
   }, []);
 
   const handleStartGame = useCallback(() => {
-    if (!playlistUrl.trim()) return;
-    // TODO: emit start-game via P2P
+    dispatch({ type: "start-game", payload: { playlistUrl: playlistUrl.trim() } });
   }, [playlistUrl]);
+
+  const handleGoHome = useCallback(() => {
+    leave();
+    router.replace("/");
+  }, []);
+
+  const handleRematch = useCallback(() => {
+    dispatch({ type: "rematch" });
+  }, []);
 
   const code = params.code ?? "";
 
@@ -135,7 +148,7 @@ export default function GameScreen() {
 
             <Timeline
               cards={myTimeline}
-              interactive={isMyTurn && !placing}
+              interactive={isMyTurn}
               selectedGap={selectedGap}
               onGapSelect={handleGapSelect}
             />
@@ -179,15 +192,14 @@ export default function GameScreen() {
           <Button
             title="Start Game"
             onPress={handleStartGame}
-            disabled={!playlistUrl.trim() || players.length < 2}
+            disabled={players.length < 2}
           />
         )}
 
         {phase === "playing" && isMyTurn && selectedGap !== null && (
           <Button
-            title="Place Here ✓"
+            title="Place Here"
             onPress={handleConfirmPlacement}
-            loading={placing}
           />
         )}
 
@@ -199,17 +211,13 @@ export default function GameScreen() {
           <View style={styles.finishedButtons}>
             <Button
               title="Home"
-              onPress={() => {
-                /* TODO: navigate home */
-              }}
+              onPress={handleGoHome}
               variant="ghost"
               style={styles.flex1}
             />
             <Button
               title="Rematch"
-              onPress={() => {
-                /* TODO: rematch */
-              }}
+              onPress={handleRematch}
               style={styles.flex1}
             />
           </View>
