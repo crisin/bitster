@@ -1,16 +1,45 @@
 {
   "name": "hitster",
+  "version": "1.0.0",
   "private": true,
+  "main": "expo-router/entry",
   "scripts": {
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
-    "dev:server": "cd server && npm run dev",
-    "dev:client": "cd client && npm run dev",
-    "build": "cd client && npm run build",
-    "start": "cd server && npm start",
-    "serve": "npm run build && npm start",
-    "install:all": "cd server && npm install && cd ../client && npm install"
+    "start": "expo start",
+    "web": "expo start --web",
+    "ios": "expo run:ios",
+    "android": "expo run:android",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
+    "lint": "eslint . --fix",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "~55.0.0",
+    "expo-auth-session": "~55.0.15",
+    "expo-clipboard": "^55.0.13",
+    "expo-crypto": "~55.0.14",
+    "expo-file-system": "^55.0.19",
+    "expo-haptics": "~55.0.14",
+    "expo-linking": "~55.0.15",
+    "expo-router": "~55.0.14",
+    "expo-secure-store": "~55.0.13",
+    "expo-sharing": "^55.0.18",
+    "expo-status-bar": "~55.0.6",
+    "expo-web-browser": "~55.0.15",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-native": "0.83.6",
+    "react-native-safe-area-context": "~5.6.2",
+    "react-native-screens": "~4.23.0",
+    "react-native-web": "^0.21.0",
+    "zustand": "^5.0.0"
   },
   "devDependencies": {
-    "concurrently": "^8.2.0"
+    "@babel/core": "^7.25.0",
+    "@types/react": "~19.2.10",
+    "babel-plugin-module-resolver": "^5.0.0",
+    "typescript": "~5.9.2",
+    "vitest": "^3.0.0"
   }
 }
