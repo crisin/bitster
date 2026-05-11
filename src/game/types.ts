@@ -15,14 +15,29 @@ export interface Player {
   timeline: Song[];
 }
 
+export interface BuzzRules {
+  enabled: boolean;
+  penalty: "none" | "lose-point";
+}
+
+export interface GameRules {
+  buzz: BuzzRules;
+}
+
+export const DEFAULT_RULES: GameRules = {
+  buzz: { enabled: true, penalty: "none" },
+};
+
 export interface GameSettings {
   winScore: number;
   maxPlayers: number;
+  rules: GameRules;
 }
 
 export const DEFAULT_SETTINGS: GameSettings = {
   winScore: 10,
   maxPlayers: 8,
+  rules: DEFAULT_RULES,
 };
 
 export interface Room {
@@ -35,6 +50,7 @@ export interface Room {
   currentSong: Song | null;
   phase: Phase;
   settings: GameSettings;
+  buzzerId: string | null;
 }
 
 export interface PlacementResult {
@@ -52,4 +68,6 @@ export interface GameState {
   lastResult: PlacementResult | null;
   hostId: string;
   settings: GameSettings;
+  playedSongs: { name: string; artist: string; year: number }[];
+  buzzerId: string | null;
 }

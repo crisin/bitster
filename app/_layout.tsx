@@ -4,10 +4,12 @@ import { StatusBar } from "expo-status-bar";
 import { COLORS } from "@/utils/constants";
 import { interceptConsole, log } from "@/utils/logger";
 import { DevLogButton } from "@/components/ui/DevLogButton";
+import { initSpotify } from "@/streaming/providers/spotify";
 
 export default function RootLayout() {
   useEffect(() => {
     interceptConsole();
+    initSpotify();
     log.info("App", "Hitster started");
     return () => {
       log.info("App", "Hitster unmounted");

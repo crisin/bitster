@@ -35,29 +35,32 @@ export function TimelineGap({
 
 const styles = StyleSheet.create({
   gap: {
-    width: SIZES.gapTouchWidth,
-    height: SIZES.gapTouchHeight,
+    width: "100%",
+    maxWidth: 360,
+    height: 36,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: SIZES.borderRadius,
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderStyle: "dashed",
-    borderColor: COLORS.accent,
-    opacity: 0.4,
+    borderColor: COLORS.textSecondary,
+    opacity: 0.3,
   },
   selected: {
     opacity: 1,
-    backgroundColor: "rgba(233, 69, 96, 0.15)",
+    borderColor: COLORS.accent,
+    backgroundColor: "rgba(201, 72, 91, 0.12)",
   },
   disabled: {
     opacity: 0.15,
   },
   icon: {
-    fontSize: 22,
-    color: COLORS.accent,
+    fontSize: 16,
+    color: COLORS.textSecondary,
     fontWeight: "600",
   },
   iconSelected: {
-    fontSize: 26,
+    fontSize: 20,
+    color: COLORS.accent,
   },
 });

@@ -1,4 +1,5 @@
-import type { Song, Player, Room, PlacementResult, GameSettings, DEFAULT_SETTINGS } from "./types";
+import type { Song, Player, Room, PlacementResult, GameSettings } from "./types";
+import { DEFAULT_SETTINGS } from "./types";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_LENGTH = 6;
@@ -17,7 +18,6 @@ export function createRoom(
   hostName: string,
   settings?: Partial<GameSettings>
 ): Room {
-  const defaults: GameSettings = { winScore: 10, maxPlayers: 8 };
   return {
     code,
     hostId,
@@ -27,7 +27,8 @@ export function createRoom(
     currentPlayerIndex: 0,
     currentSong: null,
     phase: "lobby",
-    settings: { ...defaults, ...settings },
+    settings: { ...DEFAULT_SETTINGS, ...settings },
+    buzzerId: null,
   };
 }
 
@@ -123,6 +124,7 @@ export function placeSong(
   const player = room.players.find((p) => p.id === playerId);
   if (!player) throw new Error("Player not found");
   if (!room.currentSong) throw new Error("No current song");
+  if (position < 0 || position > player.timeline.length) throw new Error("Invalid position");
 
   const song = room.currentSong;
   const correct = checkPlacement(player.timeline, song, position);
@@ -162,6 +164,7 @@ export function advanceTurn(room: Room): Room {
     currentPlayerIndex: nextIndex,
     currentSong: null,
     phase: "playing",
+    buzzerId: null,
   };
 }
 
@@ -190,6 +193,57 @@ export function startGame(room: Room, playlist: Song[]): Room {
     currentPlayerIndex: 0,
     currentSong: null,
     phase: "playing",
+    buzzerId: null,
+  };
+}
+
+export function handleBuzz(
+  room: Room,
+  buzzerId: string,
+): Room {
+  if (!room.settings.rules.buzz.enabled) return room;
+  if (room.buzzerId) return room;
+  const currentPlayer = getCurrentPlayer(room);
+  if (currentPlayer?.id === buzzerId) return room;
+  if (!room.players.some((p) => p.id === buzzerId)) return room;
+
+  return { ...room, buzzerId };
+}
+
+export function resolveBuzz(
+  room: Room,
+  position: number,
+): { room: Room; result: PlacementResult } {
+  if (!room.buzzerId || !room.currentSong) {
+    throw new Error("No active buzz");
+  }
+
+  const buzzer = room.players.find((p) => p.id === room.buzzerId);
+  if (!buzzer) throw new Error("Buzzer player not found");
+  if (position < 0 || position > buzzer.timeline.length) throw new Error("Invalid position");
+
+  const song = room.currentSong;
+  const correct = checkPlacement(buzzer.timeline, song, position);
+
+  const updatedPlayers = room.players.map((p) => {
+    if (p.id !== room.buzzerId) return p;
+    if (correct) {
+      const newTimeline = [
+        ...p.timeline.slice(0, position),
+        song,
+        ...p.timeline.slice(position),
+      ];
+      return { ...p, timeline: newTimeline, score: newTimeline.length };
+    }
+    if (room.settings.rules.buzz.penalty === "lose-point" && p.score > 0) {
+      return { ...p, score: p.score - 1 };
+    }
+    return p;
+  });
+
+  return {
+    room: { ...room, players: updatedPlayers, buzzerId: null, phase: "reveal" },
+    result: { correct, song },
   };
 }
 
@@ -215,5 +269,11 @@ export function buildGameState(room: Room): import("./types").GameState {
     lastResult: null,
     hostId: room.hostId,
     settings: room.settings,
+    playedSongs: room.playedSongs.map((s) => ({
+      name: s.name,
+      artist: s.artist,
+      year: s.year,
+    })),
+    buzzerId: room.buzzerId,
   };
 }

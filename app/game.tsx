@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from "react";
-import { View, Text, ScrollView, StyleSheet } from "react-native";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
 import { useGameStore } from "@/game/store";
@@ -14,9 +14,14 @@ import { PlayerList } from "@/components/game/PlayerList";
 import { RevealCard } from "@/components/game/RevealCard";
 import { NowPlaying } from "@/components/game/NowPlaying";
 import { ScoreBoard } from "@/components/game/ScoreBoard";
+import { PlayedSongs } from "@/components/game/PlayedSongs";
+import { BuzzerButton } from "@/components/game/BuzzerButton";
 import { RoomCode } from "@/components/lobby/RoomCode";
 import { PlayerSlot } from "@/components/lobby/PlayerSlot";
+import { GameSettings } from "@/components/lobby/GameSettings";
+import { DeviceSelector } from "@/components/streaming/DeviceSelector";
 import { Input } from "@/components/ui/Input";
+import { haptics } from "@/hooks/useHaptics";
 import { COLORS, SIZES } from "@/utils/constants";
 
 export default function GameScreen() {
@@ -31,12 +36,21 @@ export default function GameScreen() {
   const lastResult = useGameStore((s) => s.lastResult);
   const hostId = useGameStore((s) => s.hostId);
   const currentPlayerId = useGameStore((s) => s.currentPlayerId);
+  const playedSongs = useGameStore((s) => s.playedSongs);
+  const buzzerId = useGameStore((s) => s.buzzerId);
+  const settings = useGameStore((s) => s.settings);
   const connectionStatus = useConnectionStatus();
   const { isMyTurn, isHost, myTimeline, currentPlayer, myPeerId } =
     useCurrentPlayer();
 
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [selectedGap, setSelectedGap] = useState<number | null>(null);
+  const [buzzGap, setBuzzGap] = useState<number | null>(null);
+  const isBuzzer = buzzerId === myPeerId;
+  const buzzerName = buzzerId
+    ? players.find((p) => p.id === buzzerId)?.name ?? null
+    : null;
+  const buzzEnabled = settings.rules?.buzz?.enabled ?? true;
 
   useEffect(() => {
     return () => {
@@ -44,14 +58,26 @@ export default function GameScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    if (lastResult) {
+      lastResult.correct ? haptics.success() : haptics.error();
+    }
+  }, [lastResult]);
+
+  useEffect(() => {
+    setBuzzGap(null);
+  }, [buzzerId]);
+
   const handleGapSelect = useCallback((position: number) => {
     setSelectedGap(position);
+    haptics.tap();
   }, []);
 
   const handleConfirmPlacement = useCallback(() => {
     if (selectedGap === null) return;
     dispatch({ type: "place-song", payload: { position: selectedGap } });
     setSelectedGap(null);
+    haptics.medium();
   }, [selectedGap]);
 
   const handleNextRound = useCallback(() => {
@@ -70,6 +96,23 @@ export default function GameScreen() {
   const handleRematch = useCallback(() => {
     dispatch({ type: "rematch" });
   }, []);
+
+  const handleBuzz = useCallback(() => {
+    dispatch({ type: "hitster-buzz" });
+    haptics.medium();
+  }, []);
+
+  const handleBuzzGapSelect = useCallback((position: number) => {
+    setBuzzGap(position);
+    haptics.tap();
+  }, []);
+
+  const handleConfirmBuzzPlacement = useCallback(() => {
+    if (buzzGap === null) return;
+    dispatch({ type: "buzz-place", payload: { position: buzzGap } });
+    setBuzzGap(null);
+    haptics.medium();
+  }, [buzzGap]);
 
   const code = params.code ?? "";
 
@@ -111,30 +154,43 @@ export default function GameScreen() {
               )}
             </View>
 
+            <DeviceSelector />
+
             {isHost && (
-              <View style={styles.section}>
-                <Input
-                  placeholder="Spotify playlist URL"
-                  value={playlistUrl}
-                  onChangeText={setPlaylistUrl}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="go"
-                  onSubmitEditing={handleStartGame}
-                />
-              </View>
+              <>
+                <View style={styles.section}>
+                  <Input
+                    placeholder="Spotify playlist URL"
+                    value={playlistUrl}
+                    onChangeText={setPlaylistUrl}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="go"
+                    onSubmitEditing={handleStartGame}
+                  />
+                </View>
+                <GameSettings />
+              </>
             )}
 
             {!isHost && (
               <Text style={styles.hint}>Waiting for host to start...</Text>
             )}
+
+            <TouchableOpacity onPress={handleGoHome} activeOpacity={0.6}>
+              <Text style={styles.leaveLink}>Leave lobby</Text>
+            </TouchableOpacity>
           </View>
         )}
 
         {/* PLAYING */}
         {phase === "playing" && (
           <View style={styles.phaseContainer}>
-            {isMyTurn ? (
+            {isBuzzer ? (
+              <Text style={styles.turnText}>
+                You buzzed! Place the song in your timeline.
+              </Text>
+            ) : isMyTurn ? (
               <Text style={styles.turnText}>
                 Your turn! Place the song in your timeline.
               </Text>
@@ -146,12 +202,29 @@ export default function GameScreen() {
 
             <NowPlaying />
 
-            <Timeline
-              cards={myTimeline}
-              interactive={isMyTurn}
-              selectedGap={selectedGap}
-              onGapSelect={handleGapSelect}
-            />
+            {isBuzzer ? (
+              <Timeline
+                cards={myTimeline}
+                interactive
+                selectedGap={buzzGap}
+                onGapSelect={handleBuzzGapSelect}
+              />
+            ) : (
+              <Timeline
+                cards={myTimeline}
+                interactive={isMyTurn}
+                selectedGap={selectedGap}
+                onGapSelect={handleGapSelect}
+              />
+            )}
+
+            {!isMyTurn && !isBuzzer && buzzEnabled && (
+              <BuzzerButton
+                onPress={handleBuzz}
+                disabled={!!buzzerId}
+                buzzerName={buzzerName}
+              />
+            )}
 
             <PlayerList
               players={players}
@@ -160,6 +233,8 @@ export default function GameScreen() {
               myId={myPeerId}
               compact
             />
+
+            <PlayedSongs songs={playedSongs} />
           </View>
         )}
 
@@ -196,14 +271,21 @@ export default function GameScreen() {
           />
         )}
 
-        {phase === "playing" && isMyTurn && selectedGap !== null && (
+        {phase === "playing" && isMyTurn && !isBuzzer && selectedGap !== null && (
           <Button
             title="Place Here"
             onPress={handleConfirmPlacement}
           />
         )}
 
-        {phase === "reveal" && (
+        {phase === "playing" && isBuzzer && buzzGap !== null && (
+          <Button
+            title="Place Here"
+            onPress={handleConfirmBuzzPlacement}
+          />
+        )}
+
+        {phase === "reveal" && (isMyTurn || isHost) && (
           <Button title="Next Round →" onPress={handleNextRound} />
         )}
 
@@ -308,6 +390,12 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: COLORS.textPrimary,
     textAlign: "center",
+  },
+  leaveLink: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    opacity: 0.6,
+    marginTop: 8,
   },
   finishedButtons: {
     flexDirection: "row",

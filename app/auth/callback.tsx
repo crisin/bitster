@@ -5,9 +5,10 @@ import { COLORS } from "@/utils/constants";
 
 WebBrowser.maybeCompleteAuthSession();
 
-export default function CallbackScreen() {
+export default function AuthCallbackScreen() {
   useEffect(() => {
     // expo-auth-session handles the redirect automatically via maybeCompleteAuthSession above.
+    // This screen is only visible briefly in the auth popup before it closes.
   }, []);
 
   return (

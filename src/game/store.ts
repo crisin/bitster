@@ -1,5 +1,12 @@
 import { create } from "zustand";
 import type { Phase, Song, PlacementResult, GameSettings } from "./types";
+import { DEFAULT_SETTINGS } from "./types";
+
+interface PlayedSongInfo {
+  name: string;
+  artist: string;
+  year: number;
+}
 
 interface PlayerInfo {
   id: string;
@@ -18,6 +25,8 @@ interface GameStore {
   lastResult: PlacementResult | null;
   hostId: string | null;
   settings: GameSettings;
+  playedSongs: PlayedSongInfo[];
+  buzzerId: string | null;
 
   setRoomCode: (code: string | null) => void;
   setPhase: (phase: Phase) => void;
@@ -38,6 +47,8 @@ interface GameStore {
     lastResult: PlacementResult | null;
     hostId: string;
     settings: GameSettings;
+    playedSongs: PlayedSongInfo[];
+    buzzerId: string | null;
   }) => void;
   reset: () => void;
 }
@@ -51,7 +62,9 @@ const initialState = {
   timelines: {} as Record<string, Song[]>,
   lastResult: null as PlacementResult | null,
   hostId: null as string | null,
-  settings: { winScore: 10, maxPlayers: 8 } as GameSettings,
+  settings: DEFAULT_SETTINGS as GameSettings,
+  playedSongs: [] as PlayedSongInfo[],
+  buzzerId: null as string | null,
 };
 
 export const useGameStore = create<GameStore>((set) => ({
@@ -78,6 +91,8 @@ export const useGameStore = create<GameStore>((set) => ({
       lastResult: state.lastResult,
       hostId: state.hostId,
       settings: state.settings,
+      playedSongs: state.playedSongs,
+      buzzerId: state.buzzerId,
     }),
 
   reset: () => set(initialState),

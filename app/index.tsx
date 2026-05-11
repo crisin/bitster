@@ -11,10 +11,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { ConnectButton } from "@/components/streaming/ConnectButton";
 import { COLORS, SIZES } from "@/utils/constants";
 import { sanitizeRoomCodeInput, isValidRoomCode } from "@/utils/roomCode";
 import { generateRoomCode } from "@/game/logic";
 import { useGameStore } from "@/game/store";
+import { useStreamingStore } from "@/streaming/store";
+import { getProvider } from "@/streaming/registry";
 import * as p2p from "@/p2p/connection";
 
 type Mode = "idle" | "join";
@@ -26,6 +29,8 @@ export default function HomeScreen() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const setRoomCodeStore = useGameStore((s) => s.setRoomCode);
+  const authStatus = useStreamingStore((s) => s.authStatus);
+  const isAuthenticated = authStatus === "authenticated";
 
   useEffect(() => {
     AsyncStorage.getItem("playerName").then((stored) => {
@@ -75,6 +80,22 @@ export default function HomeScreen() {
     setError("");
   }, []);
 
+  const handleStreamingConnect = useCallback(() => {
+    const provider = getProvider("spotify");
+    if (provider) {
+      useStreamingStore.getState().setActiveProvider("spotify");
+      provider.auth.login();
+    }
+  }, []);
+
+  const handleStreamingDisconnect = useCallback(() => {
+    const provider = getProvider("spotify");
+    if (provider) {
+      provider.auth.logout();
+      useStreamingStore.getState().setActiveProvider(null);
+    }
+  }, []);
+
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
@@ -86,61 +107,76 @@ export default function HomeScreen() {
           <Text style={styles.tagline}>The music guessing game</Text>
 
           <View style={styles.form}>
-            <Input
-              placeholder="Your name"
-              value={name}
-              onChangeText={(t) => {
-                setName(t);
-                setError("");
-              }}
-              maxLength={20}
-              autoFocus
-              returnKeyType={mode === "join" ? "next" : "go"}
+            <ConnectButton
+              providerName="Spotify"
+              providerColor="#1DB954"
+              onConnect={handleStreamingConnect}
+              onDisconnect={handleStreamingDisconnect}
             />
 
-            {error ? <Text style={styles.error}>{error}</Text> : null}
+            {!isAuthenticated && (
+              <Text style={styles.hint}>Connect Spotify to play</Text>
+            )}
 
-            <View style={styles.buttonRow}>
-              <Button
-                title="Create Room"
-                onPress={handleCreate}
-                variant={mode === "idle" ? "primary" : "secondary"}
-                loading={loading && mode === "idle"}
-                style={styles.flex1}
-              />
-              <Button
-                title="Join Room"
-                onPress={() => {
-                  if (mode === "join") {
-                    handleJoin();
-                  } else {
-                    setMode("join");
-                  }
-                }}
-                variant={mode === "join" ? "primary" : "ghost"}
-                loading={loading && mode === "join"}
-                style={styles.flex1}
-              />
-            </View>
-
-            {mode === "join" && (
-              <View style={styles.joinSection}>
+            {isAuthenticated && (
+              <>
                 <Input
-                  placeholder="ROOM CODE"
-                  value={roomCode}
-                  onChangeText={handleRoomCodeChange}
-                  maxLength={6}
-                  autoCapitalize="characters"
-                  returnKeyType="join"
-                  onSubmitEditing={handleJoin}
-                  style={{ letterSpacing: 6, textAlign: "center", fontSize: 20 } as any}
+                  placeholder="Your name"
+                  value={name}
+                  onChangeText={(t) => {
+                    setName(t);
+                    setError("");
+                  }}
+                  maxLength={20}
+                  autoFocus
+                  returnKeyType={mode === "join" ? "next" : "go"}
                 />
-                <Button
-                  title="Join"
-                  onPress={handleJoin}
-                  disabled={!isValidRoomCode(roomCode) || name.trim().length < 2}
-                />
-              </View>
+
+                {error ? <Text style={styles.error}>{error}</Text> : null}
+
+                <View style={styles.buttonRow}>
+                  <Button
+                    title="Create Room"
+                    onPress={handleCreate}
+                    variant={mode === "idle" ? "primary" : "secondary"}
+                    loading={loading && mode === "idle"}
+                    style={styles.flex1}
+                  />
+                  <Button
+                    title="Join Room"
+                    onPress={() => {
+                      if (mode === "join") {
+                        handleJoin();
+                      } else {
+                        setMode("join");
+                      }
+                    }}
+                    variant={mode === "join" ? "primary" : "ghost"}
+                    loading={loading && mode === "join"}
+                    style={styles.flex1}
+                  />
+                </View>
+
+                {mode === "join" && (
+                  <View style={styles.joinSection}>
+                    <Input
+                      placeholder="ROOM CODE"
+                      value={roomCode}
+                      onChangeText={handleRoomCodeChange}
+                      maxLength={6}
+                      autoCapitalize="characters"
+                      returnKeyType="join"
+                      onSubmitEditing={handleJoin}
+                      style={{ letterSpacing: 6, textAlign: "center", fontSize: 20 } as any}
+                    />
+                    <Button
+                      title="Join"
+                      onPress={handleJoin}
+                      disabled={!isValidRoomCode(roomCode) || name.trim().length < 2}
+                    />
+                  </View>
+                )}
+              </>
             )}
           </View>
         </View>
@@ -180,6 +216,11 @@ const styles = StyleSheet.create({
   form: {
     width: "100%",
     gap: 16,
+  },
+  hint: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    textAlign: "center",
   },
   error: {
     color: COLORS.error,

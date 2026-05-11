@@ -1,15 +1,16 @@
 export const COLORS = {
-  bgPrimary: "#1a1a2e",
-  bgCard: "#16213e",
-  accent: "#e94560",
-  secondary: "#0f3460",
-  textPrimary: "#eeeeee",
-  textSecondary: "#aaaaaa",
-  border: "#2a2a4a",
-  success: "#4ecdc4",
-  error: "#e94560",
+  bgPrimary: "#111827",
+  bgCard: "#1a2332",
+  accent: "#c9485b",
+  secondary: "#1e3050",
+  textPrimary: "#e2e4e8",
+  textSecondary: "#7b8a9e",
+  border: "#283548",
+  success: "#3faa9e",
+  error: "#c9485b",
   spotify: "#1db954",
-  warning: "#f0a500",
+  warning: "#c9903a",
+  yearText: "#d4a574",
 } as const;
 
 export const SIZES = {

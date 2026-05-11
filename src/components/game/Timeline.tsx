@@ -1,9 +1,9 @@
-import React, { useRef, useCallback } from "react";
-import { ScrollView, View, Text, StyleSheet } from "react-native";
+import React, { useCallback } from "react";
+import { View, Text, StyleSheet } from "react-native";
 import type { Song } from "@/game/types";
 import { TimelineCard } from "./TimelineCard";
 import { TimelineGap } from "./TimelineGap";
-import { COLORS, SIZES } from "@/utils/constants";
+import { COLORS } from "@/utils/constants";
 
 interface TimelineProps {
   cards: Song[];
@@ -22,14 +22,12 @@ export function Timeline({
   highlightedIndex = null,
   highlightColor,
 }: TimelineProps) {
-  const scrollRef = useRef<ScrollView>(null);
-
   const handleGapPress = useCallback(
     (position: number) => {
       if (!interactive) return;
       onGapSelect(position);
     },
-    [interactive, onGapSelect]
+    [interactive, onGapSelect],
   );
 
   if (cards.length === 0 && interactive) {
@@ -55,35 +53,28 @@ export function Timeline({
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.track}
-      >
-        {interactive && (
-          <TimelineGap
-            onPress={() => handleGapPress(0)}
-            selected={selectedGap === 0}
-          />
-        )}
+      {interactive && (
+        <TimelineGap
+          onPress={() => handleGapPress(0)}
+          selected={selectedGap === 0}
+        />
+      )}
 
-        {cards.map((song, index) => (
-          <React.Fragment key={song.id}>
-            <TimelineCard
-              song={song}
-              highlighted={highlightedIndex === index}
-              highlightColor={highlightColor}
+      {cards.map((song, index) => (
+        <React.Fragment key={song.id}>
+          <TimelineCard
+            song={song}
+            highlighted={highlightedIndex === index}
+            highlightColor={highlightColor}
+          />
+          {interactive && (
+            <TimelineGap
+              onPress={() => handleGapPress(index + 1)}
+              selected={selectedGap === index + 1}
             />
-            {interactive && (
-              <TimelineGap
-                onPress={() => handleGapPress(index + 1)}
-                selected={selectedGap === index + 1}
-              />
-            )}
-          </React.Fragment>
-        ))}
-      </ScrollView>
+          )}
+        </React.Fragment>
+      ))}
     </View>
   );
 }
@@ -91,13 +82,8 @@ export function Timeline({
 const styles = StyleSheet.create({
   container: {
     width: "100%",
-  },
-  track: {
-    flexDirection: "row",
+    gap: 6,
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 4,
   },
   emptyContainer: {
     alignItems: "center",

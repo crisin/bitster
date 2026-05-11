@@ -22,45 +22,49 @@ export function TimelineCard({
       ]}
     >
       <Text style={styles.year}>{song.year}</Text>
-      <Text style={styles.title} numberOfLines={1}>
-        {song.name}
-      </Text>
-      <Text style={styles.artist} numberOfLines={1}>
-        {song.artist}
-      </Text>
+      <View style={styles.info}>
+        <Text style={styles.title} numberOfLines={1}>
+          {song.name}
+        </Text>
+        <Text style={styles.artist} numberOfLines={1}>
+          {song.artist}
+        </Text>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
+    flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 16,
+    paddingVertical: 10,
     paddingHorizontal: 14,
     backgroundColor: COLORS.bgCard,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: SIZES.borderRadiusLarge,
-    minWidth: 100,
-    maxWidth: 120,
+    borderRadius: SIZES.borderRadius,
+    width: "100%",
+    maxWidth: 360,
+    gap: 12,
   },
   year: {
     fontSize: SIZES.fontTitle,
     fontWeight: "700",
-    color: COLORS.accent,
-    marginBottom: 4,
+    color: COLORS.yearText,
+    minWidth: 42,
+  },
+  info: {
+    flex: 1,
+    minWidth: 0,
   },
   title: {
     fontSize: SIZES.fontSmall,
     color: COLORS.textPrimary,
-    textAlign: "center",
-    maxWidth: 100,
   },
   artist: {
     fontSize: 11,
     color: COLORS.textSecondary,
-    textAlign: "center",
-    maxWidth: 100,
-    marginTop: 2,
+    marginTop: 1,
   },
 });
