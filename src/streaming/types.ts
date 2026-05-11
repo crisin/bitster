@@ -18,6 +18,7 @@ export interface Track {
   name: string;
   artist: string;
   year: number;
+  imageUrl?: string;
 }
 
 export interface StreamingAuth {

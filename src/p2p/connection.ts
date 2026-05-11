@@ -117,7 +117,37 @@ function connectTransport(roomCode: string): void {
     useP2PStore.getState().removePeer(peerId);
 
     if (role === "host" && hostRoom) {
+      const wasCurrentPlayer = logic.getCurrentPlayer(hostRoom)?.id === peerId;
+      const wasBuzzer = hostRoom.buzzerId === peerId;
       hostRoom = logic.removePlayer(hostRoom, peerId);
+
+      // Clear buzzer if the buzzer disconnected
+      if (wasBuzzer) {
+        hostRoom = { ...hostRoom, buzzerId: null };
+      }
+
+      // Not enough players to continue
+      if (hostRoom.players.length < 2 && hostRoom.phase !== "lobby") {
+        hostRoom = { ...hostRoom, phase: "finished" };
+        broadcastState();
+        return;
+      }
+
+      // Auto-advance if the current player disconnected mid-turn
+      if (wasCurrentPlayer && (hostRoom.phase === "playing" || hostRoom.phase === "reveal")) {
+        hostRoom = logic.advanceTurn(hostRoom);
+        const pick = logic.pickRandomSong(hostRoom);
+        if (pick) {
+          hostRoom = pick.room;
+          broadcastState();
+          playSongOnAllDevices(pick.song.uri);
+        } else {
+          hostRoom = { ...hostRoom, phase: "finished" };
+          broadcastState();
+        }
+        return;
+      }
+
       broadcastState();
     }
   });
@@ -156,6 +186,10 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
       case "start-game": {
         if (fromPeerId !== hostRoom.hostId) return;
         const { songs: playlist, name: playlistName } = await loadPlaylist(action.payload.playlistUrl);
+        if (playlist.length === 0) {
+          sendToAll({ type: "error", payload: { message: "Playlist is empty" } }, fromPeerId);
+          return;
+        }
         hostRoom = logic.startGame(hostRoom, playlist, playlistName);
         const pick = logic.pickRandomSong(hostRoom);
         if (pick) {
@@ -163,12 +197,21 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
           broadcastState();
           await playSongOnAllDevices(pick.song.uri);
         } else {
+          hostRoom = { ...hostRoom, phase: "finished" };
           broadcastState();
         }
         break;
       }
 
       case "place-song": {
+        if (hostRoom.phase !== "playing") return;
+        if (hostRoom.buzzerId) {
+          sendToAll(
+            { type: "error", payload: { message: "Wait for buzzer to place" } },
+            fromPeerId,
+          );
+          return;
+        }
         const current = logic.getCurrentPlayer(hostRoom);
         if (current?.id !== fromPeerId) {
           sendToAll(
@@ -188,7 +231,6 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
       }
 
       case "guess-song": {
-        // Any player can guess during reveal phase
         if (hostRoom.phase !== "reveal") return;
         const guessResult = logic.guessSongInfo(
           hostRoom,
@@ -212,6 +254,7 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
       }
 
       case "skip-song": {
+        if (hostRoom.phase !== "playing") return;
         const currentForSkip = logic.getCurrentPlayer(hostRoom);
         if (fromPeerId !== currentForSkip?.id) return;
         hostRoom = logic.skipSong(hostRoom, fromPeerId);
@@ -251,12 +294,14 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
       }
 
       case "hitster-buzz": {
+        if (hostRoom.phase !== "playing") return;
         hostRoom = logic.handleBuzz(hostRoom, fromPeerId);
         broadcastState();
         break;
       }
 
       case "buzz-place": {
+        if (hostRoom.phase !== "playing") return;
         if (hostRoom.buzzerId !== fromPeerId) {
           sendToAll(
             { type: "error", payload: { message: "You don't have the buzz" } },
@@ -303,6 +348,7 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
             ...p,
             score: 0,
             timeline: [],
+            tokens: 2,
           })),
         };
         broadcastState();

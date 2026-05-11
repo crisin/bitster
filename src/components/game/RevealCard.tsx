@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, Image, StyleSheet } from "react-native";
 import { COLORS, SIZES } from "@/utils/constants";
 import type { Song } from "@/game/types";
 
@@ -15,6 +15,9 @@ export function RevealCard({ correct, song }: RevealCardProps) {
   return (
     <View style={[styles.card, { borderColor: color }]}>
       <Text style={[styles.result, { color }]}>{label}</Text>
+      {song.imageUrl && (
+        <Image source={{ uri: song.imageUrl }} style={styles.cover} />
+      )}
       <Text style={styles.title}>{song.name}</Text>
       <Text style={styles.artist}>{song.artist}</Text>
       <Text style={styles.year}>{song.year}</Text>
@@ -36,6 +39,13 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: "800",
     marginBottom: 16,
+  },
+  cover: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    marginBottom: 16,
+    backgroundColor: COLORS.secondary,
   },
   title: {
     fontSize: 18,

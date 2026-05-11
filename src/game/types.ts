@@ -6,6 +6,7 @@ export interface Song {
   name: string;
   artist: string;
   year: number;
+  imageUrl?: string;
 }
 
 export interface Player {

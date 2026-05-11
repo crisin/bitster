@@ -82,6 +82,7 @@ export function removePlayer(room: Room, playerId: string): Room {
     players: filtered,
     hostId: newHostId,
     currentPlayerIndex,
+    buzzerId: room.buzzerId === playerId ? null : room.buzzerId,
   };
 }
 
@@ -260,7 +261,12 @@ export function resolveBuzz(
 }
 
 function normalize(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9äöüß]/g, "").trim();
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
 }
 
 export function guessSongInfo(

@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Button } from "@/components/ui/Button";
 import { COLORS } from "@/utils/constants";
 import { useStreamingStore } from "@/streaming/store";
@@ -22,10 +22,15 @@ export function ConnectButton({
   if (authStatus === "authenticated") {
     return (
       <View style={styles.connected}>
-        <View style={[styles.dot, { backgroundColor: providerColor }]} />
-        <Text style={[styles.text, { color: providerColor }]}>
-          {providerName} connected
-        </Text>
+        <View style={styles.connectedRow}>
+          <View style={[styles.dot, { backgroundColor: providerColor }]} />
+          <Text style={[styles.text, { color: providerColor }]}>
+            {providerName} connected
+          </Text>
+        </View>
+        <TouchableOpacity onPress={onDisconnect} activeOpacity={0.6}>
+          <Text style={styles.switchLink}>Switch account</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -46,11 +51,14 @@ export function ConnectButton({
 
 const styles = StyleSheet.create({
   connected: {
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 10,
+  },
+  connectedRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
     gap: 8,
-    paddingVertical: 10,
   },
   dot: {
     width: 8,
@@ -60,5 +68,10 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 14,
     fontWeight: "500",
+  },
+  switchLink: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    opacity: 0.7,
   },
 });

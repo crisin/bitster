@@ -88,11 +88,14 @@ export default function HomeScreen() {
     }
   }, []);
 
-  const handleStreamingDisconnect = useCallback(() => {
+  const handleStreamingDisconnect = useCallback(async () => {
     const provider = getProvider("spotify");
     if (provider) {
-      provider.auth.logout();
+      await provider.auth.logout();
       useStreamingStore.getState().setActiveProvider(null);
+      // Immediately start login with new account
+      useStreamingStore.getState().setActiveProvider("spotify");
+      provider.auth.login();
     }
   }, []);
 

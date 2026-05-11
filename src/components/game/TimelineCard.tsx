@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, Image, StyleSheet } from "react-native";
 import { COLORS, SIZES } from "@/utils/constants";
 import type { Song } from "@/game/types";
 
@@ -21,6 +21,13 @@ export function TimelineCard({
         highlighted && { borderColor: highlightColor, borderWidth: 2 },
       ]}
     >
+      {song.imageUrl ? (
+        <Image source={{ uri: song.imageUrl }} style={styles.cover} />
+      ) : (
+        <View style={styles.coverPlaceholder}>
+          <Text style={styles.coverIcon}>♫</Text>
+        </View>
+      )}
       <Text style={styles.year}>{song.year}</Text>
       <View style={styles.info}>
         <Text style={styles.title} numberOfLines={1}>
@@ -38,21 +45,39 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     backgroundColor: COLORS.bgCard,
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: SIZES.borderRadius,
     width: "100%",
     maxWidth: 360,
-    gap: 12,
+    gap: 10,
+  },
+  cover: {
+    width: 36,
+    height: 36,
+    borderRadius: 4,
+    backgroundColor: COLORS.secondary,
+  },
+  coverPlaceholder: {
+    width: 36,
+    height: 36,
+    borderRadius: 4,
+    backgroundColor: COLORS.secondary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  coverIcon: {
+    fontSize: 16,
+    color: COLORS.textSecondary,
   },
   year: {
     fontSize: SIZES.fontTitle,
     fontWeight: "700",
     color: COLORS.yearText,
-    minWidth: 42,
+    minWidth: 38,
   },
   info: {
     flex: 1,
