@@ -16,6 +16,8 @@ import { NowPlaying } from "@/components/game/NowPlaying";
 import { ScoreBoard } from "@/components/game/ScoreBoard";
 import { PlayedSongs } from "@/components/game/PlayedSongs";
 import { BuzzerButton } from "@/components/game/BuzzerButton";
+import { PlayerTimeline } from "@/components/game/PlayerTimeline";
+import { GuessForm } from "@/components/game/GuessForm";
 import { RoomCode } from "@/components/lobby/RoomCode";
 import { PlayerSlot } from "@/components/lobby/PlayerSlot";
 import { GameSettings } from "@/components/lobby/GameSettings";
@@ -39,9 +41,13 @@ export default function GameScreen() {
   const playedSongs = useGameStore((s) => s.playedSongs);
   const buzzerId = useGameStore((s) => s.buzzerId);
   const settings = useGameStore((s) => s.settings);
+  const timelines = useGameStore((s) => s.timelines);
+  const playlistName = useGameStore((s) => s.playlistName);
   const connectionStatus = useConnectionStatus();
   const { isMyTurn, isHost, myTimeline, currentPlayer, myPeerId } =
     useCurrentPlayer();
+
+  const myTokens = players.find((p) => p.id === myPeerId)?.tokens ?? 0;
 
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [selectedGap, setSelectedGap] = useState<number | null>(null);
@@ -114,6 +120,15 @@ export default function GameScreen() {
     haptics.medium();
   }, [buzzGap]);
 
+  const handleSkipSong = useCallback(() => {
+    dispatch({ type: "skip-song" });
+    haptics.tap();
+  }, []);
+
+  const handleGuess = useCallback((title: string, artist: string) => {
+    dispatch({ type: "guess-song", payload: { title, artist } });
+  }, []);
+
   const code = params.code ?? "";
 
   return (
@@ -126,6 +141,13 @@ export default function GameScreen() {
           <StatusDot status={connectionStatus} />
         </View>
       </View>
+
+      {/* Playlist name banner */}
+      {playlistName && phase !== "lobby" && (
+        <View style={styles.playlistBanner}>
+          <Text style={styles.playlistName} numberOfLines={1}>♫ {playlistName}</Text>
+        </View>
+      )}
 
       {/* Content */}
       <ScrollView
@@ -202,37 +224,57 @@ export default function GameScreen() {
 
             <NowPlaying />
 
-            {isBuzzer ? (
-              <Timeline
-                cards={myTimeline}
-                interactive
-                selectedGap={buzzGap}
-                onGapSelect={handleBuzzGapSelect}
-              />
-            ) : (
-              <Timeline
-                cards={myTimeline}
-                interactive={isMyTurn}
-                selectedGap={selectedGap}
-                onGapSelect={handleGapSelect}
+            {/* My timeline (interactive if my turn or I buzzed) */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Your Timeline</Text>
+              {isBuzzer ? (
+                <Timeline
+                  cards={myTimeline}
+                  interactive
+                  selectedGap={buzzGap}
+                  onGapSelect={handleBuzzGapSelect}
+                />
+              ) : (
+                <Timeline
+                  cards={myTimeline}
+                  interactive={isMyTurn}
+                  selectedGap={selectedGap}
+                  onGapSelect={handleGapSelect}
+                />
+              )}
+            </View>
+
+            {/* Skip button for active player */}
+            {isMyTurn && !isBuzzer && myTokens > 0 && (
+              <Button
+                title={`Skip Song (costs 1★)`}
+                onPress={handleSkipSong}
+                variant="ghost"
               />
             )}
 
+            {/* Buzzer for non-active players */}
             {!isMyTurn && !isBuzzer && buzzEnabled && (
               <BuzzerButton
                 onPress={handleBuzz}
-                disabled={!!buzzerId}
+                disabled={!!buzzerId || myTokens <= 0}
                 buzzerName={buzzerName}
               />
             )}
 
-            <PlayerList
-              players={players}
-              currentPlayerId={currentPlayerId}
-              hostId={hostId}
-              myId={myPeerId}
-              compact
-            />
+            {/* All player timelines */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>All Players</Text>
+              {players.map((p) => (
+                <PlayerTimeline
+                  key={p.id}
+                  name={p.id === myPeerId ? `${p.name} (you)` : p.name}
+                  songs={timelines[p.id] ?? []}
+                  isCurrent={p.id === currentPlayerId}
+                  tokens={p.tokens}
+                />
+              ))}
+            </View>
 
             <PlayedSongs songs={playedSongs} />
           </View>
@@ -248,6 +290,11 @@ export default function GameScreen() {
               interactive={false}
               selectedGap={null}
               onGapSelect={() => {}}
+            />
+
+            <GuessForm
+              onSubmit={handleGuess}
+              disabled={false}
             />
           </View>
         )}
@@ -344,6 +391,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 6,
     overflow: "hidden",
+  },
+  playlistBanner: {
+    paddingVertical: 6,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.bgCard,
+  },
+  playlistName: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+    fontWeight: "500",
   },
   content: {
     flex: 1,

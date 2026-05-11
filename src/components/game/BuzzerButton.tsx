@@ -26,7 +26,7 @@ export function BuzzerButton({ onPress, disabled, buzzerName }: BuzzerButtonProp
       activeOpacity={0.7}
       style={[styles.button, disabled && styles.disabled]}
     >
-      <Text style={styles.label}>HITSTER!</Text>
+      <Text style={styles.label}>HITSTER! (1★)</Text>
     </TouchableOpacity>
   );
 }

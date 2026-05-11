@@ -155,8 +155,8 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
 
       case "start-game": {
         if (fromPeerId !== hostRoom.hostId) return;
-        const playlist = await loadPlaylist(action.payload.playlistUrl);
-        hostRoom = logic.startGame(hostRoom, playlist);
+        const { songs: playlist, name: playlistName } = await loadPlaylist(action.payload.playlistUrl);
+        hostRoom = logic.startGame(hostRoom, playlist, playlistName);
         const pick = logic.pickRandomSong(hostRoom);
         if (pick) {
           hostRoom = pick.room;
@@ -184,6 +184,47 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
         );
         hostRoom = updated;
         broadcastState(result);
+        break;
+      }
+
+      case "guess-song": {
+        // Any player can guess during reveal phase
+        if (hostRoom.phase !== "reveal") return;
+        const guessResult = logic.guessSongInfo(
+          hostRoom,
+          fromPeerId,
+          action.payload.title,
+          action.payload.artist,
+        );
+        hostRoom = guessResult.room;
+        // Send result back to guesser, broadcast updated tokens
+        sendToAll(
+          {
+            type: "error",
+            payload: {
+              message: `${guessResult.titleCorrect ? "Title correct!" : "Title wrong."} ${guessResult.artistCorrect ? "Artist correct!" : "Artist wrong."}${guessResult.titleCorrect || guessResult.artistCorrect ? " +token!" : ""}`,
+            },
+          },
+          fromPeerId,
+        );
+        broadcastState();
+        break;
+      }
+
+      case "skip-song": {
+        const currentForSkip = logic.getCurrentPlayer(hostRoom);
+        if (fromPeerId !== currentForSkip?.id) return;
+        hostRoom = logic.skipSong(hostRoom, fromPeerId);
+        // Pick a new song
+        const skipPick = logic.pickRandomSong(hostRoom);
+        if (skipPick) {
+          hostRoom = skipPick.room;
+          broadcastState();
+          await playSongOnAllDevices(skipPick.song.uri);
+        } else {
+          hostRoom = { ...hostRoom, phase: "finished" };
+          broadcastState();
+        }
         break;
       }
 
@@ -329,7 +370,7 @@ function processPeerMessage(action: P2PAction): void {
 
 // -- Streaming Integration --
 
-async function loadPlaylist(playlistUrl: string): Promise<Song[]> {
+async function loadPlaylist(playlistUrl: string): Promise<{ songs: Song[]; name: string }> {
   const providerId = useStreamingStore.getState().activeProviderId;
   const provider = providerId ? getProvider(providerId) : null;
 
@@ -337,10 +378,13 @@ async function loadPlaylist(playlistUrl: string): Promise<Song[]> {
     const playlistId = provider.library.parsePlaylistUrl(playlistUrl);
     if (playlistId) {
       try {
-        const tracks = await provider.library.getPlaylistTracks(playlistId);
+        const [tracks, meta] = await Promise.all([
+          provider.library.getPlaylistTracks(playlistId),
+          provider.library.getPlaylistMeta(playlistId).catch(() => null),
+        ]);
         if (tracks.length > 0) {
           logger.info("p2p", `Loaded ${tracks.length} tracks from provider`);
-          return tracks;
+          return { songs: tracks, name: meta?.name ?? "Playlist" };
         }
       } catch (err) {
         logger.error("p2p", `Playlist load failed: ${err}`);
@@ -349,7 +393,7 @@ async function loadPlaylist(playlistUrl: string): Promise<Song[]> {
   }
 
   logger.info("p2p", "Using mock playlist (no provider or URL)");
-  return getMockPlaylist();
+  return { songs: getMockPlaylist(), name: "Demo Playlist" };
 }
 
 async function playSongOnAllDevices(uri: string): Promise<void> {

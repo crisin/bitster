@@ -13,6 +13,7 @@ export interface Player {
   name: string;
   score: number;
   timeline: Song[];
+  tokens: number;
 }
 
 export interface BuzzRules {
@@ -51,6 +52,7 @@ export interface Room {
   phase: Phase;
   settings: GameSettings;
   buzzerId: string | null;
+  playlistName: string | null;
 }
 
 export interface PlacementResult {
@@ -58,10 +60,18 @@ export interface PlacementResult {
   song: Song;
 }
 
+export interface PlayerState {
+  id: string;
+  name: string;
+  score: number;
+  timelineLength: number;
+  tokens: number;
+}
+
 export interface GameState {
   roomCode: string;
   phase: Phase;
-  players: { id: string; name: string; score: number; timelineLength: number }[];
+  players: PlayerState[];
   currentPlayerId: string | null;
   currentSongUri: string | null;
   timelines: Record<string, Song[]>;
@@ -70,4 +80,5 @@ export interface GameState {
   settings: GameSettings;
   playedSongs: { name: string; artist: string; year: number }[];
   buzzerId: string | null;
+  playlistName: string | null;
 }

@@ -9,6 +9,8 @@ export type P2PAction =
   | { type: "place-song"; payload: { position: number } }
   | { type: "hitster-buzz" }
   | { type: "buzz-place"; payload: { position: number } }
+  | { type: "guess-song"; payload: { title: string; artist: string } }
+  | { type: "skip-song" }
   | { type: "next-round" }
   | { type: "play-song"; payload: { uri: string } }
   | { type: "pause-song" }
@@ -72,6 +74,13 @@ export function validateAction(data: unknown): P2PAction | null {
     case "buzz-place":
       if (!isObject(p) || !isNonNegativeInt(p.position)) return null;
       return { type: "buzz-place", payload: { position: p.position } };
+
+    case "guess-song":
+      if (!isObject(p) || typeof p.title !== "string" || typeof p.artist !== "string") return null;
+      return { type: "guess-song", payload: { title: p.title, artist: p.artist } };
+
+    case "skip-song":
+      return { type: "skip-song" };
 
     case "next-round":
       return { type: "next-round" };

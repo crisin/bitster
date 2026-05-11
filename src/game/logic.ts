@@ -29,11 +29,14 @@ export function createRoom(
     phase: "lobby",
     settings: { ...DEFAULT_SETTINGS, ...settings },
     buzzerId: null,
+    playlistName: null,
   };
 }
 
+const STARTING_TOKENS = 2;
+
 export function createPlayer(id: string, name: string): Player {
-  return { id, name, score: 0, timeline: [] };
+  return { id, name, score: 0, timeline: [], tokens: STARTING_TOKENS };
 }
 
 export function addPlayer(room: Room, id: string, name: string): Room {
@@ -178,11 +181,12 @@ export function getCurrentPlayer(room: Room): Player | null {
   return room.players[room.currentPlayerIndex] ?? null;
 }
 
-export function startGame(room: Room, playlist: Song[]): Room {
+export function startGame(room: Room, playlist: Song[], playlistName?: string): Room {
   const resetPlayers = room.players.map((p) => ({
     ...p,
     score: 0,
     timeline: [],
+    tokens: STARTING_TOKENS,
   }));
 
   return {
@@ -194,6 +198,7 @@ export function startGame(room: Room, playlist: Song[]): Room {
     currentSong: null,
     phase: "playing",
     buzzerId: null,
+    playlistName: playlistName ?? room.playlistName,
   };
 }
 
@@ -205,9 +210,16 @@ export function handleBuzz(
   if (room.buzzerId) return room;
   const currentPlayer = getCurrentPlayer(room);
   if (currentPlayer?.id === buzzerId) return room;
-  if (!room.players.some((p) => p.id === buzzerId)) return room;
+  const buzzer = room.players.find((p) => p.id === buzzerId);
+  if (!buzzer) return room;
+  if (buzzer.tokens <= 0) return room;
 
-  return { ...room, buzzerId };
+  // Spend a token
+  const updatedPlayers = room.players.map((p) =>
+    p.id === buzzerId ? { ...p, tokens: p.tokens - 1 } : p,
+  );
+
+  return { ...room, players: updatedPlayers, buzzerId };
 }
 
 export function resolveBuzz(
@@ -247,6 +259,49 @@ export function resolveBuzz(
   };
 }
 
+function normalize(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9äöüß]/g, "").trim();
+}
+
+export function guessSongInfo(
+  room: Room,
+  playerId: string,
+  guessTitle: string,
+  guessArtist: string,
+): { room: Room; titleCorrect: boolean; artistCorrect: boolean } {
+  if (!room.currentSong) throw new Error("No current song");
+
+  const titleCorrect = normalize(guessTitle) === normalize(room.currentSong.name);
+  const artistCorrect = normalize(guessArtist) === normalize(room.currentSong.artist);
+
+  const tokensEarned = (titleCorrect ? 1 : 0) + (artistCorrect ? 1 : 0);
+
+  if (tokensEarned === 0) {
+    return { room, titleCorrect, artistCorrect };
+  }
+
+  const updatedPlayers = room.players.map((p) =>
+    p.id === playerId ? { ...p, tokens: p.tokens + tokensEarned } : p,
+  );
+
+  return { room: { ...room, players: updatedPlayers }, titleCorrect, artistCorrect };
+}
+
+export function skipSong(
+  room: Room,
+  playerId: string,
+): Room {
+  const player = room.players.find((p) => p.id === playerId);
+  if (!player) throw new Error("Player not found");
+  if (player.tokens <= 0) throw new Error("No tokens to spend");
+
+  const updatedPlayers = room.players.map((p) =>
+    p.id === playerId ? { ...p, tokens: p.tokens - 1 } : p,
+  );
+
+  return { ...room, players: updatedPlayers };
+}
+
 export function buildGameState(room: Room): import("./types").GameState {
   const currentPlayer = getCurrentPlayer(room);
   const timelines: Record<string, Song[]> = {};
@@ -262,6 +317,7 @@ export function buildGameState(room: Room): import("./types").GameState {
       name: p.name,
       score: p.score,
       timelineLength: p.timeline.length,
+      tokens: p.tokens,
     })),
     currentPlayerId: currentPlayer?.id ?? null,
     currentSongUri: room.currentSong?.uri ?? null,
@@ -275,5 +331,6 @@ export function buildGameState(room: Room): import("./types").GameState {
       year: s.year,
     })),
     buzzerId: room.buzzerId,
+    playlistName: room.playlistName,
   };
 }

@@ -13,6 +13,7 @@ interface PlayerInfo {
   name: string;
   score: number;
   timelineLength: number;
+  tokens: number;
 }
 
 interface GameStore {
@@ -27,6 +28,7 @@ interface GameStore {
   settings: GameSettings;
   playedSongs: PlayedSongInfo[];
   buzzerId: string | null;
+  playlistName: string | null;
 
   setRoomCode: (code: string | null) => void;
   setPhase: (phase: Phase) => void;
@@ -49,6 +51,7 @@ interface GameStore {
     settings: GameSettings;
     playedSongs: PlayedSongInfo[];
     buzzerId: string | null;
+    playlistName: string | null;
   }) => void;
   reset: () => void;
 }
@@ -65,6 +68,7 @@ const initialState = {
   settings: DEFAULT_SETTINGS as GameSettings,
   playedSongs: [] as PlayedSongInfo[],
   buzzerId: null as string | null,
+  playlistName: null as string | null,
 };
 
 export const useGameStore = create<GameStore>((set) => ({
@@ -93,6 +97,7 @@ export const useGameStore = create<GameStore>((set) => ({
       settings: state.settings,
       playedSongs: state.playedSongs,
       buzzerId: state.buzzerId,
+      playlistName: state.playlistName,
     }),
 
   reset: () => set(initialState),
