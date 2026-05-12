@@ -7,18 +7,21 @@ interface TimelineCardProps {
   song: Song;
   highlighted?: boolean;
   highlightColor?: string;
+  hideYear?: boolean;
 }
 
 export function TimelineCard({
   song,
   highlighted = false,
   highlightColor = COLORS.success,
+  hideYear = false,
 }: TimelineCardProps) {
   return (
     <View
       style={[
         styles.card,
         highlighted && { borderColor: highlightColor, borderWidth: 2 },
+        hideYear && styles.hiddenCard,
       ]}
     >
       {song.imageUrl ? (
@@ -28,13 +31,15 @@ export function TimelineCard({
           <Text style={styles.coverIcon}>♫</Text>
         </View>
       )}
-      <Text style={styles.year}>{song.year}</Text>
+      <Text style={[styles.year, hideYear && styles.hiddenYear]}>
+        {hideYear ? "?" : song.year}
+      </Text>
       <View style={styles.info}>
         <Text style={styles.title} numberOfLines={1}>
-          {song.name}
+          {hideYear ? "???" : song.name}
         </Text>
         <Text style={styles.artist} numberOfLines={1}>
-          {song.artist}
+          {hideYear ? "???" : song.artist}
         </Text>
       </View>
     </View>
@@ -73,11 +78,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: COLORS.textSecondary,
   },
+  hiddenCard: {
+    borderColor: COLORS.warning,
+    borderWidth: 2,
+    borderStyle: "dashed",
+  },
   year: {
     fontSize: SIZES.fontTitle,
     fontWeight: "700",
     color: COLORS.yearText,
     minWidth: 38,
+  },
+  hiddenYear: {
+    color: COLORS.warning,
+    fontSize: 22,
   },
   info: {
     flex: 1,

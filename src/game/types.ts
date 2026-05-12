@@ -1,4 +1,4 @@
-export type Phase = "lobby" | "playing" | "reveal" | "finished";
+export type Phase = "lobby" | "playing" | "hitster-window" | "reveal" | "finished";
 
 export interface Song {
   id: string;
@@ -79,6 +79,7 @@ export interface GameState {
   players: PlayerState[];
   currentPlayerId: string | null;
   currentSongUri: string | null;
+  currentSongId: string | null;
   timelines: Record<string, Song[]>;
   lastResult: PlacementResult | null;
   hostId: string;
@@ -86,4 +87,5 @@ export interface GameState {
   playedSongs: { name: string; artist: string; year: number }[];
   buzzerId: string | null;
   playlistName: string | null;
+  guessResult: { titleCorrect: boolean; artistCorrect: boolean } | null;
 }

@@ -44,6 +44,8 @@ export default function GameScreen() {
   const settings = useGameStore((s) => s.settings);
   const timelines = useGameStore((s) => s.timelines);
   const playlistName = useGameStore((s) => s.playlistName);
+  const currentSongId = useGameStore((s) => s.currentSongId);
+  const guessResult = useGameStore((s) => s.guessResult);
   const connectionStatus = useConnectionStatus();
   const connectionError = useP2PStore((s) => s.lastError);
   const { isMyTurn, isHost, myTimeline, currentPlayer, myPeerId } =
@@ -54,6 +56,7 @@ export default function GameScreen() {
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [selectedGap, setSelectedGap] = useState<number | null>(null);
   const [buzzGap, setBuzzGap] = useState<number | null>(null);
+  const [guessSubmitted, setGuessSubmitted] = useState(false);
   const isBuzzer = buzzerId === myPeerId;
   const buzzerName = buzzerId
     ? players.find((p) => p.id === buzzerId)?.name ?? null
@@ -75,6 +78,13 @@ export default function GameScreen() {
   useEffect(() => {
     setBuzzGap(null);
   }, [buzzerId]);
+
+  // Reset guess state when a new round starts
+  useEffect(() => {
+    if (phase === "playing") {
+      setGuessSubmitted(false);
+    }
+  }, [phase]);
 
   const handleGapSelect = useCallback((position: number) => {
     setSelectedGap(position);
@@ -129,6 +139,11 @@ export default function GameScreen() {
 
   const handleGuess = useCallback((title: string, artist: string) => {
     dispatch({ type: "guess-song", payload: { title, artist } });
+    setGuessSubmitted(true);
+  }, []);
+
+  const handleReveal = useCallback(() => {
+    dispatch({ type: "reveal-song" });
   }, []);
 
   const code = params.code ?? "";
@@ -245,8 +260,13 @@ export default function GameScreen() {
             <NowPlaying />
 
             {/* Guess form — only active player, before placing */}
-            {isMyTurn && (
+            {isMyTurn && !guessSubmitted && (
               <GuessForm onSubmit={handleGuess} disabled={false} />
+            )}
+            {isMyTurn && guessSubmitted && (
+              <Text style={styles.guessSubmitted}>
+                Guess submitted! Now place the song.
+              </Text>
             )}
 
             {/* My timeline (interactive if my turn) */}
@@ -287,12 +307,55 @@ export default function GameScreen() {
           </View>
         )}
 
-        {/* REVEAL — result + Hitster window for other players */}
-        {phase === "reveal" && lastResult && (
+        {/* HITSTER WINDOW — song placed, year hidden, buzz opportunity */}
+        {phase === "hitster-window" && (
           <View style={styles.phaseContainer}>
-            <RevealCard correct={lastResult.correct} song={lastResult.song} />
+            {isMyTurn ? (
+              <Text style={styles.turnText}>
+                Song placed! Waiting for challenges...
+              </Text>
+            ) : (
+              <Text style={styles.turnTextOther}>
+                {currentPlayer?.name ?? "Someone"} placed a song. Hitster?
+              </Text>
+            )}
 
-            {/* Hitster buzz — other players can claim the song */}
+            {/* Guess result — shown after placing */}
+            {guessResult && isMyTurn && (
+              <View style={[
+                styles.guessResultBanner,
+                (guessResult.titleCorrect && guessResult.artistCorrect)
+                  ? styles.guessResultSuccess
+                  : styles.guessResultPartial,
+              ]}>
+                <Text style={styles.guessResultText}>
+                  {guessResult.titleCorrect ? "✓ Title" : "✗ Title"}
+                  {"  "}
+                  {guessResult.artistCorrect ? "✓ Artist" : "✗ Artist"}
+                  {(guessResult.titleCorrect && guessResult.artistCorrect) ? "  +1★" : ""}
+                </Text>
+              </View>
+            )}
+
+            <NowPlaying />
+
+            {/* Show active player's timeline to non-active players (year hidden) */}
+            {!isMyTurn && currentPlayerId && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>
+                  {currentPlayer?.name ?? "Player"}'s Timeline
+                </Text>
+                <Timeline
+                  cards={timelines[currentPlayerId] ?? []}
+                  interactive={false}
+                  selectedGap={null}
+                  onGapSelect={() => {}}
+                  hiddenYearSongId={currentSongId}
+                />
+              </View>
+            )}
+
+            {/* Buzz button — only non-active, non-buzzer players */}
             {!isMyTurn && !isBuzzer && buzzEnabled && !buzzerId && (
               <BuzzerButton
                 onPress={handleBuzz}
@@ -328,8 +391,8 @@ export default function GameScreen() {
               </>
             )}
 
-            {/* Non-buzzer: show timeline read-only */}
-            {!isBuzzer && (
+            {/* Active player sees their own timeline (year hidden for placed song) */}
+            {isMyTurn && (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Your Timeline</Text>
                 <Timeline
@@ -337,9 +400,44 @@ export default function GameScreen() {
                   interactive={false}
                   selectedGap={null}
                   onGapSelect={() => {}}
+                  hiddenYearSongId={currentSongId}
                 />
               </View>
             )}
+
+            {/* All player timelines */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>All Players</Text>
+              {players.map((p) => (
+                <PlayerTimeline
+                  key={p.id}
+                  name={p.id === myPeerId ? `${p.name} (you)` : p.name}
+                  songs={timelines[p.id] ?? []}
+                  isCurrent={p.id === currentPlayerId}
+                  tokens={p.tokens}
+                  hiddenYearSongId={p.id === currentPlayerId ? currentSongId : undefined}
+                />
+              ))}
+            </View>
+
+            <PlayedSongs songs={playedSongs} />
+          </View>
+        )}
+
+        {/* REVEAL — result shown */}
+        {phase === "reveal" && lastResult && (
+          <View style={styles.phaseContainer}>
+            <RevealCard correct={lastResult.correct} song={lastResult.song} />
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Your Timeline</Text>
+              <Timeline
+                cards={myTimeline}
+                interactive={false}
+                selectedGap={null}
+                onGapSelect={() => {}}
+              />
+            </View>
 
             {/* All player timelines */}
             <View style={styles.section}>
@@ -383,14 +481,18 @@ export default function GameScreen() {
           />
         )}
 
-        {phase === "reveal" && isBuzzer && buzzGap !== null && (
+        {phase === "hitster-window" && isBuzzer && buzzGap !== null && (
           <Button
             title="Place Here"
             onPress={handleConfirmBuzzPlacement}
           />
         )}
 
-        {phase === "reveal" && !buzzerId && (isMyTurn || isHost) && (
+        {phase === "hitster-window" && !isBuzzer && (isMyTurn || isHost) && (
+          <Button title="Reveal →" onPress={handleReveal} />
+        )}
+
+        {phase === "reveal" && (isMyTurn || isHost) && (
           <Button title="Next Round →" onPress={handleNextRound} />
         )}
 
@@ -542,6 +644,34 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: COLORS.textPrimary,
     textAlign: "center",
+  },
+  guessSubmitted: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+    fontStyle: "italic",
+  },
+  guessResultBanner: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    width: "100%",
+    alignItems: "center",
+  },
+  guessResultSuccess: {
+    backgroundColor: "rgba(34, 197, 94, 0.15)",
+    borderWidth: 1,
+    borderColor: COLORS.success,
+  },
+  guessResultPartial: {
+    backgroundColor: "rgba(201, 144, 58, 0.15)",
+    borderWidth: 1,
+    borderColor: COLORS.warning,
+  },
+  guessResultText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.textPrimary,
   },
   leaveLink: {
     fontSize: 13,

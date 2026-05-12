@@ -12,6 +12,7 @@ export type P2PAction =
   | { type: "guess-song"; payload: { title: string; artist: string } }
   | { type: "skip-song" }
   | { type: "next-round" }
+  | { type: "reveal-song" }
   | { type: "play-song"; payload: { uri: string } }
   | { type: "pause-song" }
   | { type: "kick-player"; payload: { playerId: string } }
@@ -84,6 +85,9 @@ export function validateAction(data: unknown): P2PAction | null {
 
     case "next-round":
       return { type: "next-round" };
+
+    case "reveal-song":
+      return { type: "reveal-song" };
 
     case "play-song":
       if (!isObject(p) || !isNonEmptyString(p.uri)) return null;

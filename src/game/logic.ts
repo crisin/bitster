@@ -179,13 +179,12 @@ export function placeSong(
   const song = room.currentSong;
   const correct = checkPlacement(player.timeline, song, position);
 
-  const updatedTimeline = correct
-    ? [
-        ...player.timeline.slice(0, position),
-        song,
-        ...player.timeline.slice(position),
-      ]
-    : player.timeline;
+  // Always insert card (tentatively) — removed during reveal if wrong
+  const updatedTimeline = [
+    ...player.timeline.slice(0, position),
+    song,
+    ...player.timeline.slice(position),
+  ];
 
   const updatedPlayers = room.players.map((p) =>
     p.id === playerId
@@ -201,10 +200,20 @@ export function placeSong(
     room: {
       ...room,
       players: updatedPlayers,
-      phase: "reveal",
+      phase: "hitster-window",
     },
     result: { correct, song },
   };
+}
+
+/** Remove a tentatively placed song from a player's timeline. */
+export function undoPlacement(room: Room, playerId: string, songId: string): Room {
+  const updatedPlayers = room.players.map((p) => {
+    if (p.id !== playerId) return p;
+    const newTimeline = p.timeline.filter((s) => s.id !== songId);
+    return { ...p, timeline: newTimeline, score: newTimeline.length };
+  });
+  return { ...room, players: updatedPlayers };
 }
 
 export function advanceTurn(room: Room): Room {
@@ -315,13 +324,72 @@ export function resolveBuzz(
   };
 }
 
+/** Normalize a string for fuzzy comparison: strip diacritics, lowercase, ß→ss, non-alphanum removed */
 function normalize(s: string): string {
   return s
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
+    .replace(/ß/g, "ss")
     .replace(/[^a-z0-9]/g, "")
     .trim();
+}
+
+/** Split an artist credit string into individual artist names */
+function splitArtists(artist: string): string[] {
+  return artist
+    .split(/[,\/&]|\s+(?:feat\.?|ft\.?|featuring|with|x|and|und)\s+/i)
+    .map((s) => normalize(s.trim()))
+    .filter((s) => s.length > 0);
+}
+
+/** Strip remix/feat/edition suffixes from a song title */
+function stripTitleSuffix(title: string): string {
+  return title
+    .replace(/\s*[\(\[].*?[\)\]]/g, "")
+    .replace(
+      /\s*-\s*(remix|edit|mix|version|remaster|remastered|live|acoustic|radio|extended|deluxe|bonus|original|clean|explicit).*$/i,
+      "",
+    )
+    .replace(/\s*feat\.?\s+.*$/i, "")
+    .replace(/\s*ft\.?\s+.*$/i, "")
+    .trim();
+}
+
+/** Check if a guessed title matches the actual title (fuzzy) */
+function checkTitleMatch(guess: string, actual: string): boolean {
+  const g = normalize(guess);
+  const a = normalize(actual);
+  if (g.length === 0) return false;
+  if (g === a) return true;
+  // Try with stripped suffixes (handles remixes, feat. tags, edition labels)
+  const gStripped = normalize(stripTitleSuffix(guess));
+  const aStripped = normalize(stripTitleSuffix(actual));
+  if (gStripped.length > 0 && aStripped.length > 0 && gStripped === aStripped) return true;
+  return false;
+}
+
+/** Check if a guessed artist matches any of the actual artists (fuzzy) */
+function checkArtistMatch(guess: string, actual: string): boolean {
+  if (normalize(guess).length === 0) return false;
+
+  const actualParts = splitArtists(actual);
+  const guessParts = splitArtists(guess);
+
+  if (actualParts.length === 0 || guessParts.length === 0) {
+    return normalize(guess) === normalize(actual);
+  }
+
+  // Any guess part exactly matches any actual part
+  if (guessParts.some((g) => actualParts.some((a) => a === g))) return true;
+
+  // Containment: actual artist found within a guess part (handles "eminemrihanna" containing "eminem")
+  if (guessParts.some((g) => actualParts.some((a) => a.length >= 3 && g.includes(a)))) return true;
+
+  // Reverse containment: guess part found within an actual artist name
+  if (guessParts.some((g) => g.length >= 3 && actualParts.some((a) => a.includes(g)))) return true;
+
+  return false;
 }
 
 export function guessSongInfo(
@@ -332,10 +400,11 @@ export function guessSongInfo(
 ): { room: Room; titleCorrect: boolean; artistCorrect: boolean } {
   if (!room.currentSong) throw new Error("No current song");
 
-  const titleCorrect = normalize(guessTitle) === normalize(room.currentSong.name);
-  const artistCorrect = normalize(guessArtist) === normalize(room.currentSong.artist);
+  const titleCorrect = checkTitleMatch(guessTitle, room.currentSong.name);
+  const artistCorrect = checkArtistMatch(guessArtist, room.currentSong.artist);
 
-  const tokensEarned = (titleCorrect ? 1 : 0) + (artistCorrect ? 1 : 0);
+  // Token only awarded when BOTH title and artist are correct
+  const tokensEarned = (titleCorrect && artistCorrect) ? 1 : 0;
 
   if (tokensEarned === 0) {
     return { room, titleCorrect, artistCorrect };
@@ -382,6 +451,7 @@ export function buildGameState(room: Room): import("./types").GameState {
     })),
     currentPlayerId: currentPlayer?.id ?? null,
     currentSongUri: room.currentSong?.uri ?? null,
+    currentSongId: room.currentSong?.id ?? null,
     timelines,
     lastResult: null,
     hostId: room.hostId,
@@ -393,5 +463,6 @@ export function buildGameState(room: Room): import("./types").GameState {
     })),
     buzzerId: room.buzzerId,
     playlistName: room.playlistName,
+    guessResult: null,
   };
 }

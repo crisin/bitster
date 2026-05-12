@@ -12,6 +12,7 @@ interface TimelineProps {
   onGapSelect: (position: number) => void;
   highlightedIndex?: number | null;
   highlightColor?: string;
+  hiddenYearSongId?: string | null;
 }
 
 export function Timeline({
@@ -21,6 +22,7 @@ export function Timeline({
   onGapSelect,
   highlightedIndex = null,
   highlightColor,
+  hiddenYearSongId,
 }: TimelineProps) {
   const handleGapPress = useCallback(
     (position: number) => {
@@ -66,6 +68,7 @@ export function Timeline({
             song={song}
             highlighted={highlightedIndex === index}
             highlightColor={highlightColor}
+            hideYear={!!hiddenYearSongId && song.id === hiddenYearSongId}
           />
           {interactive && (
             <TimelineGap

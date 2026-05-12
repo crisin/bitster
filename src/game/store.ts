@@ -16,12 +16,18 @@ interface PlayerInfo {
   tokens: number;
 }
 
+interface GuessResult {
+  titleCorrect: boolean;
+  artistCorrect: boolean;
+}
+
 interface GameStore {
   roomCode: string | null;
   phase: Phase;
   players: PlayerInfo[];
   currentPlayerId: string | null;
   currentSongUri: string | null;
+  currentSongId: string | null;
   timelines: Record<string, Song[]>;
   lastResult: PlacementResult | null;
   hostId: string | null;
@@ -29,6 +35,7 @@ interface GameStore {
   playedSongs: PlayedSongInfo[];
   buzzerId: string | null;
   playlistName: string | null;
+  guessResult: GuessResult | null;
 
   setRoomCode: (code: string | null) => void;
   setPhase: (phase: Phase) => void;
@@ -45,6 +52,7 @@ interface GameStore {
     players: PlayerInfo[];
     currentPlayerId: string | null;
     currentSongUri: string | null;
+    currentSongId?: string | null;
     timelines: Record<string, Song[]>;
     lastResult: PlacementResult | null;
     hostId: string;
@@ -52,6 +60,7 @@ interface GameStore {
     playedSongs: PlayedSongInfo[];
     buzzerId: string | null;
     playlistName: string | null;
+    guessResult?: GuessResult | null;
   }) => void;
   reset: () => void;
 }
@@ -62,6 +71,7 @@ const initialState = {
   players: [] as PlayerInfo[],
   currentPlayerId: null as string | null,
   currentSongUri: null as string | null,
+  currentSongId: null as string | null,
   timelines: {} as Record<string, Song[]>,
   lastResult: null as PlacementResult | null,
   hostId: null as string | null,
@@ -69,6 +79,7 @@ const initialState = {
   playedSongs: [] as PlayedSongInfo[],
   buzzerId: null as string | null,
   playlistName: null as string | null,
+  guessResult: null as GuessResult | null,
 };
 
 export const useGameStore = create<GameStore>((set) => ({
@@ -91,6 +102,7 @@ export const useGameStore = create<GameStore>((set) => ({
       players: state.players,
       currentPlayerId: state.currentPlayerId,
       currentSongUri: state.currentSongUri,
+      currentSongId: state.currentSongId ?? null,
       timelines: state.timelines,
       lastResult: state.lastResult,
       hostId: state.hostId,
@@ -98,6 +110,7 @@ export const useGameStore = create<GameStore>((set) => ({
       playedSongs: state.playedSongs,
       buzzerId: state.buzzerId,
       playlistName: state.playlistName,
+      guessResult: state.guessResult ?? null,
     }),
 
   reset: () => set(initialState),

@@ -8,9 +8,10 @@ interface PlayerTimelineProps {
   songs: Song[];
   isCurrent: boolean;
   tokens: number;
+  hiddenYearSongId?: string | null;
 }
 
-export function PlayerTimeline({ name, songs, isCurrent, tokens }: PlayerTimelineProps) {
+export function PlayerTimeline({ name, songs, isCurrent, tokens, hiddenYearSongId }: PlayerTimelineProps) {
   const [expanded, setExpanded] = useState(isCurrent);
 
   return (
@@ -39,12 +40,19 @@ export function PlayerTimeline({ name, songs, isCurrent, tokens }: PlayerTimelin
 
       {expanded && songs.length > 0 && (
         <View style={styles.timeline}>
-          {songs.map((song, i) => (
-            <View key={song.id} style={styles.row}>
-              <Text style={styles.year}>{song.year}</Text>
-              <Text style={styles.title} numberOfLines={1}>{song.name}</Text>
-            </View>
-          ))}
+          {songs.map((song) => {
+            const isHidden = !!hiddenYearSongId && song.id === hiddenYearSongId;
+            return (
+              <View key={song.id} style={styles.row}>
+                <Text style={[styles.year, isHidden && styles.hiddenYear]}>
+                  {isHidden ? "?" : song.year}
+                </Text>
+                <Text style={styles.title} numberOfLines={1}>
+                  {isHidden ? "???" : song.name}
+                </Text>
+              </View>
+            );
+          })}
         </View>
       )}
 
@@ -130,6 +138,9 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: COLORS.yearText,
     width: 36,
+  },
+  hiddenYear: {
+    color: COLORS.warning,
   },
   title: {
     fontSize: 12,

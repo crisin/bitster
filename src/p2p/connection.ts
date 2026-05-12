@@ -25,6 +25,8 @@ let myName = "";
 let joinSent = false;
 let joinTimeout: ReturnType<typeof setTimeout> | null = null;
 let joinRetryCount = 0;
+let pendingResult: PlacementResult | null = null;
+let pendingGuessResult: { titleCorrect: boolean; artistCorrect: boolean } | null = null;
 
 export function getMyPeerId(): string {
   return selfId;
@@ -165,6 +167,13 @@ function connectTransport(roomCode: string): void {
     if (role === "host" && hostRoom) {
       const wasCurrentPlayer = logic.getCurrentPlayer(hostRoom)?.id === peerId;
       const wasBuzzer = hostRoom.buzzerId === peerId;
+
+      // If current player disconnects during hitster-window, undo their tentative placement
+      if (wasCurrentPlayer && hostRoom.phase === "hitster-window" && pendingResult) {
+        hostRoom = logic.undoPlacement(hostRoom, peerId, pendingResult.song.id);
+        pendingResult = null;
+      }
+
       hostRoom = logic.removePlayer(hostRoom, peerId);
 
       // Clear buzzer if the buzzer disconnected
@@ -175,12 +184,13 @@ function connectTransport(roomCode: string): void {
       // Not enough players to continue
       if (hostRoom.players.length < 2 && hostRoom.phase !== "lobby") {
         hostRoom = { ...hostRoom, phase: "finished" };
+        pendingResult = null;
         broadcastState();
         return;
       }
 
       // Auto-advance if the current player disconnected mid-turn
-      if (wasCurrentPlayer && (hostRoom.phase === "playing" || hostRoom.phase === "reveal")) {
+      if (wasCurrentPlayer && (hostRoom.phase === "playing" || hostRoom.phase === "reveal" || hostRoom.phase === "hitster-window")) {
         hostRoom = logic.advanceTurn(hostRoom);
         pickAndPlayNextSong().then((picked) => {
           if (!picked && hostRoom) {
@@ -232,6 +242,8 @@ function cleanup(): void {
   myName = "";
   joinSent = false;
   joinRetryCount = 0;
+  pendingResult = null;
+  pendingGuessResult = null;
 }
 
 function sendToAll(action: P2PAction, targets?: string | string[]): void {
@@ -256,6 +268,7 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
 
       case "start-game": {
         if (fromPeerId !== hostRoom.hostId) return;
+        pendingGuessResult = null;
         const meta = await resolvePlaylist(action.payload.playlistUrl);
         if (meta) {
           // Lazy loading — only fetch meta, songs loaded on demand
@@ -298,7 +311,9 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
           action.payload.position,
         );
         hostRoom = updated;
-        broadcastState(result);
+        // Store result for reveal — don't broadcast yet (year hidden during hitster-window)
+        pendingResult = result;
+        broadcastState();
         break;
       }
 
@@ -320,16 +335,12 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
           action.payload.artist,
         );
         hostRoom = guessResult.room;
-        // Send result back to guesser, broadcast updated tokens
-        sendToAll(
-          {
-            type: "error",
-            payload: {
-              message: `${guessResult.titleCorrect ? "Title correct!" : "Title wrong."} ${guessResult.artistCorrect ? "Artist correct!" : "Artist wrong."}${guessResult.titleCorrect || guessResult.artistCorrect ? " +token!" : ""}`,
-            },
-          },
-          fromPeerId,
-        );
+        // Store result — feedback shown after placing (hitster-window phase)
+        pendingGuessResult = {
+          titleCorrect: guessResult.titleCorrect,
+          artistCorrect: guessResult.artistCorrect,
+        };
+        // Broadcast updated tokens but don't reveal guess correctness yet
         broadcastState();
         break;
       }
@@ -339,6 +350,7 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
         const currentForSkip = logic.getCurrentPlayer(hostRoom);
         if (fromPeerId !== currentForSkip?.id) return;
         hostRoom = logic.skipSong(hostRoom, fromPeerId);
+        pendingGuessResult = null;
         const skipPicked = await pickAndPlayNextSong();
         if (!skipPicked) {
           hostRoom = { ...hostRoom, phase: "finished" };
@@ -348,8 +360,10 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
       }
 
       case "next-round": {
+        if (hostRoom.phase !== "reveal") return;
         const currentForNext = logic.getCurrentPlayer(hostRoom);
         if (fromPeerId !== currentForNext?.id && fromPeerId !== hostRoom.hostId) return;
+        pendingGuessResult = null;
         const winner = logic.checkWinCondition(hostRoom);
         if (winner) {
           hostRoom = { ...hostRoom, phase: "finished" };
@@ -366,15 +380,15 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
       }
 
       case "hitster-buzz": {
-        // Other players can Hitster AFTER the active player placed (reveal phase)
-        if (hostRoom.phase !== "reveal") return;
+        // Other players can Hitster during hitster-window (before year is revealed)
+        if (hostRoom.phase !== "hitster-window") return;
         hostRoom = logic.handleBuzz(hostRoom, fromPeerId);
         broadcastState();
         break;
       }
 
       case "buzz-place": {
-        if (hostRoom.phase !== "reveal") return;
+        if (hostRoom.phase !== "hitster-window") return;
         if (hostRoom.buzzerId !== fromPeerId) {
           sendToAll(
             { type: "error", payload: { message: "You don't have the buzz" } },
@@ -382,12 +396,16 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
           );
           return;
         }
-        const { room: buzzUpdated, result: buzzResult } = logic.resolveBuzz(
-          hostRoom,
-          action.payload.position,
-        );
-        hostRoom = buzzUpdated;
-        broadcastState(buzzResult);
+        // Buzzer placed — auto-trigger reveal with their position
+        doRevealSong(action.payload.position);
+        break;
+      }
+
+      case "reveal-song": {
+        if (hostRoom.phase !== "hitster-window") return;
+        const currentForReveal = logic.getCurrentPlayer(hostRoom);
+        if (fromPeerId !== currentForReveal?.id && fromPeerId !== hostRoom.hostId) return;
+        doRevealSong(null);
         break;
       }
 
@@ -410,6 +428,8 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
 
       case "rematch": {
         if (fromPeerId !== hostRoom.hostId) return;
+        pendingGuessResult = null;
+        pendingResult = null;
         hostRoom = {
           ...hostRoom,
           phase: "lobby",
@@ -438,11 +458,47 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
   }
 }
 
+/**
+ * Resolves the hitster-window: checks active player's placement,
+ * handles buzz resolution, transitions to reveal phase.
+ */
+function doRevealSong(buzzPosition: number | null): void {
+  if (!hostRoom || !pendingResult) return;
+
+  const currentPlayer = logic.getCurrentPlayer(hostRoom);
+
+  // If active player was wrong, remove the tentatively placed card
+  if (!pendingResult.correct && currentPlayer) {
+    hostRoom = logic.undoPlacement(hostRoom, currentPlayer.id, pendingResult.song.id);
+  }
+
+  // Handle buzz resolution
+  if (hostRoom.buzzerId && buzzPosition !== null) {
+    if (pendingResult.correct) {
+      // Active player was right — buzzer challenged incorrectly (token already spent)
+      hostRoom = { ...hostRoom, buzzerId: null };
+    } else {
+      // Active player wrong — resolve buzzer's placement
+      const { room: buzzRoom } = logic.resolveBuzz(hostRoom, buzzPosition);
+      hostRoom = buzzRoom;
+    }
+  }
+
+  // Transition to reveal
+  hostRoom = { ...hostRoom, phase: "reveal", buzzerId: null };
+  broadcastState(pendingResult);
+  pendingResult = null;
+}
+
 function broadcastState(lastResult?: PlacementResult): void {
   if (!hostRoom) return;
 
   const state = logic.buildGameState(hostRoom);
   if (lastResult) state.lastResult = lastResult;
+  // Include guess result during hitster-window and reveal phases
+  if (pendingGuessResult && (hostRoom.phase === "hitster-window" || hostRoom.phase === "reveal")) {
+    state.guessResult = pendingGuessResult;
+  }
 
   useGameStore.getState().applyGameState(state);
   sendToAll({ type: "game-state", payload: state });
