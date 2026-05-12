@@ -10,6 +10,9 @@ import { useStreamingStore } from "@/streaming/store";
 import { log as logger } from "@/utils/logger";
 
 const APP_ID = "hitster-p2p-v1";
+const JOIN_TIMEOUT_MS = 15_000;
+const JOIN_RETRY_MS = 3_000;
+const MAX_JOIN_RETRIES = 3;
 
 type Role = "host" | "peer";
 
@@ -20,6 +23,8 @@ let role: Role | null = null;
 let hostRoom: Room | null = null;
 let myName = "";
 let joinSent = false;
+let joinTimeout: ReturnType<typeof setTimeout> | null = null;
+let joinRetryCount = 0;
 
 export function getMyPeerId(): string {
   return selfId;
@@ -46,11 +51,24 @@ export function joinRoom(roomCode: string, playerName: string): void {
   role = "peer";
   myName = playerName;
   joinSent = false;
+  joinRetryCount = 0;
 
   connectTransport(roomCode);
 
   useP2PStore.getState().setMyPeerId(selfId);
   useP2PStore.getState().setStatus("connecting");
+  useP2PStore.getState().setLastError(null);
+
+  // Timeout — if no host responds within 15s, show error
+  joinTimeout = setTimeout(() => {
+    if (useP2PStore.getState().status === "connecting") {
+      useP2PStore.getState().setStatus("error");
+      useP2PStore.getState().setLastError(
+        "No host found. Check the room code and try again."
+      );
+      logger.warn("p2p", `Connection timeout for room ${roomCode}`);
+    }
+  }, JOIN_TIMEOUT_MS);
 
   logger.info("p2p", `Joining room ${roomCode} as peer`);
 }
@@ -68,6 +86,11 @@ export function dispatch(action: P2PAction): void {
   }
 }
 
+export function rejoinRoom(roomCode: string, playerName: string): void {
+  logger.info("p2p", `Retrying join for room ${roomCode}`);
+  joinRoom(roomCode, playerName);
+}
+
 export function leave(): void {
   cleanup();
   useP2PStore.getState().reset();
@@ -82,6 +105,12 @@ function connectTransport(roomCode: string): void {
 
   const [send, receive] = trysteroRoom.makeAction("msg");
   sendAction = send as typeof sendAction;
+
+  // Cleanup on browser close / navigation
+  if (typeof window !== "undefined") {
+    window.addEventListener("beforeunload", handleUnload);
+    window.addEventListener("pagehide", handleUnload);
+  }
 
   receive((data: unknown, peerId: string) => {
     const action = validateAction(data);
@@ -103,12 +132,29 @@ function connectTransport(roomCode: string): void {
 
     if (role === "host") {
       useP2PStore.getState().addPeer({ id: peerId, name: "", connected: true });
+      // Immediately send current state so peer knows the room is alive
+      if (hostRoom) {
+        const state = logic.buildGameState(hostRoom);
+        sendToAll({ type: "game-state", payload: state }, peerId);
+      }
     }
 
-    if (role === "peer" && !joinSent) {
-      joinSent = true;
-      useP2PStore.getState().setStatus("connected");
-      sendToAll({ type: "join", payload: { name: myName } });
+    if (role === "peer") {
+      // Clear timeout — we found a peer
+      if (joinTimeout) {
+        clearTimeout(joinTimeout);
+        joinTimeout = null;
+      }
+
+      if (!joinSent) {
+        joinSent = true;
+        useP2PStore.getState().setStatus("connected");
+        sendToAll({ type: "join", payload: { name: myName } });
+      }
+
+      // Retry join if we haven't received game-state yet
+      joinRetryCount = 0;
+      scheduleJoinRetry();
     }
   });
 
@@ -136,15 +182,12 @@ function connectTransport(roomCode: string): void {
       // Auto-advance if the current player disconnected mid-turn
       if (wasCurrentPlayer && (hostRoom.phase === "playing" || hostRoom.phase === "reveal")) {
         hostRoom = logic.advanceTurn(hostRoom);
-        const pick = logic.pickRandomSong(hostRoom);
-        if (pick) {
-          hostRoom = pick.room;
+        pickAndPlayNextSong().then((picked) => {
+          if (!picked && hostRoom) {
+            hostRoom = { ...hostRoom, phase: "finished" };
+          }
           broadcastState();
-          playSongOnAllDevices(pick.song.uri);
-        } else {
-          hostRoom = { ...hostRoom, phase: "finished" };
-          broadcastState();
-        }
+        });
         return;
       }
 
@@ -153,7 +196,34 @@ function connectTransport(roomCode: string): void {
   });
 }
 
+function handleUnload(): void {
+  cleanup();
+}
+
+function scheduleJoinRetry(): void {
+  if (role !== "peer" || !joinSent) return;
+
+  setTimeout(() => {
+    // If we still haven't received game state, resend join
+    const hasPlayers = useGameStore.getState().players.length > 0;
+    if (role === "peer" && joinSent && !hasPlayers && joinRetryCount < MAX_JOIN_RETRIES) {
+      joinRetryCount++;
+      logger.info("p2p", `Retrying join (attempt ${joinRetryCount}/${MAX_JOIN_RETRIES})`);
+      sendToAll({ type: "join", payload: { name: myName } });
+      scheduleJoinRetry();
+    }
+  }, JOIN_RETRY_MS);
+}
+
 function cleanup(): void {
+  if (joinTimeout) {
+    clearTimeout(joinTimeout);
+    joinTimeout = null;
+  }
+  if (typeof window !== "undefined") {
+    window.removeEventListener("beforeunload", handleUnload);
+    window.removeEventListener("pagehide", handleUnload);
+  }
   trysteroRoom?.leave();
   trysteroRoom = null;
   sendAction = null;
@@ -161,6 +231,7 @@ function cleanup(): void {
   hostRoom = null;
   myName = "";
   joinSent = false;
+  joinRetryCount = 0;
 }
 
 function sendToAll(action: P2PAction, targets?: string | string[]): void {
@@ -185,21 +256,22 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
 
       case "start-game": {
         if (fromPeerId !== hostRoom.hostId) return;
-        const { songs: playlist, name: playlistName } = await loadPlaylist(action.payload.playlistUrl);
-        if (playlist.length === 0) {
-          sendToAll({ type: "error", payload: { message: "Playlist is empty" } }, fromPeerId);
-          return;
-        }
-        hostRoom = logic.startGame(hostRoom, playlist, playlistName);
-        const pick = logic.pickRandomSong(hostRoom);
-        if (pick) {
-          hostRoom = pick.room;
-          broadcastState();
-          await playSongOnAllDevices(pick.song.uri);
+        const meta = await resolvePlaylist(action.payload.playlistUrl);
+        if (meta) {
+          // Lazy loading — only fetch meta, songs loaded on demand
+          hostRoom = logic.startGame(
+            hostRoom, [], meta.name, meta.playlistId, meta.trackCount,
+          );
         } else {
-          hostRoom = { ...hostRoom, phase: "finished" };
-          broadcastState();
+          // No provider or URL — fallback to mock
+          const mock = getMockPlaylist();
+          hostRoom = logic.startGame(hostRoom, mock, "Demo Playlist");
         }
+        const picked = await pickAndPlayNextSong();
+        if (!picked) {
+          hostRoom = { ...hostRoom, phase: "finished" };
+        }
+        broadcastState();
         break;
       }
 
@@ -231,7 +303,16 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
       }
 
       case "guess-song": {
-        if (hostRoom.phase !== "reveal") return;
+        // Active player guesses BEFORE placing (during playing phase)
+        if (hostRoom.phase !== "playing") return;
+        const currentForGuess = logic.getCurrentPlayer(hostRoom);
+        if (fromPeerId !== currentForGuess?.id) {
+          sendToAll(
+            { type: "error", payload: { message: "Only the active player can guess" } },
+            fromPeerId,
+          );
+          return;
+        }
         const guessResult = logic.guessSongInfo(
           hostRoom,
           fromPeerId,
@@ -258,16 +339,11 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
         const currentForSkip = logic.getCurrentPlayer(hostRoom);
         if (fromPeerId !== currentForSkip?.id) return;
         hostRoom = logic.skipSong(hostRoom, fromPeerId);
-        // Pick a new song
-        const skipPick = logic.pickRandomSong(hostRoom);
-        if (skipPick) {
-          hostRoom = skipPick.room;
-          broadcastState();
-          await playSongOnAllDevices(skipPick.song.uri);
-        } else {
+        const skipPicked = await pickAndPlayNextSong();
+        if (!skipPicked) {
           hostRoom = { ...hostRoom, phase: "finished" };
-          broadcastState();
         }
+        broadcastState();
         break;
       }
 
@@ -280,28 +356,25 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
           broadcastState();
         } else {
           hostRoom = logic.advanceTurn(hostRoom);
-          const pick = logic.pickRandomSong(hostRoom);
-          if (pick) {
-            hostRoom = pick.room;
-            broadcastState();
-            await playSongOnAllDevices(pick.song.uri);
-          } else {
+          const nextPicked = await pickAndPlayNextSong();
+          if (!nextPicked) {
             hostRoom = { ...hostRoom, phase: "finished" };
-            broadcastState();
           }
+          broadcastState();
         }
         break;
       }
 
       case "hitster-buzz": {
-        if (hostRoom.phase !== "playing") return;
+        // Other players can Hitster AFTER the active player placed (reveal phase)
+        if (hostRoom.phase !== "reveal") return;
         hostRoom = logic.handleBuzz(hostRoom, fromPeerId);
         broadcastState();
         break;
       }
 
       case "buzz-place": {
-        if (hostRoom.phase !== "playing") return;
+        if (hostRoom.phase !== "reveal") return;
         if (hostRoom.buzzerId !== fromPeerId) {
           sendToAll(
             { type: "error", payload: { message: "You don't have the buzz" } },
@@ -341,6 +414,7 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
           ...hostRoom,
           phase: "lobby",
           playedSongs: [],
+          playedIndices: [],
           currentSong: null,
           currentPlayerIndex: 0,
           buzzerId: null,
@@ -416,30 +490,84 @@ function processPeerMessage(action: P2PAction): void {
 
 // -- Streaming Integration --
 
-async function loadPlaylist(playlistUrl: string): Promise<{ songs: Song[]; name: string }> {
+async function resolvePlaylist(
+  playlistUrl: string,
+): Promise<{ playlistId: string; name: string; trackCount: number } | null> {
   const providerId = useStreamingStore.getState().activeProviderId;
   const provider = providerId ? getProvider(providerId) : null;
 
-  if (provider && playlistUrl) {
-    const playlistId = provider.library.parsePlaylistUrl(playlistUrl);
-    if (playlistId) {
+  if (!provider || !playlistUrl) return null;
+
+  const playlistId = provider.library.parsePlaylistUrl(playlistUrl);
+  if (!playlistId) return null;
+
+  try {
+    const meta = await provider.library.getPlaylistMeta(playlistId);
+    if (meta.trackCount === 0) return null;
+    logger.info("p2p", `Playlist "${meta.name}" — ${meta.trackCount} tracks (lazy loading)`);
+    return { playlistId, name: meta.name, trackCount: meta.trackCount };
+  } catch (err) {
+    logger.error("p2p", `Playlist meta failed: ${err}`);
+    return null;
+  }
+}
+
+/**
+ * Picks a random song and plays it on all devices.
+ * Uses lazy loading (1 API call) for provider playlists,
+ * or the in-memory array for mock playlists.
+ */
+async function pickAndPlayNextSong(): Promise<boolean> {
+  if (!hostRoom) return false;
+
+  let song: Song | null = null;
+
+  const currentPlaylistId = hostRoom.playlistId;
+  if (currentPlaylistId) {
+    // Lazy loading — fetch one track at a random index
+    const providerId = useStreamingStore.getState().activeProviderId;
+    const provider = providerId ? getProvider(providerId) : null;
+    if (!provider) return false;
+
+    // Try up to 5 indices (some tracks may be unavailable/missing year)
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const index = logic.pickRandomIndex(
+        hostRoom.playlistTrackCount,
+        hostRoom.playedIndices,
+      );
+      if (index === null) return false;
+
       try {
-        const [tracks, meta] = await Promise.all([
-          provider.library.getPlaylistTracks(playlistId),
-          provider.library.getPlaylistMeta(playlistId).catch(() => null),
-        ]);
-        if (tracks.length > 0) {
-          logger.info("p2p", `Loaded ${tracks.length} tracks from provider`);
-          return { songs: tracks, name: meta?.name ?? "Playlist" };
+        const track = await provider.library.getTrackAtIndex(
+          currentPlaylistId,
+          index,
+        );
+        if (track) {
+          hostRoom = logic.setSongFromIndex(hostRoom, track, index);
+          song = track;
+          break;
         }
       } catch (err) {
-        logger.error("p2p", `Playlist load failed: ${err}`);
+        logger.warn("p2p", `Track fetch at index ${index} failed: ${err}`);
       }
+      // Mark this index as used so we don't retry it
+      hostRoom = {
+        ...hostRoom,
+        playedIndices: [...hostRoom.playedIndices, index],
+      };
     }
+  } else {
+    // Mock/fallback — use in-memory array
+    const pick = logic.pickRandomSong(hostRoom);
+    if (!pick) return false;
+    hostRoom = pick.room;
+    song = pick.song;
   }
 
-  logger.info("p2p", "Using mock playlist (no provider or URL)");
-  return { songs: getMockPlaylist(), name: "Demo Playlist" };
+  if (!song) return false;
+
+  await playSongOnAllDevices(song.uri);
+  return true;
 }
 
 async function playSongOnAllDevices(uri: string): Promise<void> {

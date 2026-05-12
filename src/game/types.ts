@@ -54,6 +54,10 @@ export interface Room {
   settings: GameSettings;
   buzzerId: string | null;
   playlistName: string | null;
+  // Lazy loading — fetch songs on demand instead of loading entire playlist
+  playlistId: string | null;
+  playlistTrackCount: number;
+  playedIndices: number[];
 }
 
 export interface PlacementResult {

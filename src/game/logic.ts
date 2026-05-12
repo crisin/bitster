@@ -30,6 +30,9 @@ export function createRoom(
     settings: { ...DEFAULT_SETTINGS, ...settings },
     buzzerId: null,
     playlistName: null,
+    playlistId: null,
+    playlistTrackCount: 0,
+    playedIndices: [],
   };
 }
 
@@ -40,21 +43,25 @@ export function createPlayer(id: string, name: string): Player {
 }
 
 export function addPlayer(room: Room, id: string, name: string): Room {
-  if (room.players.length >= room.settings.maxPlayers) {
-    throw new Error("Room is full");
-  }
   if (room.phase === "finished") {
     throw new Error("Game is already finished");
   }
-  const existing = room.players.find((p) => p.name === name);
-  if (existing) {
+
+  // Same peer ID reconnecting — update name only
+  const existingById = room.players.find((p) => p.id === id);
+  if (existingById) {
     return {
       ...room,
       players: room.players.map((p) =>
-        p.name === name ? { ...p, id } : p
+        p.id === id ? { ...p, name } : p
       ),
     };
   }
+
+  if (room.players.length >= room.settings.maxPlayers) {
+    throw new Error("Room is full");
+  }
+
   return {
     ...room,
     players: [...room.players, createPlayer(id, name)],
@@ -101,6 +108,45 @@ export function pickRandomSong(room: Room): { room: Room; song: Song } | null {
       playedSongs: [...room.playedSongs, song],
     },
     song,
+  };
+}
+
+export function pickRandomIndex(
+  trackCount: number,
+  playedIndices: number[],
+): number | null {
+  if (trackCount === 0 || playedIndices.length >= trackCount) return null;
+
+  const played = new Set(playedIndices);
+  let index: number;
+  let attempts = 0;
+  do {
+    index = Math.floor(Math.random() * trackCount);
+    attempts++;
+    // Safety: if almost all songs played, build available list instead
+    if (attempts > 100) {
+      const available: number[] = [];
+      for (let i = 0; i < trackCount; i++) {
+        if (!played.has(i)) available.push(i);
+      }
+      if (available.length === 0) return null;
+      return available[Math.floor(Math.random() * available.length)];
+    }
+  } while (played.has(index));
+
+  return index;
+}
+
+export function setSongFromIndex(
+  room: Room,
+  song: Song,
+  index: number,
+): Room {
+  return {
+    ...room,
+    currentSong: song,
+    playedSongs: [...room.playedSongs, song],
+    playedIndices: [...room.playedIndices, index],
   };
 }
 
@@ -182,7 +228,13 @@ export function getCurrentPlayer(room: Room): Player | null {
   return room.players[room.currentPlayerIndex] ?? null;
 }
 
-export function startGame(room: Room, playlist: Song[], playlistName?: string): Room {
+export function startGame(
+  room: Room,
+  playlist: Song[],
+  playlistName?: string,
+  playlistId?: string,
+  playlistTrackCount?: number,
+): Room {
   const resetPlayers = room.players.map((p) => ({
     ...p,
     score: 0,
@@ -200,6 +252,9 @@ export function startGame(room: Room, playlist: Song[], playlistName?: string): 
     phase: "playing",
     buzzerId: null,
     playlistName: playlistName ?? room.playlistName,
+    playlistId: playlistId ?? null,
+    playlistTrackCount: playlistTrackCount ?? 0,
+    playedIndices: [],
   };
 }
 

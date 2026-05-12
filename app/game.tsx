@@ -5,7 +5,8 @@ import { useLocalSearchParams, router } from "expo-router";
 import { useGameStore } from "@/game/store";
 import { useCurrentPlayer } from "@/hooks/useCurrentPlayer";
 import { useConnectionStatus } from "@/hooks/useConnectionStatus";
-import { dispatch, leave } from "@/p2p/connection";
+import { dispatch, leave, rejoinRoom } from "@/p2p/connection";
+import { useP2PStore } from "@/p2p/store";
 import { StatusDot } from "@/components/ui/StatusDot";
 import { Button } from "@/components/ui/Button";
 import { BottomBar } from "@/components/ui/BottomBar";
@@ -44,6 +45,7 @@ export default function GameScreen() {
   const timelines = useGameStore((s) => s.timelines);
   const playlistName = useGameStore((s) => s.playlistName);
   const connectionStatus = useConnectionStatus();
+  const connectionError = useP2PStore((s) => s.lastError);
   const { isMyTurn, isHost, myTimeline, currentPlayer, myPeerId } =
     useCurrentPlayer();
 
@@ -131,6 +133,10 @@ export default function GameScreen() {
 
   const code = params.code ?? "";
 
+  const handleRetry = useCallback(() => {
+    rejoinRoom(code, params.name ?? "");
+  }, [code, params.name]);
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       {/* Header */}
@@ -141,6 +147,24 @@ export default function GameScreen() {
           <StatusDot status={connectionStatus} />
         </View>
       </View>
+
+      {/* Connection error banner */}
+      {connectionStatus === "error" && connectionError && (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorBannerText}>{connectionError}</Text>
+          <View style={styles.errorButtons}>
+            <Button title="Retry" onPress={handleRetry} variant="secondary" style={styles.errorBtn} />
+            <Button title="Home" onPress={handleGoHome} variant="ghost" style={styles.errorBtn} />
+          </View>
+        </View>
+      )}
+
+      {/* Connecting indicator */}
+      {connectionStatus === "connecting" && (
+        <View style={styles.connectingBanner}>
+          <Text style={styles.connectingText}>Connecting to room...</Text>
+        </View>
+      )}
 
       {/* Playlist name banner */}
       {playlistName && phase !== "lobby" && (
@@ -205,60 +229,43 @@ export default function GameScreen() {
           </View>
         )}
 
-        {/* PLAYING */}
+        {/* PLAYING — active player guesses + places */}
         {phase === "playing" && (
           <View style={styles.phaseContainer}>
-            {isBuzzer ? (
+            {isMyTurn ? (
               <Text style={styles.turnText}>
-                You buzzed! Place the song in your timeline.
-              </Text>
-            ) : isMyTurn ? (
-              <Text style={styles.turnText}>
-                Your turn! Place the song in your timeline.
+                Your turn! Guess the song, then place it.
               </Text>
             ) : (
               <Text style={styles.turnTextOther}>
-                {currentPlayer?.name ?? "Someone"} is placing a song...
+                {currentPlayer?.name ?? "Someone"} is guessing & placing...
               </Text>
             )}
 
             <NowPlaying />
 
-            {/* My timeline (interactive if my turn or I buzzed) */}
+            {/* Guess form — only active player, before placing */}
+            {isMyTurn && (
+              <GuessForm onSubmit={handleGuess} disabled={false} />
+            )}
+
+            {/* My timeline (interactive if my turn) */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Your Timeline</Text>
-              {isBuzzer ? (
-                <Timeline
-                  cards={myTimeline}
-                  interactive
-                  selectedGap={buzzGap}
-                  onGapSelect={handleBuzzGapSelect}
-                />
-              ) : (
-                <Timeline
-                  cards={myTimeline}
-                  interactive={isMyTurn}
-                  selectedGap={selectedGap}
-                  onGapSelect={handleGapSelect}
-                />
-              )}
+              <Timeline
+                cards={myTimeline}
+                interactive={isMyTurn}
+                selectedGap={selectedGap}
+                onGapSelect={handleGapSelect}
+              />
             </View>
 
             {/* Skip button for active player */}
-            {isMyTurn && !isBuzzer && myTokens > 0 && (
+            {isMyTurn && myTokens > 0 && (
               <Button
                 title={`Skip Song (costs 1★)`}
                 onPress={handleSkipSong}
                 variant="ghost"
-              />
-            )}
-
-            {/* Buzzer for non-active players */}
-            {!isMyTurn && !isBuzzer && buzzEnabled && (
-              <BuzzerButton
-                onPress={handleBuzz}
-                disabled={!!buzzerId || myTokens <= 0}
-                buzzerName={buzzerName}
               />
             )}
 
@@ -280,22 +287,73 @@ export default function GameScreen() {
           </View>
         )}
 
-        {/* REVEAL */}
+        {/* REVEAL — result + Hitster window for other players */}
         {phase === "reveal" && lastResult && (
           <View style={styles.phaseContainer}>
             <RevealCard correct={lastResult.correct} song={lastResult.song} />
 
-            <Timeline
-              cards={myTimeline}
-              interactive={false}
-              selectedGap={null}
-              onGapSelect={() => {}}
-            />
+            {/* Hitster buzz — other players can claim the song */}
+            {!isMyTurn && !isBuzzer && buzzEnabled && !buzzerId && (
+              <BuzzerButton
+                onPress={handleBuzz}
+                disabled={myTokens <= 0}
+                buzzerName={null}
+              />
+            )}
 
-            <GuessForm
-              onSubmit={handleGuess}
-              disabled={false}
-            />
+            {/* Show who buzzed */}
+            {buzzerName && !isBuzzer && (
+              <BuzzerButton
+                onPress={() => {}}
+                disabled
+                buzzerName={buzzerName}
+              />
+            )}
+
+            {/* Buzzer places in their timeline */}
+            {isBuzzer && (
+              <>
+                <Text style={styles.turnText}>
+                  You buzzed! Place the song in your timeline.
+                </Text>
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Your Timeline</Text>
+                  <Timeline
+                    cards={myTimeline}
+                    interactive
+                    selectedGap={buzzGap}
+                    onGapSelect={handleBuzzGapSelect}
+                  />
+                </View>
+              </>
+            )}
+
+            {/* Non-buzzer: show timeline read-only */}
+            {!isBuzzer && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Your Timeline</Text>
+                <Timeline
+                  cards={myTimeline}
+                  interactive={false}
+                  selectedGap={null}
+                  onGapSelect={() => {}}
+                />
+              </View>
+            )}
+
+            {/* All player timelines */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>All Players</Text>
+              {players.map((p) => (
+                <PlayerTimeline
+                  key={p.id}
+                  name={p.id === myPeerId ? `${p.name} (you)` : p.name}
+                  songs={timelines[p.id] ?? []}
+                  isCurrent={p.id === currentPlayerId}
+                  tokens={p.tokens}
+                />
+              ))}
+            </View>
           </View>
         )}
 
@@ -318,21 +376,21 @@ export default function GameScreen() {
           />
         )}
 
-        {phase === "playing" && isMyTurn && !isBuzzer && selectedGap !== null && (
+        {phase === "playing" && isMyTurn && selectedGap !== null && (
           <Button
             title="Place Here"
             onPress={handleConfirmPlacement}
           />
         )}
 
-        {phase === "playing" && isBuzzer && buzzGap !== null && (
+        {phase === "reveal" && isBuzzer && buzzGap !== null && (
           <Button
             title="Place Here"
             onPress={handleConfirmBuzzPlacement}
           />
         )}
 
-        {phase === "reveal" && (isMyTurn || isHost) && (
+        {phase === "reveal" && !buzzerId && (isMyTurn || isHost) && (
           <Button title="Next Round →" onPress={handleNextRound} />
         )}
 
@@ -391,6 +449,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 6,
     overflow: "hidden",
+  },
+  errorBanner: {
+    padding: 16,
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.error,
+    alignItems: "center",
+    gap: 12,
+  },
+  errorBannerText: {
+    fontSize: 14,
+    color: COLORS.error,
+    textAlign: "center",
+    fontWeight: "500",
+  },
+  errorButtons: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  errorBtn: {
+    minWidth: 80,
+  },
+  connectingBanner: {
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.warning,
+    backgroundColor: "rgba(201, 144, 58, 0.1)",
+    alignItems: "center",
+  },
+  connectingText: {
+    fontSize: 13,
+    color: COLORS.warning,
+    fontWeight: "500",
   },
   playlistBanner: {
     paddingVertical: 6,
