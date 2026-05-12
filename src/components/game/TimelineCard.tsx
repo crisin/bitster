@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, Image, StyleSheet } from "react-native";
-import { COLORS, SIZES } from "@/utils/constants";
+import { COLORS, FONT, RADIUS, SPACE, LAYOUT } from "@/utils/constants";
 import type { Song } from "@/game/types";
 
 interface TimelineCardProps {
@@ -18,6 +18,12 @@ export function TimelineCard({
 }: TimelineCardProps) {
   return (
     <View
+      accessibilityRole="text"
+      accessibilityLabel={
+        hideYear
+          ? "Hidden song"
+          : `${song.name} by ${song.artist}, ${song.year}`
+      }
       style={[
         styles.card,
         highlighted && { borderColor: highlightColor, borderWidth: 2 },
@@ -50,32 +56,32 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    paddingVertical: SPACE.sm,
+    paddingHorizontal: SPACE.md,
     backgroundColor: COLORS.bgCard,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: SIZES.borderRadius,
+    borderRadius: RADIUS.md,
     width: "100%",
-    maxWidth: 360,
-    gap: 10,
+    maxWidth: LAYOUT.cardMaxWidth,
+    gap: SPACE.md,
   },
   cover: {
     width: 36,
     height: 36,
-    borderRadius: 4,
+    borderRadius: RADIUS.xs,
     backgroundColor: COLORS.secondary,
   },
   coverPlaceholder: {
     width: 36,
     height: 36,
-    borderRadius: 4,
+    borderRadius: RADIUS.xs,
     backgroundColor: COLORS.secondary,
     alignItems: "center",
     justifyContent: "center",
   },
   coverIcon: {
-    fontSize: 16,
+    fontSize: FONT.size.lg,
     color: COLORS.textSecondary,
   },
   hiddenCard: {
@@ -84,25 +90,25 @@ const styles = StyleSheet.create({
     borderStyle: "dashed",
   },
   year: {
-    fontSize: SIZES.fontTitle,
-    fontWeight: "700",
+    fontSize: FONT.size["3xl"],
+    fontWeight: FONT.weight.bold,
     color: COLORS.yearText,
     minWidth: 38,
   },
   hiddenYear: {
     color: COLORS.warning,
-    fontSize: 22,
+    fontSize: FONT.size["2xl"],
   },
   info: {
     flex: 1,
     minWidth: 0,
   },
   title: {
-    fontSize: SIZES.fontSmall,
+    fontSize: FONT.size.sm,
     color: COLORS.textPrimary,
   },
   artist: {
-    fontSize: 11,
+    fontSize: FONT.size.xs,
     color: COLORS.textSecondary,
     marginTop: 1,
   },

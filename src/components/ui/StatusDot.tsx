@@ -10,6 +10,13 @@ const STATUS_COLORS: Record<ConnectionStatus, string> = {
   error: COLORS.error,
 };
 
+const STATUS_LABELS: Record<ConnectionStatus, string> = {
+  connected: "Connected",
+  connecting: "Connecting",
+  disconnected: "Disconnected",
+  error: "Connection error",
+};
+
 interface StatusDotProps {
   status: ConnectionStatus;
   size?: number;
@@ -18,6 +25,8 @@ interface StatusDotProps {
 export function StatusDot({ status, size = 10 }: StatusDotProps) {
   return (
     <View
+      accessibilityRole="text"
+      accessibilityLabel={STATUS_LABELS[status]}
       style={[
         styles.dot,
         {

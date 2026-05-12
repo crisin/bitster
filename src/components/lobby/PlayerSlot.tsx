@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { COLORS } from "@/utils/constants";
+import { COLORS, FONT, RADIUS, SPACE } from "@/utils/constants";
 import { StatusDot } from "@/components/ui/StatusDot";
 import type { ConnectionStatus } from "@/p2p/store";
 
@@ -12,7 +12,11 @@ interface PlayerSlotProps {
 
 export function PlayerSlot({ name, isHost, connectionStatus }: PlayerSlotProps) {
   return (
-    <View style={styles.container}>
+    <View
+      style={styles.container}
+      accessibilityRole="text"
+      accessibilityLabel={`${name}${isHost ? " (host)" : ""}, ${connectionStatus}`}
+    >
       <View style={styles.left}>
         {isHost && <Text style={styles.crown}>👑</Text>}
         <Text style={styles.name} numberOfLines={1}>
@@ -29,25 +33,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingVertical: SPACE.md,
+    paddingHorizontal: SPACE.md,
     backgroundColor: COLORS.bgCard,
-    borderRadius: 8,
+    borderRadius: RADIUS.md,
     borderWidth: 1,
     borderColor: COLORS.border,
+    minHeight: SPACE["5xl"],
   },
   left: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: SPACE.sm,
     flex: 1,
   },
   crown: {
-    fontSize: 16,
+    fontSize: FONT.size.lg,
   },
   name: {
-    fontSize: 16,
-    fontWeight: "500",
+    fontSize: FONT.size.lg,
+    fontWeight: FONT.weight.medium,
     color: COLORS.textPrimary,
   },
 });

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from "react-native";
 import type { Song } from "@/game/types";
 import { TimelineCard } from "./TimelineCard";
 import { TimelineGap } from "./TimelineGap";
-import { COLORS } from "@/utils/constants";
+import { COLORS, FONT, SPACE } from "@/utils/constants";
 
 interface TimelineProps {
   cards: Song[];
@@ -85,17 +85,17 @@ export function Timeline({
 const styles = StyleSheet.create({
   container: {
     width: "100%",
-    gap: 6,
+    gap: SPACE.sm,
     alignItems: "center",
   },
   emptyContainer: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 32,
-    gap: 12,
+    paddingVertical: SPACE["3xl"],
+    gap: SPACE.md,
   },
   emptyText: {
     color: COLORS.textSecondary,
-    fontSize: 14,
+    fontSize: FONT.size.base,
   },
 });

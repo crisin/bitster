@@ -1,6 +1,7 @@
 import React from "react";
-import { TouchableOpacity, Text, StyleSheet, View } from "react-native";
-import { COLORS, SIZES } from "@/utils/constants";
+import { Text, View, StyleSheet } from "react-native";
+import { Pressable } from "@/components/ui/Pressable";
+import { COLORS, RADIUS, SPACE, FONT } from "@/utils/constants";
 
 interface BuzzerButtonProps {
   onPress: () => void;
@@ -11,7 +12,11 @@ interface BuzzerButtonProps {
 export function BuzzerButton({ onPress, disabled, buzzerName }: BuzzerButtonProps) {
   if (buzzerName) {
     return (
-      <View style={styles.claimedContainer}>
+      <View
+        style={styles.claimedContainer}
+        accessibilityRole="text"
+        accessibilityLabel={`${buzzerName} buzzed`}
+      >
         <Text style={styles.claimedText}>
           {buzzerName} buzzed!
         </Text>
@@ -20,48 +25,48 @@ export function BuzzerButton({ onPress, disabled, buzzerName }: BuzzerButtonProp
   }
 
   return (
-    <TouchableOpacity
+    <Pressable
       onPress={onPress}
       disabled={disabled}
-      activeOpacity={0.7}
+      label="Hitster buzz — costs 1 star"
       style={[styles.button, disabled && styles.disabled]}
     >
       <Text style={styles.label}>HITSTER! (1★)</Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   button: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: SIZES.borderRadius,
+    paddingVertical: SPACE.md,
+    paddingHorizontal: SPACE.xl,
+    borderRadius: RADIUS.md,
     borderWidth: 1.5,
     borderColor: COLORS.warning,
-    backgroundColor: "rgba(201, 144, 58, 0.1)",
+    backgroundColor: COLORS.warningLight,
     alignItems: "center",
   },
   disabled: {
     opacity: 0.3,
   },
   label: {
-    fontSize: 14,
-    fontWeight: "800",
+    fontSize: FONT.size.base,
+    fontWeight: FONT.weight.extrabold,
     color: COLORS.warning,
-    letterSpacing: 2,
+    letterSpacing: FONT.tracking.widest,
   },
   claimedContainer: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: SIZES.borderRadius,
+    paddingVertical: SPACE.md,
+    paddingHorizontal: SPACE.xl,
+    borderRadius: RADIUS.md,
     borderWidth: 1.5,
     borderColor: COLORS.warning,
-    backgroundColor: "rgba(201, 144, 58, 0.15)",
+    backgroundColor: COLORS.warningLight,
     alignItems: "center",
   },
   claimedText: {
-    fontSize: 14,
-    fontWeight: "700",
+    fontSize: FONT.size.base,
+    fontWeight: FONT.weight.bold,
     color: COLORS.warning,
   },
 });

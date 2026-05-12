@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { COLORS } from "@/utils/constants";
+import { COLORS, FONT, RADIUS, SPACE } from "@/utils/constants";
 
 interface PlayerScore {
   id: string;
@@ -17,13 +17,18 @@ export function ScoreBoard({ players, myId }: ScoreBoardProps) {
   const sorted = [...players].sort((a, b) => b.score - a.score);
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} accessibilityRole="list">
       {sorted.map((player, index) => {
         const isWinner = index === 0;
         const isMe = player.id === myId;
 
         return (
-          <View key={player.id} style={styles.row}>
+          <View
+            key={player.id}
+            style={[styles.row, isWinner && styles.rowWinner]}
+            accessibilityRole="text"
+            accessibilityLabel={`${isWinner ? "Winner: " : ""}${player.name}${isMe ? " (you)" : ""}, score ${player.score}`}
+          >
             <Text style={styles.rank}>
               {isWinner ? "🏆" : `${index + 1}.`}
             </Text>
@@ -47,32 +52,36 @@ export function ScoreBoard({ players, myId }: ScoreBoardProps) {
 const styles = StyleSheet.create({
   container: {
     width: "100%",
-    maxWidth: 300,
-    gap: 4,
+    maxWidth: 320,
+    gap: SPACE.xs,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    gap: 8,
+    paddingVertical: SPACE.sm,
+    paddingHorizontal: SPACE.md,
+    borderRadius: RADIUS.sm,
+    gap: SPACE.sm,
+  },
+  rowWinner: {
+    backgroundColor: COLORS.accentLight,
   },
   rank: {
-    fontSize: 16,
+    fontSize: FONT.size.lg,
     width: 30,
     color: COLORS.textSecondary,
   },
   name: {
-    fontSize: 16,
+    fontSize: FONT.size.lg,
     color: COLORS.textPrimary,
     flex: 1,
   },
   nameMe: {
-    fontWeight: "700",
+    fontWeight: FONT.weight.bold,
   },
   score: {
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: FONT.size.xl,
+    fontWeight: FONT.weight.bold,
     color: COLORS.textSecondary,
   },
   scoreWinner: {

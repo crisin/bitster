@@ -1,7 +1,7 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { COLORS, SIZES } from "@/utils/constants";
+import { COLORS, SPACE } from "@/utils/constants";
 
 interface BottomBarProps {
   children: React.ReactNode;
@@ -11,7 +11,12 @@ export function BottomBar({ children }: BottomBarProps) {
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+    <View
+      style={[
+        styles.container,
+        { paddingBottom: Math.max(insets.bottom, SPACE.lg) },
+      ]}
+    >
       {children}
     </View>
   );
@@ -22,7 +27,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
     backgroundColor: COLORS.bgPrimary,
-    paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingHorizontal: SPACE.xl,
+    paddingTop: SPACE.md,
   },
 });

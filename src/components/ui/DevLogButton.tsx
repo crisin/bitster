@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { TouchableOpacity, Text, StyleSheet, Alert, Platform } from "react-native";
+import { Text, StyleSheet, Alert, Platform } from "react-native";
+import { Pressable } from "./Pressable";
 import { log } from "@/utils/logger";
-import { COLORS } from "@/utils/constants";
+import { COLORS, RADIUS, SPACE, FONT, TOUCH } from "@/utils/constants";
 
 export function DevLogButton() {
   const [exporting, setExporting] = useState(false);
@@ -28,14 +29,14 @@ export function DevLogButton() {
   };
 
   return (
-    <TouchableOpacity
+    <Pressable
       onPress={handlePress}
       disabled={exporting}
-      activeOpacity={0.7}
+      label="Export debug logs"
       style={[styles.button, exporting && styles.disabled]}
     >
       <Text style={styles.text}>{exporting ? "..." : "📋"}</Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
@@ -43,10 +44,10 @@ const styles = StyleSheet.create({
   button: {
     position: "absolute",
     bottom: 100,
-    right: 16,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    right: SPACE.lg,
+    width: TOUCH.minWidth,
+    height: TOUCH.minHeight,
+    borderRadius: RADIUS.full,
     backgroundColor: COLORS.bgCard,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -59,6 +60,6 @@ const styles = StyleSheet.create({
     opacity: 0.3,
   },
   text: {
-    fontSize: 18,
+    fontSize: FONT.size.xl,
   },
 });

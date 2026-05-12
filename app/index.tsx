@@ -12,7 +12,7 @@ import { router } from "expo-router";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ConnectButton } from "@/components/streaming/ConnectButton";
-import { COLORS, SIZES } from "@/utils/constants";
+import { COLORS, FONT, SPACE, LAYOUT } from "@/utils/constants";
 import { sanitizeRoomCodeInput, isValidRoomCode } from "@/utils/roomCode";
 import { generateRoomCode } from "@/game/logic";
 import { useGameStore } from "@/game/store";
@@ -54,7 +54,9 @@ export default function HomeScreen() {
     const code = generateRoomCode();
     setRoomCodeStore(code);
     p2p.createRoom(code, name.trim());
-    router.push(`/game?code=${code}&host=true&name=${encodeURIComponent(name.trim())}`);
+    router.push(
+      `/game?code=${code}&host=true&name=${encodeURIComponent(name.trim())}`,
+    );
     setLoading(false);
   }, [name, setRoomCodeStore]);
 
@@ -71,7 +73,9 @@ export default function HomeScreen() {
     setLoading(true);
     setRoomCodeStore(roomCode);
     p2p.joinRoom(roomCode, name.trim());
-    router.push(`/game?code=${roomCode}&host=false&name=${encodeURIComponent(name.trim())}`);
+    router.push(
+      `/game?code=${roomCode}&host=false&name=${encodeURIComponent(name.trim())}`,
+    );
     setLoading(false);
   }, [name, roomCode, setRoomCodeStore]);
 
@@ -106,7 +110,9 @@ export default function HomeScreen() {
         style={styles.container}
       >
         <View style={styles.content}>
-          <Text style={styles.logo}>HITSTER</Text>
+          <Text style={styles.logo} accessibilityRole="header">
+            HITSTER
+          </Text>
           <Text style={styles.tagline}>The music guessing game</Text>
 
           <View style={styles.form}>
@@ -125,6 +131,7 @@ export default function HomeScreen() {
               <>
                 <Input
                   placeholder="Your name"
+                  label="Enter your player name"
                   value={name}
                   onChangeText={(t) => {
                     setName(t);
@@ -144,6 +151,7 @@ export default function HomeScreen() {
                     variant={mode === "idle" ? "primary" : "secondary"}
                     loading={loading && mode === "idle"}
                     style={styles.flex1}
+                    label="Create a new game room"
                   />
                   <Button
                     title="Join Room"
@@ -157,6 +165,7 @@ export default function HomeScreen() {
                     variant={mode === "join" ? "primary" : "ghost"}
                     loading={loading && mode === "join"}
                     style={styles.flex1}
+                    label="Join an existing game room"
                   />
                 </View>
 
@@ -164,18 +173,28 @@ export default function HomeScreen() {
                   <View style={styles.joinSection}>
                     <Input
                       placeholder="ROOM CODE"
+                      label="Enter 6-character room code"
                       value={roomCode}
                       onChangeText={handleRoomCodeChange}
                       maxLength={6}
                       autoCapitalize="characters"
-                      returnKeyType="join"
+                      returnKeyType="go"
                       onSubmitEditing={handleJoin}
-                      style={{ letterSpacing: 6, textAlign: "center", fontSize: 20 } as any}
+                      style={
+                        {
+                          letterSpacing: 6,
+                          textAlign: "center",
+                          fontSize: FONT.size.xl,
+                        } as any
+                      }
                     />
                     <Button
                       title="Join"
                       onPress={handleJoin}
-                      disabled={!isValidRoomCode(roomCode) || name.trim().length < 2}
+                      disabled={
+                        !isValidRoomCode(roomCode) || name.trim().length < 2
+                      }
+                      label="Join room with entered code"
                     />
                   </View>
                 )}
@@ -199,45 +218,45 @@ const styles = StyleSheet.create({
   },
   content: {
     alignItems: "center",
-    paddingHorizontal: 24,
-    maxWidth: 400,
+    paddingHorizontal: SPACE["2xl"],
+    maxWidth: LAYOUT.maxContentWidth,
     width: "100%",
     alignSelf: "center",
   },
   logo: {
     fontSize: 48,
-    fontWeight: "900",
+    fontWeight: FONT.weight.black,
     color: COLORS.accent,
     letterSpacing: 4,
-    marginBottom: 8,
+    marginBottom: SPACE.sm,
   },
   tagline: {
     color: COLORS.textSecondary,
-    marginBottom: 40,
-    fontSize: 16,
+    marginBottom: SPACE["4xl"],
+    fontSize: FONT.size.lg,
   },
   form: {
     width: "100%",
-    gap: 16,
+    gap: SPACE.lg,
   },
   hint: {
     color: COLORS.textSecondary,
-    fontSize: 14,
+    fontSize: FONT.size.base,
     textAlign: "center",
   },
   error: {
     color: COLORS.error,
-    fontSize: 14,
+    fontSize: FONT.size.base,
     textAlign: "center",
   },
   buttonRow: {
     flexDirection: "row",
-    gap: 12,
+    gap: SPACE.md,
   },
   flex1: {
     flex: 1,
   },
   joinSection: {
-    gap: 12,
+    gap: SPACE.md,
   },
 });

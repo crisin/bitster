@@ -1,8 +1,8 @@
-import React, { useState } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import React, { useState, useRef } from "react";
+import { View, Text, TextInput, StyleSheet } from "react-native";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { COLORS, SIZES } from "@/utils/constants";
+import { COLORS, FONT, SPACE, LABEL_STYLE } from "@/utils/constants";
 
 interface GuessFormProps {
   onSubmit: (title: string, artist: string) => void;
@@ -13,6 +13,7 @@ export function GuessForm({ onSubmit, disabled }: GuessFormProps) {
   const [title, setTitle] = useState("");
   const [artist, setArtist] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const artistRef = useRef<TextInput>(null);
 
   const handleSubmit = () => {
     if (!title.trim() && !artist.trim()) return;
@@ -33,14 +34,18 @@ export function GuessForm({ onSubmit, disabled }: GuessFormProps) {
       <Text style={styles.label}>Guess for bonus tokens</Text>
       <Input
         placeholder="Song title"
+        label="Guess song title"
         value={title}
         onChangeText={setTitle}
         autoCapitalize="none"
         autoCorrect={false}
         returnKeyType="next"
+        onSubmitEditing={() => artistRef.current?.focus()}
       />
       <Input
+        ref={artistRef}
         placeholder="Artist"
+        label="Guess artist name"
         value={artist}
         onChangeText={setArtist}
         autoCapitalize="none"
@@ -53,6 +58,7 @@ export function GuessForm({ onSubmit, disabled }: GuessFormProps) {
         onPress={handleSubmit}
         variant="secondary"
         disabled={disabled || (!title.trim() && !artist.trim())}
+        label="Submit guess"
       />
     </View>
   );
@@ -61,19 +67,15 @@ export function GuessForm({ onSubmit, disabled }: GuessFormProps) {
 const styles = StyleSheet.create({
   container: {
     width: "100%",
-    gap: 8,
+    gap: SPACE.sm,
   },
   label: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
-    textTransform: "uppercase",
-    letterSpacing: 1,
+    ...LABEL_STYLE,
   },
   submitted: {
-    fontSize: 14,
+    fontSize: FONT.size.base,
     color: COLORS.success,
     textAlign: "center",
-    paddingVertical: 8,
+    paddingVertical: SPACE.sm,
   },
 });

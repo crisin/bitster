@@ -1,8 +1,9 @@
 import React, { useState, useCallback, useEffect } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
+import { Pressable } from "@/components/ui/Pressable";
 import { useStreamingStore } from "@/streaming/store";
 import { getProvider } from "@/streaming/registry";
-import { COLORS, SIZES } from "@/utils/constants";
+import { COLORS, FONT, RADIUS, SPACE, LABEL_STYLE, TOUCH } from "@/utils/constants";
 
 export function DeviceSelector() {
   const activeProviderId = useStreamingStore((s) => s.activeProviderId);
@@ -52,45 +53,54 @@ export function DeviceSelector() {
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.label}>Playback Device</Text>
-        <TouchableOpacity onPress={refreshDevices} disabled={loading}>
+        <Pressable
+          onPress={refreshDevices}
+          disabled={loading}
+          label="Refresh device list"
+          style={styles.refreshBtn}
+        >
           {loading ? (
             <ActivityIndicator size="small" color={COLORS.textSecondary} />
           ) : (
-            <Text style={styles.refreshBtn}>↻</Text>
+            <Text style={styles.refreshIcon}>↻</Text>
           )}
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
       {availableDevices.length === 0 && !loading && (
-        <Text style={styles.hint}>No devices found. Open Spotify on your device.</Text>
+        <Text style={styles.hint}>
+          No devices found. Open Spotify on your device.
+        </Text>
       )}
 
-      {availableDevices.map((device) => (
-        <TouchableOpacity
-          key={device.id}
-          style={[
-            styles.deviceRow,
-            activeDevice?.id === device.id && styles.deviceActive,
-          ]}
-          onPress={() => handleSelectDevice(device.id)}
-          activeOpacity={0.6}
-        >
-          <Text style={styles.deviceIcon}>
-            {device.type === "Smartphone" ? "📱" : device.type === "Computer" ? "💻" : "🔊"}
-          </Text>
-          <Text
-            style={[
-              styles.deviceName,
-              activeDevice?.id === device.id && styles.deviceNameActive,
-            ]}
+      {availableDevices.map((device) => {
+        const isActive = activeDevice?.id === device.id;
+        return (
+          <Pressable
+            key={device.id}
+            style={[styles.deviceRow, isActive && styles.deviceActive]}
+            onPress={() => handleSelectDevice(device.id)}
+            label={`Select ${device.name} as playback device${isActive ? " (active)" : ""}`}
           >
-            {device.name}
-          </Text>
-          {activeDevice?.id === device.id && (
-            <Text style={styles.activeLabel}>Active</Text>
-          )}
-        </TouchableOpacity>
-      ))}
+            <Text style={styles.deviceIcon}>
+              {device.type === "Smartphone"
+                ? "📱"
+                : device.type === "Computer"
+                  ? "💻"
+                  : "🔊"}
+            </Text>
+            <Text
+              style={[
+                styles.deviceName,
+                isActive && styles.deviceNameActive,
+              ]}
+            >
+              {device.name}
+            </Text>
+            {isActive && <Text style={styles.activeLabel}>Active</Text>}
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -98,7 +108,7 @@ export function DeviceSelector() {
 const styles = StyleSheet.create({
   container: {
     width: "100%",
-    gap: 8,
+    gap: SPACE.sm,
   },
   headerRow: {
     flexDirection: "row",
@@ -106,50 +116,51 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   label: {
-    fontSize: 12,
-    textTransform: "uppercase",
-    color: COLORS.textSecondary,
-    fontWeight: "600",
-    letterSpacing: 1,
+    ...LABEL_STYLE,
   },
   refreshBtn: {
-    fontSize: 18,
+    minHeight: TOUCH.minHeight,
+    minWidth: TOUCH.minWidth,
+  },
+  refreshIcon: {
+    fontSize: FONT.size.xl,
     color: COLORS.textSecondary,
   },
   hint: {
     color: COLORS.textSecondary,
-    fontSize: 13,
-    paddingVertical: 8,
+    fontSize: FONT.size.base,
+    paddingVertical: SPACE.sm,
   },
   deviceRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: SIZES.borderRadius,
+    gap: SPACE.md,
+    paddingVertical: SPACE.md,
+    paddingHorizontal: SPACE.md,
+    borderRadius: RADIUS.md,
     backgroundColor: COLORS.bgCard,
     borderWidth: 1,
     borderColor: COLORS.border,
+    minHeight: SPACE["5xl"],
   },
   deviceActive: {
     borderColor: COLORS.spotify,
   },
   deviceIcon: {
-    fontSize: 16,
+    fontSize: FONT.size.lg,
   },
   deviceName: {
     flex: 1,
-    fontSize: 14,
+    fontSize: FONT.size.base,
     color: COLORS.textPrimary,
   },
   deviceNameActive: {
-    fontWeight: "600",
+    fontWeight: FONT.weight.semibold,
   },
   activeLabel: {
-    fontSize: 11,
+    fontSize: FONT.size.xs,
     color: COLORS.spotify,
-    fontWeight: "600",
+    fontWeight: FONT.weight.semibold,
     textTransform: "uppercase",
   },
 });

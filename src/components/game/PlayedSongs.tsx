@@ -1,6 +1,8 @@
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { COLORS, SIZES } from "@/utils/constants";
+import { View, Text, StyleSheet } from "react-native";
+import { Pressable } from "@/components/ui/Pressable";
+import { Divider } from "@/components/ui/Divider";
+import { COLORS, FONT, RADIUS, SPACE, LABEL_STYLE } from "@/utils/constants";
 
 interface PlayedSongInfo {
   name: string;
@@ -19,31 +21,38 @@ export function PlayedSongs({ songs }: PlayedSongsProps) {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity
+      <Pressable
         onPress={() => setExpanded(!expanded)}
-        activeOpacity={0.7}
+        label={`${expanded ? "Collapse" : "Expand"} played songs list`}
         style={styles.header}
       >
         <Text style={styles.headerText}>
           Played ({songs.length})
         </Text>
         <Text style={styles.chevron}>{expanded ? "▲" : "▼"}</Text>
-      </TouchableOpacity>
+      </Pressable>
 
       {expanded && (
         <View style={styles.list}>
           {songs.map((song, i) => (
-            <View key={i} style={styles.row}>
-              <Text style={styles.year}>{song.year}</Text>
-              <View style={styles.info}>
-                <Text style={styles.name} numberOfLines={1}>
-                  {song.name}
-                </Text>
-                <Text style={styles.artist} numberOfLines={1}>
-                  {song.artist}
-                </Text>
+            <React.Fragment key={i}>
+              {i > 0 && <Divider />}
+              <View
+                style={styles.row}
+                accessibilityRole="text"
+                accessibilityLabel={`${song.name} by ${song.artist}, ${song.year}`}
+              >
+                <Text style={styles.year}>{song.year}</Text>
+                <View style={styles.info}>
+                  <Text style={styles.name} numberOfLines={1}>
+                    {song.name}
+                  </Text>
+                  <Text style={styles.artist} numberOfLines={1}>
+                    {song.artist}
+                  </Text>
+                </View>
               </View>
-            </View>
+            </React.Fragment>
           ))}
         </View>
       )}
@@ -54,7 +63,7 @@ export function PlayedSongs({ songs }: PlayedSongsProps) {
 const styles = StyleSheet.create({
   container: {
     width: "100%",
-    borderRadius: SIZES.borderRadius,
+    borderRadius: RADIUS.md,
     borderWidth: 1,
     borderColor: COLORS.border,
     overflow: "hidden",
@@ -63,19 +72,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingVertical: SPACE.md,
+    paddingHorizontal: SPACE.lg,
     backgroundColor: COLORS.bgCard,
+    minHeight: SPACE["5xl"],
   },
   headerText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
-    textTransform: "uppercase",
-    letterSpacing: 1,
+    ...LABEL_STYLE,
   },
   chevron: {
-    fontSize: 10,
+    fontSize: FONT.size.xs,
     color: COLORS.textSecondary,
   },
   list: {
@@ -84,15 +90,13 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    gap: 12,
+    paddingVertical: SPACE.sm,
+    paddingHorizontal: SPACE.lg,
+    gap: SPACE.md,
   },
   year: {
-    fontSize: 13,
-    fontWeight: "700",
+    fontSize: FONT.size.base,
+    fontWeight: FONT.weight.bold,
     color: COLORS.yearText,
     width: 40,
   },
@@ -100,11 +104,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   name: {
-    fontSize: 13,
+    fontSize: FONT.size.base,
     color: COLORS.textPrimary,
   },
   artist: {
-    fontSize: 11,
+    fontSize: FONT.size.xs,
     color: COLORS.textSecondary,
     marginTop: 1,
   },

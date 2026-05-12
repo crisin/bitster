@@ -1,15 +1,14 @@
 import React from "react";
 import {
-  TouchableOpacity,
   Text,
   StyleSheet,
   ActivityIndicator,
   type ViewStyle,
-  type TextStyle,
 } from "react-native";
-import { COLORS, SIZES } from "@/utils/constants";
+import { Pressable } from "./Pressable";
+import { COLORS, FONT, RADIUS, SPACE, LAYOUT } from "@/utils/constants";
 
-type Variant = "primary" | "secondary" | "ghost" | "spotify";
+type Variant = "primary" | "secondary" | "ghost" | "spotify" | "warning";
 
 interface ButtonProps {
   title: string;
@@ -17,14 +16,19 @@ interface ButtonProps {
   variant?: Variant;
   disabled?: boolean;
   loading?: boolean;
+  /** Compact height (40px instead of 52px) */
+  compact?: boolean;
+  /** Accessible label override (defaults to title) */
+  label?: string;
   style?: ViewStyle;
 }
 
-const variantStyles: Record<Variant, { bg: string; text: string }> = {
-  primary: { bg: COLORS.accent, text: "#ffffff" },
-  secondary: { bg: COLORS.secondary, text: "#ffffff" },
-  ghost: { bg: "transparent", text: COLORS.textSecondary },
-  spotify: { bg: COLORS.spotify, text: "#ffffff" },
+const variantStyles: Record<Variant, { bg: string; text: string; border?: string }> = {
+  primary: { bg: COLORS.accent, text: COLORS.white },
+  secondary: { bg: COLORS.secondary, text: COLORS.white },
+  ghost: { bg: COLORS.transparent, text: COLORS.textSecondary, border: COLORS.border },
+  spotify: { bg: COLORS.spotify, text: COLORS.white },
+  warning: { bg: COLORS.warningLight, text: COLORS.warning, border: COLORS.warning },
 };
 
 export function Button({
@@ -33,21 +37,23 @@ export function Button({
   variant = "primary",
   disabled = false,
   loading = false,
+  compact = false,
+  label,
   style,
 }: ButtonProps) {
   const colors = variantStyles[variant];
   const isDisabled = disabled || loading;
 
   return (
-    <TouchableOpacity
+    <Pressable
       onPress={onPress}
       disabled={isDisabled}
-      activeOpacity={0.7}
+      label={label ?? title}
       style={[
         styles.button,
+        compact && styles.compact,
         { backgroundColor: colors.bg },
-        variant === "ghost" && styles.ghost,
-        isDisabled && styles.disabled,
+        colors.border != null && { borderWidth: 1, borderColor: colors.border },
         style,
       ]}
     >
@@ -56,27 +62,26 @@ export function Button({
       ) : (
         <Text style={[styles.text, { color: colors.text }]}>{title}</Text>
       )}
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   button: {
-    height: SIZES.buttonHeight,
-    borderRadius: SIZES.borderRadius,
+    height: LAYOUT.buttonHeight,
+    minHeight: LAYOUT.buttonHeight,
+    borderRadius: RADIUS.md,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 24,
+    paddingHorizontal: SPACE["2xl"],
   },
-  ghost: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  disabled: {
-    opacity: 0.4,
+  compact: {
+    height: 40,
+    minHeight: 40,
+    paddingHorizontal: SPACE.lg,
   },
   text: {
-    fontSize: SIZES.fontBody,
-    fontWeight: "600",
+    fontSize: FONT.size.lg,
+    fontWeight: FONT.weight.semibold,
   },
 });

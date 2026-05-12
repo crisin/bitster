@@ -1,7 +1,8 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
+import { Pressable } from "@/components/ui/Pressable";
 import { Button } from "@/components/ui/Button";
-import { COLORS } from "@/utils/constants";
+import { COLORS, FONT, SPACE } from "@/utils/constants";
 import { useStreamingStore } from "@/streaming/store";
 
 interface ConnectButtonProps {
@@ -28,9 +29,13 @@ export function ConnectButton({
             {providerName} connected
           </Text>
         </View>
-        <TouchableOpacity onPress={onDisconnect} activeOpacity={0.6}>
+        <Pressable
+          onPress={onDisconnect}
+          label={`Switch ${providerName} account`}
+          style={styles.switchBtn}
+        >
           <Text style={styles.switchLink}>Switch account</Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
     );
   }
@@ -44,6 +49,7 @@ export function ConnectButton({
       }
       onPress={onConnect}
       loading={authStatus === "loading"}
+      label={`Connect to ${providerName}`}
       style={{ backgroundColor: providerColor }}
     />
   );
@@ -52,13 +58,13 @@ export function ConnectButton({
 const styles = StyleSheet.create({
   connected: {
     alignItems: "center",
-    gap: 4,
-    paddingVertical: 10,
+    gap: SPACE.xs,
+    paddingVertical: SPACE.md,
   },
   connectedRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: SPACE.sm,
   },
   dot: {
     width: 8,
@@ -66,11 +72,15 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   text: {
-    fontSize: 14,
-    fontWeight: "500",
+    fontSize: FONT.size.base,
+    fontWeight: FONT.weight.medium,
+  },
+  switchBtn: {
+    minHeight: 36,
+    minWidth: 36,
   },
   switchLink: {
-    fontSize: 12,
+    fontSize: FONT.size.sm,
     color: COLORS.textSecondary,
     opacity: 0.7,
   },

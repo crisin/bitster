@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from "react";
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from "react-native";
+import { View, Text, ScrollView, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
 import { useGameStore } from "@/game/store";
@@ -10,6 +10,7 @@ import { useP2PStore } from "@/p2p/store";
 import { StatusDot } from "@/components/ui/StatusDot";
 import { Button } from "@/components/ui/Button";
 import { BottomBar } from "@/components/ui/BottomBar";
+import { Pressable } from "@/components/ui/Pressable";
 import { Timeline } from "@/components/game/Timeline";
 import { PlayerList } from "@/components/game/PlayerList";
 import { RevealCard } from "@/components/game/RevealCard";
@@ -25,7 +26,14 @@ import { GameSettings } from "@/components/lobby/GameSettings";
 import { DeviceSelector } from "@/components/streaming/DeviceSelector";
 import { Input } from "@/components/ui/Input";
 import { haptics } from "@/hooks/useHaptics";
-import { COLORS, SIZES } from "@/utils/constants";
+import {
+  COLORS,
+  FONT,
+  RADIUS,
+  SPACE,
+  LAYOUT,
+  LABEL_STYLE,
+} from "@/utils/constants";
 
 export default function GameScreen() {
   const params = useLocalSearchParams<{
@@ -103,7 +111,10 @@ export default function GameScreen() {
   }, []);
 
   const handleStartGame = useCallback(() => {
-    dispatch({ type: "start-game", payload: { playlistUrl: playlistUrl.trim() } });
+    dispatch({
+      type: "start-game",
+      payload: { playlistUrl: playlistUrl.trim() },
+    });
   }, [playlistUrl]);
 
   const handleGoHome = useCallback(() => {
@@ -165,11 +176,23 @@ export default function GameScreen() {
 
       {/* Connection error banner */}
       {connectionStatus === "error" && connectionError && (
-        <View style={styles.errorBanner}>
+        <View style={styles.errorBanner} accessibilityRole="alert">
           <Text style={styles.errorBannerText}>{connectionError}</Text>
           <View style={styles.errorButtons}>
-            <Button title="Retry" onPress={handleRetry} variant="secondary" style={styles.errorBtn} />
-            <Button title="Home" onPress={handleGoHome} variant="ghost" style={styles.errorBtn} />
+            <Button
+              title="Retry"
+              onPress={handleRetry}
+              variant="secondary"
+              compact
+              label="Retry connection"
+            />
+            <Button
+              title="Home"
+              onPress={handleGoHome}
+              variant="ghost"
+              compact
+              label="Go back to home screen"
+            />
           </View>
         </View>
       )}
@@ -184,7 +207,9 @@ export default function GameScreen() {
       {/* Playlist name banner */}
       {playlistName && phase !== "lobby" && (
         <View style={styles.playlistBanner}>
-          <Text style={styles.playlistName} numberOfLines={1}>♫ {playlistName}</Text>
+          <Text style={styles.playlistName} numberOfLines={1}>
+            ♫ {playlistName}
+          </Text>
         </View>
       )}
 
@@ -222,6 +247,7 @@ export default function GameScreen() {
                 <View style={styles.section}>
                   <Input
                     placeholder="Spotify playlist URL"
+                    label="Enter Spotify playlist URL"
                     value={playlistUrl}
                     onChangeText={setPlaylistUrl}
                     autoCapitalize="none"
@@ -238,9 +264,13 @@ export default function GameScreen() {
               <Text style={styles.hint}>Waiting for host to start...</Text>
             )}
 
-            <TouchableOpacity onPress={handleGoHome} activeOpacity={0.6}>
+            <Pressable
+              onPress={handleGoHome}
+              label="Leave lobby"
+              style={styles.leaveBtn}
+            >
               <Text style={styles.leaveLink}>Leave lobby</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
         )}
 
@@ -286,6 +316,7 @@ export default function GameScreen() {
                 title={`Skip Song (costs 1★)`}
                 onPress={handleSkipSong}
                 variant="ghost"
+                label="Skip this song, costs one star token"
               />
             )}
 
@@ -322,17 +353,22 @@ export default function GameScreen() {
 
             {/* Guess result — shown after placing */}
             {guessResult && isMyTurn && (
-              <View style={[
-                styles.guessResultBanner,
-                (guessResult.titleCorrect && guessResult.artistCorrect)
-                  ? styles.guessResultSuccess
-                  : styles.guessResultPartial,
-              ]}>
+              <View
+                style={[
+                  styles.guessResultBanner,
+                  guessResult.titleCorrect && guessResult.artistCorrect
+                    ? styles.guessResultSuccess
+                    : styles.guessResultPartial,
+                ]}
+                accessibilityRole="alert"
+              >
                 <Text style={styles.guessResultText}>
                   {guessResult.titleCorrect ? "✓ Title" : "✗ Title"}
                   {"  "}
                   {guessResult.artistCorrect ? "✓ Artist" : "✗ Artist"}
-                  {(guessResult.titleCorrect && guessResult.artistCorrect) ? "  +1★" : ""}
+                  {guessResult.titleCorrect && guessResult.artistCorrect
+                    ? "  +1★"
+                    : ""}
                 </Text>
               </View>
             )}
@@ -415,7 +451,9 @@ export default function GameScreen() {
                   songs={timelines[p.id] ?? []}
                   isCurrent={p.id === currentPlayerId}
                   tokens={p.tokens}
-                  hiddenYearSongId={p.id === currentPlayerId ? currentSongId : undefined}
+                  hiddenYearSongId={
+                    p.id === currentPlayerId ? currentSongId : undefined
+                  }
                 />
               ))}
             </View>
@@ -471,6 +509,7 @@ export default function GameScreen() {
             title="Start Game"
             onPress={handleStartGame}
             disabled={players.length < 2}
+            label="Start the game"
           />
         )}
 
@@ -478,6 +517,7 @@ export default function GameScreen() {
           <Button
             title="Place Here"
             onPress={handleConfirmPlacement}
+            label="Confirm song placement"
           />
         )}
 
@@ -485,15 +525,24 @@ export default function GameScreen() {
           <Button
             title="Place Here"
             onPress={handleConfirmBuzzPlacement}
+            label="Confirm buzz placement"
           />
         )}
 
         {phase === "hitster-window" && !isBuzzer && (isMyTurn || isHost) && (
-          <Button title="Reveal →" onPress={handleReveal} />
+          <Button
+            title="Reveal →"
+            onPress={handleReveal}
+            label="Reveal the song year"
+          />
         )}
 
         {phase === "reveal" && (isMyTurn || isHost) && (
-          <Button title="Next Round →" onPress={handleNextRound} />
+          <Button
+            title="Next Round →"
+            onPress={handleNextRound}
+            label="Start next round"
+          />
         )}
 
         {phase === "finished" && (
@@ -503,11 +552,13 @@ export default function GameScreen() {
               onPress={handleGoHome}
               variant="ghost"
               style={styles.flex1}
+              label="Return to home screen"
             />
             <Button
               title="Rematch"
               onPress={handleRematch}
               style={styles.flex1}
+              label="Start a new game with same players"
             />
           </View>
         )}
@@ -522,166 +573,163 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bgPrimary,
   },
   header: {
-    height: SIZES.headerHeight,
+    height: LAYOUT.headerHeight,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
+    paddingHorizontal: SPACE.xl,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
   headerTitle: {
-    fontSize: 22,
-    fontWeight: "900",
+    fontSize: FONT.size["2xl"],
+    fontWeight: FONT.weight.black,
     color: COLORS.accent,
-    letterSpacing: 2,
+    letterSpacing: FONT.tracking.widest,
   },
   headerRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: SPACE.sm,
   },
   headerCode: {
-    fontSize: 16,
-    fontWeight: "700",
-    letterSpacing: 2,
+    fontSize: FONT.size.lg,
+    fontWeight: FONT.weight.bold,
+    letterSpacing: FONT.tracking.widest,
     color: COLORS.textPrimary,
     backgroundColor: COLORS.secondary,
     paddingVertical: 2,
-    paddingHorizontal: 10,
-    borderRadius: 6,
+    paddingHorizontal: SPACE.md,
+    borderRadius: RADIUS.sm,
     overflow: "hidden",
   },
   errorBanner: {
-    padding: 16,
-    backgroundColor: "rgba(239, 68, 68, 0.1)",
+    padding: SPACE.lg,
+    backgroundColor: COLORS.errorLight,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.error,
     alignItems: "center",
-    gap: 12,
+    gap: SPACE.md,
   },
   errorBannerText: {
-    fontSize: 14,
+    fontSize: FONT.size.base,
     color: COLORS.error,
     textAlign: "center",
-    fontWeight: "500",
+    fontWeight: FONT.weight.medium,
   },
   errorButtons: {
     flexDirection: "row",
-    gap: 12,
-  },
-  errorBtn: {
-    minWidth: 80,
+    gap: SPACE.md,
   },
   connectingBanner: {
-    paddingVertical: 8,
-    paddingHorizontal: 20,
+    paddingVertical: SPACE.sm,
+    paddingHorizontal: SPACE.xl,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.warning,
-    backgroundColor: "rgba(201, 144, 58, 0.1)",
+    backgroundColor: COLORS.warningLight,
     alignItems: "center",
   },
   connectingText: {
-    fontSize: 13,
+    fontSize: FONT.size.base,
     color: COLORS.warning,
-    fontWeight: "500",
+    fontWeight: FONT.weight.medium,
   },
   playlistBanner: {
-    paddingVertical: 6,
-    paddingHorizontal: 20,
+    paddingVertical: SPACE.sm,
+    paddingHorizontal: SPACE.xl,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     backgroundColor: COLORS.bgCard,
   },
   playlistName: {
-    fontSize: 12,
+    fontSize: FONT.size.sm,
     color: COLORS.textSecondary,
     textAlign: "center",
-    fontWeight: "500",
+    fontWeight: FONT.weight.medium,
   },
   content: {
     flex: 1,
   },
   contentInner: {
-    padding: 20,
-    paddingBottom: 40,
+    padding: SPACE.xl,
+    paddingBottom: SPACE["4xl"],
   },
   phaseContainer: {
     alignItems: "center",
-    gap: 24,
+    gap: SPACE["2xl"],
   },
   section: {
     width: "100%",
-    gap: 8,
+    gap: SPACE.sm,
   },
   sectionTitle: {
-    fontSize: 12,
-    textTransform: "uppercase",
-    color: COLORS.textSecondary,
-    fontWeight: "600",
-    letterSpacing: 1,
-    marginBottom: 4,
+    ...LABEL_STYLE,
+    marginBottom: SPACE.xs,
   },
   hint: {
     color: COLORS.textSecondary,
-    fontSize: 14,
+    fontSize: FONT.size.base,
     textAlign: "center",
-    paddingVertical: 8,
+    paddingVertical: SPACE.sm,
   },
   turnText: {
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: FONT.size.xl,
+    fontWeight: FONT.weight.bold,
     color: COLORS.accent,
     textAlign: "center",
   },
   turnTextOther: {
-    fontSize: 18,
+    fontSize: FONT.size.xl,
     color: COLORS.textPrimary,
     textAlign: "center",
   },
   gameOverTitle: {
-    fontSize: 36,
-    fontWeight: "900",
+    fontSize: FONT.size["6xl"],
+    fontWeight: FONT.weight.black,
     color: COLORS.textPrimary,
     textAlign: "center",
   },
   guessSubmitted: {
-    fontSize: 14,
+    fontSize: FONT.size.base,
     color: COLORS.textSecondary,
     textAlign: "center",
     fontStyle: "italic",
   },
   guessResultBanner: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    paddingVertical: SPACE.sm,
+    paddingHorizontal: SPACE.lg,
+    borderRadius: RADIUS.md,
     width: "100%",
     alignItems: "center",
   },
   guessResultSuccess: {
-    backgroundColor: "rgba(34, 197, 94, 0.15)",
+    backgroundColor: COLORS.successLight,
     borderWidth: 1,
     borderColor: COLORS.success,
   },
   guessResultPartial: {
-    backgroundColor: "rgba(201, 144, 58, 0.15)",
+    backgroundColor: COLORS.warningLight,
     borderWidth: 1,
     borderColor: COLORS.warning,
   },
   guessResultText: {
-    fontSize: 15,
-    fontWeight: "600",
+    fontSize: FONT.size.md,
+    fontWeight: FONT.weight.semibold,
     color: COLORS.textPrimary,
   },
+  leaveBtn: {
+    minHeight: 36,
+    minWidth: 36,
+  },
   leaveLink: {
-    fontSize: 13,
+    fontSize: FONT.size.base,
     color: COLORS.textSecondary,
     opacity: 0.6,
-    marginTop: 8,
+    marginTop: SPACE.sm,
   },
   finishedButtons: {
     flexDirection: "row",
-    gap: 12,
+    gap: SPACE.md,
   },
   flex1: {
     flex: 1,

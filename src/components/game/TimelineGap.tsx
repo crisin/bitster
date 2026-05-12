@@ -1,6 +1,7 @@
 import React from "react";
-import { TouchableOpacity, Text, StyleSheet } from "react-native";
-import { COLORS, SIZES } from "@/utils/constants";
+import { Text, StyleSheet } from "react-native";
+import { Pressable } from "@/components/ui/Pressable";
+import { COLORS, RADIUS, FONT, LAYOUT } from "@/utils/constants";
 
 interface TimelineGapProps {
   onPress: () => void;
@@ -16,10 +17,10 @@ export function TimelineGap({
   label,
 }: TimelineGapProps) {
   return (
-    <TouchableOpacity
+    <Pressable
       onPress={onPress}
       disabled={disabled}
-      activeOpacity={0.6}
+      label={label ?? "Place song here"}
       style={[
         styles.gap,
         selected && styles.selected,
@@ -29,18 +30,18 @@ export function TimelineGap({
       <Text style={[styles.icon, selected && styles.iconSelected]}>
         {label ?? "+"}
       </Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   gap: {
     width: "100%",
-    maxWidth: 360,
+    maxWidth: LAYOUT.cardMaxWidth,
     height: 36,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: SIZES.borderRadius,
+    borderRadius: RADIUS.md,
     borderWidth: 1.5,
     borderStyle: "dashed",
     borderColor: COLORS.textSecondary,
@@ -49,18 +50,18 @@ const styles = StyleSheet.create({
   selected: {
     opacity: 1,
     borderColor: COLORS.accent,
-    backgroundColor: "rgba(201, 72, 91, 0.12)",
+    backgroundColor: COLORS.accentLight,
   },
   disabled: {
     opacity: 0.15,
   },
   icon: {
-    fontSize: 16,
+    fontSize: FONT.size.lg,
     color: COLORS.textSecondary,
-    fontWeight: "600",
+    fontWeight: FONT.weight.semibold,
   },
   iconSelected: {
-    fontSize: 20,
+    fontSize: FONT.size.xl,
     color: COLORS.accent,
   },
 });

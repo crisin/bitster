@@ -1,8 +1,7 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { COLORS, SIZES } from "@/utils/constants";
-import { Badge } from "@/components/ui/Badge";
-import { StatusDot } from "@/components/ui/StatusDot";
+import { View, Text, StyleSheet } from "react-native";
+import { Pressable } from "@/components/ui/Pressable";
+import { COLORS, FONT, RADIUS, SPACE, LABEL_STYLE } from "@/utils/constants";
 
 interface PlayerInfo {
   id: string;
@@ -29,7 +28,7 @@ export function PlayerList({
   compact = false,
 }: PlayerListProps) {
   return (
-    <View style={styles.container}>
+    <View style={styles.container} accessibilityRole="list">
       {!compact && (
         <Text style={styles.title}>Players ({players.length})</Text>
       )}
@@ -39,11 +38,11 @@ export function PlayerList({
         const isMe = player.id === myId;
 
         return (
-          <TouchableOpacity
+          <Pressable
             key={player.id}
             onPress={() => onPlayerPress?.(player.id)}
             disabled={!onPlayerPress}
-            activeOpacity={0.7}
+            label={`${player.name}${isMe ? " (you)" : ""}${isActive ? ", current turn" : ""}, score ${player.score}`}
             style={[styles.item, isActive && styles.itemActive]}
           >
             <View style={styles.nameRow}>
@@ -64,7 +63,7 @@ export function PlayerList({
               <Text style={styles.score}>{player.score}</Text>
               {isActive && <Text style={styles.turnLabel}>◀</Text>}
             </View>
-          </TouchableOpacity>
+          </Pressable>
         );
       })}
     </View>
@@ -74,21 +73,18 @@ export function PlayerList({
 const styles = StyleSheet.create({
   container: {},
   title: {
-    fontSize: 12,
-    textTransform: "uppercase",
-    color: COLORS.textSecondary,
-    marginBottom: 8,
-    fontWeight: "600",
-    letterSpacing: 1,
+    ...LABEL_STYLE,
+    marginBottom: SPACE.sm,
   },
   item: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
+    paddingVertical: SPACE.sm,
+    paddingHorizontal: SPACE.md,
+    borderRadius: RADIUS.sm,
     marginBottom: 2,
+    minHeight: 44,
   },
   itemActive: {
     backgroundColor: COLORS.secondary,
@@ -98,36 +94,36 @@ const styles = StyleSheet.create({
   nameRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: SPACE.sm,
     flex: 1,
   },
   crown: {
-    fontSize: 14,
+    fontSize: FONT.size.base,
   },
   name: {
-    fontSize: 15,
+    fontSize: FONT.size.md,
     color: COLORS.textPrimary,
-    fontWeight: "500",
+    fontWeight: FONT.weight.medium,
   },
   nameActive: {
-    fontWeight: "700",
+    fontWeight: FONT.weight.bold,
     color: COLORS.accent,
   },
   nameMe: {
-    fontWeight: "700",
+    fontWeight: FONT.weight.bold,
   },
   rightSide: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: SPACE.sm,
   },
   score: {
-    fontSize: 16,
-    fontWeight: "700",
+    fontSize: FONT.size.lg,
+    fontWeight: FONT.weight.bold,
     color: COLORS.accent,
   },
   turnLabel: {
-    fontSize: 12,
+    fontSize: FONT.size.sm,
     color: COLORS.accent,
   },
 });

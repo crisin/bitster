@@ -1,7 +1,9 @@
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
 import type { Song } from "@/game/types";
-import { COLORS, SIZES } from "@/utils/constants";
+import { Pressable } from "@/components/ui/Pressable";
+import { Divider } from "@/components/ui/Divider";
+import { COLORS, FONT, RADIUS, SPACE, TOUCH } from "@/utils/constants";
 
 interface PlayerTimelineProps {
   name: string;
@@ -11,14 +13,20 @@ interface PlayerTimelineProps {
   hiddenYearSongId?: string | null;
 }
 
-export function PlayerTimeline({ name, songs, isCurrent, tokens, hiddenYearSongId }: PlayerTimelineProps) {
+export function PlayerTimeline({
+  name,
+  songs,
+  isCurrent,
+  tokens,
+  hiddenYearSongId,
+}: PlayerTimelineProps) {
   const [expanded, setExpanded] = useState(isCurrent);
 
   return (
     <View style={[styles.container, isCurrent && styles.currentContainer]}>
-      <TouchableOpacity
+      <Pressable
         onPress={() => setExpanded(!expanded)}
-        activeOpacity={0.7}
+        label={`${name}'s timeline, ${songs.length} songs${isCurrent ? ", current turn" : ""}`}
         style={styles.header}
       >
         <View style={styles.headerLeft}>
@@ -26,31 +34,47 @@ export function PlayerTimeline({ name, songs, isCurrent, tokens, hiddenYearSongI
           <Text style={[styles.name, isCurrent && styles.currentName]}>
             {name}
           </Text>
-          <Text style={styles.count}>{songs.length}</Text>
+          <View style={styles.countBadge}>
+            <Text style={styles.count}>{songs.length}</Text>
+          </View>
         </View>
         <View style={styles.headerRight}>
           {tokens > 0 && (
-            <Text style={styles.tokens}>
+            <Text style={styles.tokens} accessibilityLabel={`${tokens} tokens`}>
               {"★".repeat(tokens)}
             </Text>
           )}
           <Text style={styles.chevron}>{expanded ? "▲" : "▼"}</Text>
         </View>
-      </TouchableOpacity>
+      </Pressable>
 
       {expanded && songs.length > 0 && (
         <View style={styles.timeline}>
-          {songs.map((song) => {
-            const isHidden = !!hiddenYearSongId && song.id === hiddenYearSongId;
+          {songs.map((song, index) => {
+            const isHidden =
+              !!hiddenYearSongId && song.id === hiddenYearSongId;
             return (
-              <View key={song.id} style={styles.row}>
-                <Text style={[styles.year, isHidden && styles.hiddenYear]}>
-                  {isHidden ? "?" : song.year}
-                </Text>
-                <Text style={styles.title} numberOfLines={1}>
-                  {isHidden ? "???" : song.name}
-                </Text>
-              </View>
+              <React.Fragment key={song.id}>
+                {index > 0 && <Divider />}
+                <View
+                  style={styles.row}
+                  accessibilityRole="text"
+                  accessibilityLabel={
+                    isHidden
+                      ? "Hidden song"
+                      : `${song.name}, ${song.year}`
+                  }
+                >
+                  <Text
+                    style={[styles.year, isHidden && styles.hiddenYear]}
+                  >
+                    {isHidden ? "?" : song.year}
+                  </Text>
+                  <Text style={styles.title} numberOfLines={1}>
+                    {isHidden ? "???" : song.name}
+                  </Text>
+                </View>
+              </React.Fragment>
             );
           })}
         </View>
@@ -66,7 +90,7 @@ export function PlayerTimeline({ name, songs, isCurrent, tokens, hiddenYearSongI
 const styles = StyleSheet.create({
   container: {
     width: "100%",
-    borderRadius: SIZES.borderRadius,
+    borderRadius: RADIUS.md,
     borderWidth: 1,
     borderColor: COLORS.border,
     overflow: "hidden",
@@ -78,47 +102,49 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: SPACE.sm,
+    paddingHorizontal: SPACE.md,
     backgroundColor: COLORS.bgCard,
+    minHeight: TOUCH.minHeight,
   },
   headerLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: SPACE.sm,
   },
   headerRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: SPACE.sm,
   },
   turnDot: {
     color: COLORS.accent,
-    fontSize: 10,
+    fontSize: FONT.size.xs,
   },
   name: {
-    fontSize: 13,
-    fontWeight: "600",
+    fontSize: FONT.size.base,
+    fontWeight: FONT.weight.semibold,
     color: COLORS.textPrimary,
   },
   currentName: {
     color: COLORS.accent,
   },
-  count: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
+  countBadge: {
     backgroundColor: COLORS.secondary,
-    paddingHorizontal: 6,
+    paddingHorizontal: SPACE.sm,
     paddingVertical: 1,
-    borderRadius: 4,
-    overflow: "hidden",
+    borderRadius: RADIUS.xs,
+  },
+  count: {
+    fontSize: FONT.size.xs,
+    color: COLORS.textSecondary,
   },
   tokens: {
-    fontSize: 12,
+    fontSize: FONT.size.sm,
     color: COLORS.warning,
   },
   chevron: {
-    fontSize: 10,
+    fontSize: FONT.size.xs,
     color: COLORS.textSecondary,
   },
   timeline: {
@@ -127,15 +153,13 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    gap: 10,
+    paddingVertical: SPACE.xs + 1,
+    paddingHorizontal: SPACE.md,
+    gap: SPACE.md,
   },
   year: {
-    fontSize: 12,
-    fontWeight: "700",
+    fontSize: FONT.size.sm,
+    fontWeight: FONT.weight.bold,
     color: COLORS.yearText,
     width: 36,
   },
@@ -143,14 +167,15 @@ const styles = StyleSheet.create({
     color: COLORS.warning,
   },
   title: {
-    fontSize: 12,
+    fontSize: FONT.size.sm,
     color: COLORS.textSecondary,
     flex: 1,
   },
   empty: {
-    fontSize: 12,
+    fontSize: FONT.size.sm,
     color: COLORS.textSecondary,
     textAlign: "center",
-    paddingVertical: 8,
+    paddingVertical: SPACE.sm,
   },
 });
+

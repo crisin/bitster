@@ -2,13 +2,12 @@ import React, { useCallback } from "react";
 import {
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
   Share,
   Platform,
 } from "react-native";
-import * as Clipboard from "expo-clipboard";
-import { COLORS, SIZES } from "@/utils/constants";
+import { Pressable } from "@/components/ui/Pressable";
+import { COLORS, FONT, RADIUS, SPACE, LABEL_STYLE, TOUCH } from "@/utils/constants";
 
 interface RoomCodeProps {
   code: string;
@@ -35,22 +34,29 @@ export function RoomCode({ code }: RoomCodeProps) {
     <View style={styles.container}>
       <Text style={styles.label}>Room Code</Text>
       <View style={styles.codeRow}>
-        <Text style={styles.code}>{code}</Text>
-        <TouchableOpacity
+        <Text
+          style={styles.code}
+          accessibilityRole="text"
+          accessibilityLabel={`Room code: ${code.split("").join(" ")}`}
+          selectable
+        >
+          {code}
+        </Text>
+        <Pressable
           onPress={handleCopy}
+          label="Copy room code"
           style={styles.actionBtn}
-          activeOpacity={0.6}
         >
           <Text style={styles.actionIcon}>📋</Text>
-        </TouchableOpacity>
+        </Pressable>
         {Platform.OS !== "web" && (
-          <TouchableOpacity
+          <Pressable
             onPress={handleShare}
+            label="Share room code"
             style={styles.actionBtn}
-            activeOpacity={0.6}
           >
             <Text style={styles.actionIcon}>📤</Text>
-          </TouchableOpacity>
+          </Pressable>
         )}
       </View>
     </View>
@@ -60,43 +66,39 @@ export function RoomCode({ code }: RoomCodeProps) {
 const styles = StyleSheet.create({
   container: {
     alignItems: "center",
-    gap: 8,
+    gap: SPACE.sm,
   },
   label: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    fontWeight: "600",
+    ...LABEL_STYLE,
   },
   codeRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: SPACE.md,
   },
   code: {
-    fontSize: 32,
-    fontWeight: "800",
+    fontSize: FONT.size["5xl"],
+    fontWeight: FONT.weight.extrabold,
     color: COLORS.textPrimary,
     letterSpacing: 6,
     fontVariant: ["tabular-nums"],
     backgroundColor: COLORS.secondary,
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    borderRadius: SIZES.borderRadius,
+    paddingVertical: SPACE.sm,
+    paddingHorizontal: SPACE.xl,
+    borderRadius: RADIUS.md,
     overflow: "hidden",
   },
   actionBtn: {
-    width: 44,
-    height: 44,
+    width: TOUCH.minWidth,
+    height: TOUCH.minHeight,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: SIZES.borderRadius,
+    borderRadius: RADIUS.md,
     backgroundColor: COLORS.bgCard,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
   actionIcon: {
-    fontSize: 18,
+    fontSize: FONT.size.xl,
   },
 });

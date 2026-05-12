@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { View, Text, StyleSheet, Animated } from "react-native";
-import { COLORS } from "@/utils/constants";
+import { COLORS, FONT, RADIUS, SPACE } from "@/utils/constants";
 
 interface NowPlayingProps {
   error?: string | null;
@@ -23,7 +23,7 @@ function AnimatedBar({ delay }: { delay: number }) {
           duration: 400,
           useNativeDriver: true,
         }),
-      ])
+      ]),
     );
     loop.start();
     return () => loop.stop();
@@ -39,14 +39,18 @@ function AnimatedBar({ delay }: { delay: number }) {
 export function NowPlaying({ error }: NowPlayingProps) {
   if (error) {
     return (
-      <View style={styles.container}>
+      <View style={styles.container} accessibilityRole="alert">
         <Text style={styles.errorText}>{error}</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View
+      style={styles.container}
+      accessibilityRole="text"
+      accessibilityLabel="Song is playing"
+    >
       <View style={styles.bars}>
         <AnimatedBar delay={0} />
         <AnimatedBar delay={100} />
@@ -62,11 +66,11 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
+    gap: SPACE.md,
+    paddingVertical: SPACE.md,
+    paddingHorizontal: SPACE["2xl"],
     backgroundColor: COLORS.bgCard,
-    borderRadius: 12,
+    borderRadius: RADIUS.lg,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
@@ -84,10 +88,10 @@ const styles = StyleSheet.create({
   },
   text: {
     color: COLORS.textPrimary,
-    fontSize: 15,
+    fontSize: FONT.size.md,
   },
   errorText: {
     color: COLORS.error,
-    fontSize: 14,
+    fontSize: FONT.size.base,
   },
 });

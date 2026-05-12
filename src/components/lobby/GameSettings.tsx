@@ -1,8 +1,9 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
+import { Chip } from "@/components/ui/Chip";
 import { useGameStore } from "@/game/store";
 import { dispatch } from "@/p2p/connection";
-import { COLORS, SIZES } from "@/utils/constants";
+import { SPACE, LABEL_STYLE } from "@/utils/constants";
 
 const WIN_SCORE_OPTIONS = [5, 10, 15, 20];
 
@@ -18,21 +19,12 @@ export function GameSettings() {
       <Text style={styles.label}>Win at</Text>
       <View style={styles.row}>
         {WIN_SCORE_OPTIONS.map((n) => (
-          <TouchableOpacity
+          <Chip
             key={n}
-            style={[styles.chip, settings.winScore === n && styles.chipActive]}
+            label={`${n} songs`}
+            selected={settings.winScore === n}
             onPress={() => handleWinScore(n)}
-            activeOpacity={0.6}
-          >
-            <Text
-              style={[
-                styles.chipText,
-                settings.winScore === n && styles.chipTextActive,
-              ]}
-            >
-              {n} songs
-            </Text>
-          </TouchableOpacity>
+          />
         ))}
       </View>
     </View>
@@ -42,38 +34,14 @@ export function GameSettings() {
 const styles = StyleSheet.create({
   container: {
     width: "100%",
-    gap: 8,
+    gap: SPACE.sm,
   },
   label: {
-    fontSize: 12,
-    textTransform: "uppercase",
-    color: COLORS.textSecondary,
-    fontWeight: "600",
-    letterSpacing: 1,
+    ...LABEL_STYLE,
   },
   row: {
     flexDirection: "row",
-    gap: 8,
+    gap: SPACE.sm,
     flexWrap: "wrap",
-  },
-  chip: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: SIZES.borderRadius,
-    backgroundColor: COLORS.bgCard,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  chipActive: {
-    backgroundColor: COLORS.accent,
-    borderColor: COLORS.accent,
-  },
-  chipText: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-  },
-  chipTextActive: {
-    color: COLORS.textPrimary,
-    fontWeight: "600",
   },
 });
