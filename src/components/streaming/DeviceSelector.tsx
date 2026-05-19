@@ -1,8 +1,10 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
 import { Pressable } from "@/components/ui/Pressable";
+import { Button } from "@/components/ui/Button";
 import { useStreamingStore } from "@/streaming/store";
 import { getProvider } from "@/streaming/registry";
+import { log } from "@/utils/logger";
 import { COLORS, FONT, RADIUS, SPACE, LABEL_STYLE, TOUCH } from "@/utils/constants";
 
 export function DeviceSelector() {
@@ -11,6 +13,8 @@ export function DeviceSelector() {
   const activeDevice = useStreamingStore((s) => s.activeDevice);
   const availableDevices = useStreamingStore((s) => s.availableDevices);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [is403, setIs403] = useState(false);
 
   const refreshDevices = useCallback(async () => {
     if (!activeProviderId) return;
@@ -18,10 +22,20 @@ export function DeviceSelector() {
     if (!provider) return;
 
     setLoading(true);
+    setError(null);
+    setIs403(false);
     try {
       await provider.player.getDevices();
-    } catch {
-      // ignore
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error("DeviceSelector", `Failed to load devices: ${msg}`);
+
+      if (msg.startsWith("SPOTIFY_403")) {
+        setIs403(true);
+        setError(null);
+      } else {
+        setError(msg);
+      }
     }
     setLoading(false);
   }, [activeProviderId]);
@@ -32,6 +46,17 @@ export function DeviceSelector() {
     }
   }, [authStatus, refreshDevices]);
 
+  const handleReconnect = useCallback(async () => {
+    if (!activeProviderId) return;
+    const provider = getProvider(activeProviderId);
+    if (!provider) return;
+
+    // Logout clears old tokens, then login gets fresh ones with current scopes
+    await provider.auth.logout();
+    useStreamingStore.getState().setActiveProvider(activeProviderId);
+    provider.auth.login();
+  }, [activeProviderId]);
+
   const handleSelectDevice = useCallback(
     async (deviceId: string) => {
       if (!activeProviderId) return;
@@ -40,8 +65,9 @@ export function DeviceSelector() {
 
       try {
         await provider.player.setDevice(deviceId);
-      } catch {
-        // ignore
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.error("DeviceSelector", `Failed to set device: ${msg}`);
       }
     },
     [activeProviderId],
@@ -67,10 +93,42 @@ export function DeviceSelector() {
         </Pressable>
       </View>
 
-      {availableDevices.length === 0 && !loading && (
-        <Text style={styles.hint}>
-          No devices found. Open Spotify on your device.
+      {/* 403 Forbidden — Premium required or stale scopes */}
+      {is403 && (
+        <View style={styles.forbiddenBox}>
+          <Text style={styles.forbiddenTitle}>
+            ⚠ Spotify Premium required
+          </Text>
+          <Text style={styles.forbiddenDetail}>
+            Playback control needs Spotify Premium. If you already have Premium,
+            your login token may have outdated permissions — reconnect to fix this.
+          </Text>
+          <Button
+            title="Reconnect Spotify"
+            onPress={handleReconnect}
+            variant="warning"
+            compact
+            label="Clear old tokens and reconnect Spotify"
+          />
+        </View>
+      )}
+
+      {/* Generic error */}
+      {error != null && !is403 && (
+        <Text style={styles.errorText}>
+          Failed to load devices: {error}
         </Text>
+      )}
+
+      {/* No devices hint */}
+      {availableDevices.length === 0 && !loading && !is403 && error == null && (
+        <View style={styles.hintBox}>
+          <Text style={styles.hint}>No devices found.</Text>
+          <Text style={styles.hintDetail}>
+            Open Spotify and play a song briefly, then tap ↻ to refresh.
+            Make sure the same Spotify account is used in both apps.
+          </Text>
+        </View>
       )}
 
       {availableDevices.map((device) => {
@@ -126,10 +184,44 @@ const styles = StyleSheet.create({
     fontSize: FONT.size.xl,
     color: COLORS.textSecondary,
   },
+  forbiddenBox: {
+    backgroundColor: COLORS.warningLight,
+    borderWidth: 1,
+    borderColor: COLORS.warning,
+    borderRadius: RADIUS.md,
+    padding: SPACE.lg,
+    gap: SPACE.sm,
+  },
+  forbiddenTitle: {
+    fontSize: FONT.size.base,
+    fontWeight: FONT.weight.bold,
+    color: COLORS.warning,
+  },
+  forbiddenDetail: {
+    fontSize: FONT.size.sm,
+    color: COLORS.textPrimary,
+    lineHeight: 18,
+    opacity: 0.85,
+  },
+  errorText: {
+    color: COLORS.error,
+    fontSize: FONT.size.sm,
+    paddingVertical: SPACE.xs,
+  },
+  hintBox: {
+    gap: SPACE.xs,
+    paddingVertical: SPACE.sm,
+  },
   hint: {
     color: COLORS.textSecondary,
     fontSize: FONT.size.base,
-    paddingVertical: SPACE.sm,
+    fontWeight: FONT.weight.medium,
+  },
+  hintDetail: {
+    color: COLORS.textSecondary,
+    fontSize: FONT.size.sm,
+    opacity: 0.7,
+    lineHeight: 18,
   },
   deviceRow: {
     flexDirection: "row",

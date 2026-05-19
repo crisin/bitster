@@ -36,10 +36,21 @@ export const spotifyPlayer: StreamingPlayer = {
   async getDevices(): Promise<StreamingDevice[]> {
     const res = await fetchWithAuth("https://api.spotify.com/v1/me/player/devices");
 
-    if (!res.ok) throw new Error(`Get devices failed: ${res.status}`);
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      log.error("spotify", `Get devices failed (${res.status}): ${text}`);
+
+      if (res.status === 403) {
+        throw new Error(
+          "SPOTIFY_403: Spotify Premium is required for playback control. " +
+          "If you have Premium, try reconnecting your account (your token may have outdated permissions).",
+        );
+      }
+      throw new Error(`Get devices failed: ${res.status}`);
+    }
 
     const data = await res.json();
-    const devices: StreamingDevice[] = data.devices.map(
+    const devices: StreamingDevice[] = (data.devices ?? []).map(
       (d: { id: string; name: string; type: string; is_active: boolean }) => ({
         id: d.id,
         name: d.name,
@@ -47,6 +58,8 @@ export const spotifyPlayer: StreamingPlayer = {
         isActive: d.is_active,
       }),
     );
+
+    log.info("spotify", `Found ${devices.length} device(s): ${devices.map((d) => d.name).join(", ") || "(none)"}`);
 
     useStreamingStore.getState().setAvailableDevices(devices);
 

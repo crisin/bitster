@@ -13,6 +13,9 @@ const SCOPES = [
   "playlist-read-collaborative",
 ];
 
+/** Sorted, joined scope string — changes whenever SCOPES is updated */
+const SCOPE_FINGERPRINT = [...SCOPES].sort().join(" ");
+
 const discovery: AuthSession.DiscoveryDocument = {
   authorizationEndpoint: "https://accounts.spotify.com/authorize",
   tokenEndpoint: "https://accounts.spotify.com/api/token",
@@ -24,6 +27,8 @@ interface StoredTokens {
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
+  /** Scope fingerprint at the time of authentication */
+  scopeFingerprint?: string;
 }
 
 let tokens: StoredTokens | null = null;
@@ -100,6 +105,7 @@ export async function exchangeCodeForTokens(code: string): Promise<void> {
       accessToken: result.accessToken,
       refreshToken: result.refreshToken ?? "",
       expiresAt: now + (result.expiresIn ?? 3600) * 1000,
+      scopeFingerprint: SCOPE_FINGERPRINT,
     });
 
     store.setAuthStatus("authenticated");
@@ -181,6 +187,7 @@ export const spotifyAuth: StreamingAuth = {
         accessToken: result.accessToken,
         refreshToken: result.refreshToken ?? tokens.refreshToken,
         expiresAt: now + (result.expiresIn ?? 3600) * 1000,
+        scopeFingerprint: tokens.scopeFingerprint,
       });
 
       useStreamingStore.getState().setAuthStatus("authenticated");
@@ -197,6 +204,17 @@ export const spotifyAuth: StreamingAuth = {
 export async function restoreSession(): Promise<boolean> {
   const stored = await loadTokens();
   if (!stored) return false;
+
+  // Check if stored token was created with outdated scopes
+  if (stored.scopeFingerprint !== SCOPE_FINGERPRINT) {
+    log.warn(
+      "spotify",
+      `Stored token scopes outdated (had: "${stored.scopeFingerprint ?? "unknown"}", ` +
+      `need: "${SCOPE_FINGERPRINT}"). Clearing tokens to force re-auth.`,
+    );
+    await clearTokens();
+    return false;
+  }
 
   const store = useStreamingStore.getState();
 
@@ -241,6 +259,7 @@ async function fetchWithAuth(
   });
 
   if (response.status === 401) {
+    log.info("spotify", "Token expired (401), refreshing...");
     await spotifyAuth.refreshToken();
     token = getAccessToken();
     if (!token) throw new Error("Not authenticated after refresh");
@@ -252,6 +271,14 @@ async function fetchWithAuth(
         ...options.headers,
       },
     });
+  }
+
+  if (response.status === 403) {
+    log.warn(
+      "spotify",
+      `403 Forbidden on ${url}. This usually means Spotify Premium is required, ` +
+      `or the token was issued with insufficient scopes. Re-authentication may fix this.`,
+    );
   }
 
   return response;
