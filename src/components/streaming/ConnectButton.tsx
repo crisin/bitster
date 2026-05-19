@@ -31,10 +31,10 @@ export function ConnectButton({
         </View>
         <Pressable
           onPress={onDisconnect}
-          label={`Switch ${providerName} account`}
-          style={styles.switchBtn}
+          label={`Disconnect ${providerName}`}
+          style={styles.disconnectBtn}
         >
-          <Text style={styles.switchLink}>Switch account</Text>
+          <Text style={styles.disconnectLink}>Disconnect</Text>
         </Pressable>
       </View>
     );
@@ -75,11 +75,11 @@ const styles = StyleSheet.create({
     fontSize: FONT.size.base,
     fontWeight: FONT.weight.medium,
   },
-  switchBtn: {
+  disconnectBtn: {
     minHeight: 36,
     minWidth: 36,
   },
-  switchLink: {
+  disconnectLink: {
     fontSize: FONT.size.sm,
     color: COLORS.textSecondary,
     opacity: 0.7,

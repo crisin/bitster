@@ -97,9 +97,6 @@ export default function HomeScreen() {
     if (provider) {
       await provider.auth.logout();
       useStreamingStore.getState().setActiveProvider(null);
-      // Immediately start login with new account
-      useStreamingStore.getState().setActiveProvider("spotify");
-      provider.auth.login();
     }
   }, []);
 
