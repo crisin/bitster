@@ -138,6 +138,7 @@ export const spotifyAuth: StreamingAuth = {
         redirectUri,
         usePKCE: true,
         responseType: AuthSession.ResponseType.Code,
+        extraParams: { show_dialog: "true" },
       });
 
       const result = await request.promptAsync(discovery);
