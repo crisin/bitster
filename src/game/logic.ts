@@ -39,7 +39,7 @@ export function createRoom(
 const STARTING_TOKENS = 2;
 
 export function createPlayer(id: string, name: string): Player {
-  return { id, name, score: 0, timeline: [], tokens: STARTING_TOKENS };
+  return { id, name, score: 0, timeline: [], tokens: STARTING_TOKENS, failedSongs: [] };
 }
 
 export function addPlayer(room: Room, id: string, name: string): Room {
@@ -206,12 +206,18 @@ export function placeSong(
   };
 }
 
-/** Remove a tentatively placed song from a player's timeline. */
+/** Remove a tentatively placed song from a player's timeline and track it as failed. */
 export function undoPlacement(room: Room, playerId: string, songId: string): Room {
   const updatedPlayers = room.players.map((p) => {
     if (p.id !== playerId) return p;
+    const failed = p.timeline.find((s) => s.id === songId);
     const newTimeline = p.timeline.filter((s) => s.id !== songId);
-    return { ...p, timeline: newTimeline, score: newTimeline.length };
+    return {
+      ...p,
+      timeline: newTimeline,
+      score: newTimeline.length,
+      failedSongs: failed ? [...p.failedSongs, failed] : p.failedSongs,
+    };
   });
   return { ...room, players: updatedPlayers };
 }
@@ -249,6 +255,7 @@ export function startGame(
     score: 0,
     timeline: [],
     tokens: STARTING_TOKENS,
+    failedSongs: [],
   }));
 
   return {
@@ -331,8 +338,7 @@ function normalize(s: string): string {
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .replace(/ß/g, "ss")
-    .replace(/[^a-z0-9]/g, "")
-    .trim();
+    .replace(/[^a-z0-9]/g, "");
 }
 
 /** Split an artist credit string into individual artist names */
@@ -435,8 +441,10 @@ export function skipSong(
 export function buildGameState(room: Room): import("./types").GameState {
   const currentPlayer = getCurrentPlayer(room);
   const timelines: Record<string, Song[]> = {};
+  const failedTimelines: Record<string, Song[]> = {};
   for (const p of room.players) {
     timelines[p.id] = p.timeline;
+    failedTimelines[p.id] = p.failedSongs;
   }
 
   return {
@@ -453,6 +461,7 @@ export function buildGameState(room: Room): import("./types").GameState {
     currentSongUri: room.currentSong?.uri ?? null,
     currentSongId: room.currentSong?.id ?? null,
     timelines,
+    failedTimelines,
     lastResult: null,
     hostId: room.hostId,
     settings: room.settings,

@@ -11,6 +11,7 @@ interface PlayerTimelineProps {
   isCurrent: boolean;
   tokens: number;
   hiddenYearSongId?: string | null;
+  failedSongs?: Song[];
 }
 
 export function PlayerTimeline({
@@ -19,14 +20,21 @@ export function PlayerTimeline({
   isCurrent,
   tokens,
   hiddenYearSongId,
+  failedSongs = [],
 }: PlayerTimelineProps) {
   const [expanded, setExpanded] = useState(isCurrent);
+
+  // Merge correct + failed songs, sorted by year, with a flag
+  const allSongs: Array<Song & { failed: boolean }> = [
+    ...songs.map((s) => ({ ...s, failed: false })),
+    ...failedSongs.map((s) => ({ ...s, failed: true })),
+  ].sort((a, b) => a.year - b.year);
 
   return (
     <View style={[styles.container, isCurrent && styles.currentContainer]}>
       <Pressable
         onPress={() => setExpanded(!expanded)}
-        label={`${name}'s timeline, ${songs.length} songs${isCurrent ? ", current turn" : ""}`}
+        label={`${name}'s timeline, ${songs.length} songs${failedSongs.length > 0 ? `, ${failedSongs.length} failed` : ""}${isCurrent ? ", current turn" : ""}`}
         style={styles.header}
       >
         <View style={styles.headerLeft}>
@@ -48,31 +56,51 @@ export function PlayerTimeline({
         </View>
       </Pressable>
 
-      {expanded && songs.length > 0 && (
+      {expanded && allSongs.length > 0 && (
         <View style={styles.timeline}>
-          {songs.map((song, index) => {
+          {allSongs.map((song, index) => {
             const isHidden =
               !!hiddenYearSongId && song.id === hiddenYearSongId;
             return (
-              <React.Fragment key={song.id}>
+              <React.Fragment key={`${song.id}-${song.failed ? "f" : "s"}`}>
                 {index > 0 && <Divider />}
                 <View
-                  style={styles.row}
+                  style={[styles.row, song.failed && styles.failedRow]}
                   accessibilityRole="text"
                   accessibilityLabel={
                     isHidden
                       ? "Hidden song"
-                      : `${song.name}, ${song.year}`
+                      : song.failed
+                        ? `${song.name} by ${song.artist}, ${song.year} (incorrect)`
+                        : `${song.name} by ${song.artist}, ${song.year}`
                   }
                 >
+                  {song.failed && (
+                    <Text style={styles.failedIcon}>✗</Text>
+                  )}
                   <Text
-                    style={[styles.year, isHidden && styles.hiddenYear]}
+                    style={[
+                      styles.year,
+                      isHidden && styles.hiddenYear,
+                      song.failed && styles.failedText,
+                    ]}
                   >
                     {isHidden ? "?" : song.year}
                   </Text>
-                  <Text style={styles.title} numberOfLines={1}>
-                    {isHidden ? "???" : song.name}
-                  </Text>
+                  <View style={styles.songInfo}>
+                    <Text
+                      style={[styles.title, song.failed && styles.failedText]}
+                      numberOfLines={1}
+                    >
+                      {isHidden ? "???" : song.name}
+                    </Text>
+                    <Text
+                      style={[styles.artist, song.failed && styles.failedText]}
+                      numberOfLines={1}
+                    >
+                      {isHidden ? "???" : song.artist}
+                    </Text>
+                  </View>
                 </View>
               </React.Fragment>
             );
@@ -80,7 +108,7 @@ export function PlayerTimeline({
         </View>
       )}
 
-      {expanded && songs.length === 0 && (
+      {expanded && allSongs.length === 0 && (
         <Text style={styles.empty}>No songs yet</Text>
       )}
     </View>
@@ -155,7 +183,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: SPACE.xs + 1,
     paddingHorizontal: SPACE.md,
-    gap: SPACE.md,
+    gap: SPACE.sm,
+  },
+  failedRow: {
+    opacity: 0.45,
+  },
+  failedIcon: {
+    fontSize: FONT.size.xs,
+    color: COLORS.error,
+    width: 14,
   },
   year: {
     fontSize: FONT.size.sm,
@@ -166,10 +202,21 @@ const styles = StyleSheet.create({
   hiddenYear: {
     color: COLORS.warning,
   },
+  failedText: {
+    textDecorationLine: "line-through",
+  },
+  songInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
   title: {
     fontSize: FONT.size.sm,
+    color: COLORS.textPrimary,
+  },
+  artist: {
+    fontSize: FONT.size.xs,
     color: COLORS.textSecondary,
-    flex: 1,
+    marginTop: 1,
   },
   empty: {
     fontSize: FONT.size.sm,
@@ -178,4 +225,3 @@ const styles = StyleSheet.create({
     paddingVertical: SPACE.sm,
   },
 });
-

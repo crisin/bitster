@@ -1,5 +1,11 @@
 import React, { useState, useCallback, useEffect } from "react";
-import { View, Text, ScrollView, StyleSheet } from "react-native";
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  useWindowDimensions,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
 import { useGameStore } from "@/game/store";
@@ -51,6 +57,7 @@ export default function GameScreen() {
   const buzzerId = useGameStore((s) => s.buzzerId);
   const settings = useGameStore((s) => s.settings);
   const timelines = useGameStore((s) => s.timelines);
+  const failedTimelines = useGameStore((s) => s.failedTimelines);
   const playlistName = useGameStore((s) => s.playlistName);
   const currentSongId = useGameStore((s) => s.currentSongId);
   const guessResult = useGameStore((s) => s.guessResult);
@@ -59,6 +66,8 @@ export default function GameScreen() {
   const { isMyTurn, isHost, myTimeline, currentPlayer, myPeerId } =
     useCurrentPlayer();
 
+  const { width: windowWidth } = useWindowDimensions();
+  const isWide = windowWidth >= 768;
   const myTokens = players.find((p) => p.id === myPeerId)?.tokens ?? 0;
 
   const [playlistUrl, setPlaylistUrl] = useState("");
@@ -289,35 +298,80 @@ export default function GameScreen() {
 
             <NowPlaying />
 
-            {/* Guess form — only active player, before placing */}
-            {isMyTurn && !guessSubmitted && (
-              <GuessForm onSubmit={handleGuess} disabled={false} />
-            )}
-            {isMyTurn && guessSubmitted && (
-              <Text style={styles.guessSubmitted}>
-                Guess submitted! Now place the song.
-              </Text>
+            {/* Desktop: guess + timeline side by side */}
+            {isMyTurn && isWide ? (
+              <View style={styles.splitRow}>
+                <View style={styles.splitLeft}>
+                  {!guessSubmitted ? (
+                    <GuessForm onSubmit={handleGuess} disabled={false} />
+                  ) : (
+                    <Text style={styles.guessSubmitted}>
+                      Guess submitted! Now place the song.
+                    </Text>
+                  )}
+                  {myTokens > 0 && (
+                    <Button
+                      title={`Skip Song (costs 1★)`}
+                      onPress={handleSkipSong}
+                      variant="ghost"
+                      label="Skip this song, costs one star token"
+                    />
+                  )}
+                </View>
+                <View style={styles.splitRight}>
+                  <Text style={styles.sectionTitle}>Your Timeline</Text>
+                  <Timeline
+                    cards={myTimeline}
+                    interactive
+                    selectedGap={selectedGap}
+                    onGapSelect={handleGapSelect}
+                  />
+                </View>
+              </View>
+            ) : (
+              <>
+                {/* Mobile: stacked layout */}
+                {isMyTurn && !guessSubmitted && (
+                  <GuessForm onSubmit={handleGuess} disabled={false} />
+                )}
+                {isMyTurn && guessSubmitted && (
+                  <Text style={styles.guessSubmitted}>
+                    Guess submitted! Now place the song.
+                  </Text>
+                )}
+
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Your Timeline</Text>
+                  <Timeline
+                    cards={myTimeline}
+                    interactive={isMyTurn}
+                    selectedGap={selectedGap}
+                    onGapSelect={handleGapSelect}
+                  />
+                </View>
+
+                {isMyTurn && myTokens > 0 && (
+                  <Button
+                    title={`Skip Song (costs 1★)`}
+                    onPress={handleSkipSong}
+                    variant="ghost"
+                    label="Skip this song, costs one star token"
+                  />
+                )}
+              </>
             )}
 
-            {/* My timeline (interactive if my turn) */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Your Timeline</Text>
-              <Timeline
-                cards={myTimeline}
-                interactive={isMyTurn}
-                selectedGap={selectedGap}
-                onGapSelect={handleGapSelect}
-              />
-            </View>
-
-            {/* Skip button for active player */}
-            {isMyTurn && myTokens > 0 && (
-              <Button
-                title={`Skip Song (costs 1★)`}
-                onPress={handleSkipSong}
-                variant="ghost"
-                label="Skip this song, costs one star token"
-              />
+            {/* Non-active player sees their own timeline (non-interactive) */}
+            {!isMyTurn && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Your Timeline</Text>
+                <Timeline
+                  cards={myTimeline}
+                  interactive={false}
+                  selectedGap={null}
+                  onGapSelect={() => {}}
+                />
+              </View>
             )}
 
             {/* All player timelines */}
@@ -330,6 +384,7 @@ export default function GameScreen() {
                   songs={timelines[p.id] ?? []}
                   isCurrent={p.id === currentPlayerId}
                   tokens={p.tokens}
+                  failedSongs={failedTimelines[p.id] ?? []}
                 />
               ))}
             </View>
@@ -454,6 +509,7 @@ export default function GameScreen() {
                   hiddenYearSongId={
                     p.id === currentPlayerId ? currentSongId : undefined
                   }
+                  failedSongs={failedTimelines[p.id] ?? []}
                 />
               ))}
             </View>
@@ -487,6 +543,7 @@ export default function GameScreen() {
                   songs={timelines[p.id] ?? []}
                   isCurrent={p.id === currentPlayerId}
                   tokens={p.tokens}
+                  failedSongs={failedTimelines[p.id] ?? []}
                 />
               ))}
             </View>
@@ -726,6 +783,19 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     opacity: 0.6,
     marginTop: SPACE.sm,
+  },
+  splitRow: {
+    flexDirection: "row",
+    gap: SPACE["2xl"],
+    width: "100%",
+  },
+  splitLeft: {
+    flex: 1,
+    gap: SPACE.lg,
+  },
+  splitRight: {
+    flex: 1,
+    gap: SPACE.sm,
   },
   finishedButtons: {
     flexDirection: "row",

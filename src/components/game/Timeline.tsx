@@ -62,22 +62,29 @@ export function Timeline({
         />
       )}
 
-      {cards.map((song, index) => (
-        <React.Fragment key={song.id}>
-          <TimelineCard
-            song={song}
-            highlighted={highlightedIndex === index}
-            highlightColor={highlightColor}
-            hideYear={!!hiddenYearSongId && song.id === hiddenYearSongId}
-          />
-          {interactive && (
-            <TimelineGap
-              onPress={() => handleGapPress(index + 1)}
-              selected={selectedGap === index + 1}
+      {cards.map((song, index) => {
+        const nextSong = cards[index + 1];
+        // Group same-year cards: don't show a gap between them
+        const sameYearAsNext =
+          interactive && nextSong !== undefined && song.year === nextSong.year;
+
+        return (
+          <React.Fragment key={song.id}>
+            <TimelineCard
+              song={song}
+              highlighted={highlightedIndex === index}
+              highlightColor={highlightColor}
+              hideYear={!!hiddenYearSongId && song.id === hiddenYearSongId}
             />
-          )}
-        </React.Fragment>
-      ))}
+            {interactive && !sameYearAsNext && (
+              <TimelineGap
+                onPress={() => handleGapPress(index + 1)}
+                selected={selectedGap === index + 1}
+              />
+            )}
+          </React.Fragment>
+        );
+      })}
     </View>
   );
 }

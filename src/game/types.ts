@@ -15,6 +15,8 @@ export interface Player {
   score: number;
   timeline: Song[];
   tokens: number;
+  /** Songs the player placed incorrectly (removed during reveal) */
+  failedSongs: Song[];
 }
 
 export interface BuzzRules {
@@ -81,6 +83,8 @@ export interface GameState {
   currentSongUri: string | null;
   currentSongId: string | null;
   timelines: Record<string, Song[]>;
+  /** Songs each player placed incorrectly (keyed by player ID) */
+  failedTimelines: Record<string, Song[]>;
   lastResult: PlacementResult | null;
   hostId: string;
   settings: GameSettings;

@@ -38,6 +38,14 @@ function push(level: LogLevel, tag: string, message: string, data?: unknown) {
   if (buffer.length > MAX_ENTRIES) {
     buffer.splice(0, buffer.length - MAX_ENTRIES);
   }
+
+  // Also output to browser console for real-time debugging
+  const formatted = formatEntry(entry);
+  const consoleFn = level === "error" ? originalConsole.error
+    : level === "warn" ? originalConsole.warn
+    : level === "debug" ? originalConsole.debug
+    : originalConsole.log;
+  consoleFn(formatted);
 }
 
 function formatEntry(e: LogEntry): string {

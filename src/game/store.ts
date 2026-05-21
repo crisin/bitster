@@ -29,6 +29,7 @@ interface GameStore {
   currentSongUri: string | null;
   currentSongId: string | null;
   timelines: Record<string, Song[]>;
+  failedTimelines: Record<string, Song[]>;
   lastResult: PlacementResult | null;
   hostId: string | null;
   settings: GameSettings;
@@ -54,6 +55,7 @@ interface GameStore {
     currentSongUri: string | null;
     currentSongId?: string | null;
     timelines: Record<string, Song[]>;
+    failedTimelines?: Record<string, Song[]>;
     lastResult: PlacementResult | null;
     hostId: string;
     settings: GameSettings;
@@ -73,6 +75,7 @@ const initialState = {
   currentSongUri: null as string | null,
   currentSongId: null as string | null,
   timelines: {} as Record<string, Song[]>,
+  failedTimelines: {} as Record<string, Song[]>,
   lastResult: null as PlacementResult | null,
   hostId: null as string | null,
   settings: DEFAULT_SETTINGS as GameSettings,
@@ -104,6 +107,7 @@ export const useGameStore = create<GameStore>((set) => ({
       currentSongUri: state.currentSongUri,
       currentSongId: state.currentSongId ?? null,
       timelines: state.timelines,
+      failedTimelines: state.failedTimelines ?? {},
       lastResult: state.lastResult,
       hostId: state.hostId,
       settings: state.settings,

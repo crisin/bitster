@@ -81,6 +81,8 @@ export function dispatch(action: P2PAction): void {
     return;
   }
 
+  logger.debug("p2p", `dispatch → ${action.type} (role=${role})`);
+
   if (role === "host") {
     processHostAction(action, selfId);
   } else {
@@ -319,15 +321,31 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
 
       case "guess-song": {
         // Active player guesses BEFORE placing (during playing phase)
-        if (hostRoom.phase !== "playing") return;
+        if (hostRoom.phase !== "playing") {
+          logger.warn("p2p", `guess-song rejected: phase is "${hostRoom.phase}", not "playing"`);
+          return;
+        }
         const currentForGuess = logic.getCurrentPlayer(hostRoom);
+        logger.info("p2p",
+          `guess-song from ${fromPeerId.slice(0, 8)}, ` +
+          `currentPlayer=${currentForGuess?.id?.slice(0, 8) ?? "null"} (${currentForGuess?.name ?? "?"})`,
+        );
         if (fromPeerId !== currentForGuess?.id) {
+          logger.warn("p2p",
+            `guess-song rejected: sender ${fromPeerId.slice(0, 8)} is not current player ${currentForGuess?.id?.slice(0, 8) ?? "null"}`,
+          );
           sendToAll(
             { type: "error", payload: { message: "Only the active player can guess" } },
             fromPeerId,
           );
           return;
         }
+        const playerBefore = hostRoom.players.find((p) => p.id === fromPeerId);
+        logger.info("p2p",
+          `guess: "${action.payload.title}" / "${action.payload.artist}" ` +
+          `vs song: "${hostRoom.currentSong?.name}" / "${hostRoom.currentSong?.artist}" ` +
+          `(tokens before: ${playerBefore?.tokens ?? "?"})`,
+        );
         const guessResult = logic.guessSongInfo(
           hostRoom,
           fromPeerId,
@@ -335,6 +353,11 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
           action.payload.artist,
         );
         hostRoom = guessResult.room;
+        const playerAfter = hostRoom.players.find((p) => p.id === fromPeerId);
+        logger.info("p2p",
+          `guess result: title=${guessResult.titleCorrect}, artist=${guessResult.artistCorrect}, ` +
+          `tokens after: ${playerAfter?.tokens ?? "?"}`,
+        );
         // Store result — feedback shown after placing (hitster-window phase)
         pendingGuessResult = {
           titleCorrect: guessResult.titleCorrect,
@@ -443,6 +466,7 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
             score: 0,
             timeline: [],
             tokens: 2,
+            failedSongs: [],
           })),
         };
         broadcastState();
@@ -509,10 +533,16 @@ function broadcastState(lastResult?: PlacementResult): void {
 function processPeerMessage(action: P2PAction): void {
   switch (action.type) {
     case "game-state": {
+      const myPlayer = action.payload.players.find((p: { id: string }) => p.id === selfId);
+      logger.debug("p2p",
+        `game-state: phase=${action.payload.phase}, ` +
+        `myTokens=${myPlayer?.tokens ?? "?"}, ` +
+        `guessResult=${action.payload.guessResult ? `title=${action.payload.guessResult.titleCorrect},artist=${action.payload.guessResult.artistCorrect}` : "null"}`,
+      );
       useGameStore.getState().applyGameState(action.payload);
       const peers = action.payload.players
-        .filter((p) => p.id !== selfId)
-        .map((p) => ({ id: p.id, name: p.name, connected: true }));
+        .filter((p: { id: string }) => p.id !== selfId)
+        .map((p: { id: string; name: string }) => ({ id: p.id, name: p.name, connected: true }));
       useP2PStore.getState().setPeers(peers);
       break;
     }
