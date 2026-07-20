@@ -10,8 +10,9 @@ import { Timeline } from "@/components/game/Timeline";
 import { NowPlaying } from "@/components/game/NowPlaying";
 import { GuessForm } from "@/components/game/GuessForm";
 import { PlayedSongs } from "@/components/game/PlayedSongs";
+import { Stage } from "@/components/game/Stage";
 import { AllPlayerTimelines } from "@/components/game/AllPlayerTimelines";
-import { COLORS, FONT, SPACE, LABEL_STYLE } from "@/utils/constants";
+import { COLORS, FONT, SPACE } from "@/utils/constants";
 
 interface PlayingViewProps {
   selectedGap: number | null;
@@ -21,10 +22,12 @@ interface PlayingViewProps {
 export function PlayingView({ selectedGap, onGapSelect }: PlayingViewProps) {
   const playedSongs = useGameStore((s) => s.playedSongs);
   const currentSongId = useGameStore((s) => s.currentSongId);
+  const currentPlayerId = useGameStore((s) => s.currentPlayerId);
+  const timelines = useGameStore((s) => s.timelines);
   const playbackError = useStreamingStore((s) => s.playbackError);
   const { isMyTurn, myTimeline, currentPlayer, me } = useCurrentPlayer();
   const { width: windowWidth } = useWindowDimensions();
-  const isWide = windowWidth >= 768;
+  const isWide = windowWidth >= 900;
   const myTokens = me?.tokens ?? 0;
 
   const [guessSubmitted, setGuessSubmitted] = useState(false);
@@ -44,75 +47,61 @@ export function PlayingView({ selectedGap, onGapSelect }: PlayingViewProps) {
     haptics.tap();
   }, []);
 
-  const skipButton = myTokens > 0 && (
-    <Button
-      title={`Skip Song (costs 1★)`}
-      onPress={handleSkipSong}
-      variant="ghost"
-      label="Skip this song, costs one star token"
-    />
+  // The stage always shows the ACTIVE player's timeline — that's what
+  // everyone needs to see to follow the round (and plan a Hitster!)
+  const stageTimeline = isMyTurn ? myTimeline : (timelines[currentPlayerId ?? ""] ?? []);
+  const stageTitle = isMyTurn
+    ? "You're on stage"
+    : `${currentPlayer?.name ?? "???"} is on stage`;
+
+  const stage = (
+    <Stage title={stageTitle} hot={isMyTurn}>
+      <NowPlaying error={playbackError} />
+      <Timeline
+        cards={stageTimeline}
+        interactive={isMyTurn}
+        selectedGap={isMyTurn ? selectedGap : null}
+        onGapSelect={isMyTurn ? onGapSelect : () => {}}
+      />
+      {!isMyTurn && (
+        <Text style={styles.watchHint}>
+          Listen along — know where it belongs? Get ready to HITSTER!
+        </Text>
+      )}
+    </Stage>
+  );
+
+  const guessPanel = isMyTurn && (
+    <View style={styles.guessPanel}>
+      {!guessSubmitted ? (
+        <GuessForm onSubmit={handleGuess} disabled={false} />
+      ) : (
+        <Text style={styles.guessSubmitted}>
+          Guess locked in! Now place the song in your timeline.
+        </Text>
+      )}
+      {myTokens > 0 && (
+        <Button
+          title={`Skip Song (costs 1★)`}
+          onPress={handleSkipSong}
+          variant="ghost"
+          label="Skip this song, costs one star token"
+        />
+      )}
+    </View>
   );
 
   return (
     <View style={styles.container}>
-      {isMyTurn ? (
-        <Text style={styles.turnText}>
-          Your turn! Guess the song, then place it.
-        </Text>
-      ) : (
-        <Text style={styles.turnTextOther}>
-          {currentPlayer?.name ?? "Someone"} is guessing & placing...
-        </Text>
-      )}
-
-      <NowPlaying error={playbackError} />
-
-      {/* Desktop: guess + timeline side by side */}
       {isMyTurn && isWide ? (
         <View style={styles.splitRow}>
-          <View style={styles.splitLeft}>
-            {!guessSubmitted ? (
-              <GuessForm onSubmit={handleGuess} disabled={false} />
-            ) : (
-              <Text style={styles.guessSubmitted}>
-                Guess submitted! Now place the song.
-              </Text>
-            )}
-            {skipButton}
-          </View>
-          <View style={styles.splitRight}>
-            <Text style={styles.sectionTitle}>Your Timeline</Text>
-            <Timeline
-              cards={myTimeline}
-              interactive
-              selectedGap={selectedGap}
-              onGapSelect={onGapSelect}
-            />
-          </View>
+          <View style={styles.splitLeft}>{guessPanel}</View>
+          <View style={styles.splitRight}>{stage}</View>
         </View>
       ) : (
         <>
-          {/* Mobile: stacked layout */}
-          {isMyTurn && !guessSubmitted && (
-            <GuessForm onSubmit={handleGuess} disabled={false} />
-          )}
-          {isMyTurn && guessSubmitted && (
-            <Text style={styles.guessSubmitted}>
-              Guess submitted! Now place the song.
-            </Text>
-          )}
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Your Timeline</Text>
-            <Timeline
-              cards={myTimeline}
-              interactive={isMyTurn}
-              selectedGap={isMyTurn ? selectedGap : null}
-              onGapSelect={isMyTurn ? onGapSelect : () => {}}
-            />
-          </View>
-
-          {isMyTurn && skipButton}
+          {stage}
+          {guessPanel}
         </>
       )}
 
@@ -126,45 +115,38 @@ export function PlayingView({ selectedGap, onGapSelect }: PlayingViewProps) {
 const styles = StyleSheet.create({
   container: {
     alignItems: "center",
-    gap: SPACE["2xl"],
+    gap: SPACE.xl,
     width: "100%",
   },
-  section: {
+  watchHint: {
+    fontSize: FONT.size.sm,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+    paddingHorizontal: SPACE.lg,
+  },
+  guessPanel: {
     width: "100%",
-    gap: SPACE.sm,
-  },
-  sectionTitle: {
-    ...LABEL_STYLE,
-    marginBottom: SPACE.xs,
-  },
-  turnText: {
-    fontSize: FONT.size.xl,
-    fontWeight: FONT.weight.bold,
-    color: COLORS.accent,
-    textAlign: "center",
-  },
-  turnTextOther: {
-    fontSize: FONT.size.xl,
-    color: COLORS.textPrimary,
-    textAlign: "center",
+    gap: SPACE.lg,
   },
   guessSubmitted: {
     fontSize: FONT.size.base,
     color: COLORS.textSecondary,
     textAlign: "center",
     fontStyle: "italic",
+    paddingVertical: SPACE.md,
   },
   splitRow: {
     flexDirection: "row",
-    gap: SPACE["2xl"],
+    gap: SPACE.xl,
     width: "100%",
+    alignItems: "flex-start",
   },
   splitLeft: {
-    flex: 1,
+    width: 320,
     gap: SPACE.lg,
   },
   splitRight: {
     flex: 1,
-    gap: SPACE.sm,
+    minWidth: 0,
   },
 });

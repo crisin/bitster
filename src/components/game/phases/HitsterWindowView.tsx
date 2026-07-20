@@ -9,8 +9,9 @@ import { Timeline } from "@/components/game/Timeline";
 import { NowPlaying } from "@/components/game/NowPlaying";
 import { BuzzerButton } from "@/components/game/BuzzerButton";
 import { PlayedSongs } from "@/components/game/PlayedSongs";
+import { Stage } from "@/components/game/Stage";
 import { AllPlayerTimelines } from "@/components/game/AllPlayerTimelines";
-import { COLORS, FONT, RADIUS, SPACE, LABEL_STYLE } from "@/utils/constants";
+import { COLORS, FONT, RADIUS, SPACE } from "@/utils/constants";
 
 interface HitsterWindowViewProps {
   buzzGap: number | null;
@@ -41,19 +42,14 @@ export function HitsterWindowView({ buzzGap, onBuzzGapSelect }: HitsterWindowVie
     haptics.medium();
   }, []);
 
+  const activeTimeline = isMyTurn ? myTimeline : (timelines[currentPlayerId ?? ""] ?? []);
+  const stageTitle = isMyTurn
+    ? "Placed! Survive the challenge…"
+    : `${currentPlayer?.name ?? "???"} placed the card`;
+
   return (
     <View style={styles.container}>
-      {isMyTurn ? (
-        <Text style={styles.turnText}>
-          Song placed! Waiting for challenges...
-        </Text>
-      ) : (
-        <Text style={styles.turnTextOther}>
-          {currentPlayer?.name ?? "Someone"} placed a song. Hitster?
-        </Text>
-      )}
-
-      {/* Guess result — shown after placing */}
+      {/* Guess feedback for the active player */}
       {guessResult && isMyTurn && (
         <View
           style={[
@@ -73,68 +69,44 @@ export function HitsterWindowView({ buzzGap, onBuzzGapSelect }: HitsterWindowVie
         </View>
       )}
 
-      <NowPlaying error={playbackError} />
+      {/* The mystery card sits in the active player's timeline, year hidden */}
+      <Stage title={stageTitle} hot={isMyTurn}>
+        <NowPlaying error={playbackError} />
+        <Timeline
+          cards={activeTimeline}
+          interactive={false}
+          selectedGap={null}
+          onGapSelect={() => {}}
+          hiddenYearSongId={currentSongId}
+        />
+      </Stage>
 
-      {/* Show active player's timeline to non-active players (year hidden) */}
-      {!isMyTurn && currentPlayerId && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            {currentPlayer?.name ?? "Player"}'s Timeline
-          </Text>
-          <Timeline
-            cards={timelines[currentPlayerId] ?? []}
-            interactive={false}
-            selectedGap={null}
-            onGapSelect={() => {}}
-            hiddenYearSongId={currentSongId ?? undefined}
-          />
+      {/* Challenge — non-active players who haven't buzzed */}
+      {!isMyTurn && !isBuzzer && buzzEnabled && !buzzerId && (
+        <View style={styles.buzzSection}>
+          <Text style={styles.buzzHint}>Think it's in the wrong spot?</Text>
+          <BuzzerButton onPress={handleBuzz} disabled={myTokens <= 0} buzzerName={null} />
         </View>
       )}
 
-      {/* Buzz button — only non-active, non-buzzer players */}
-      {!isMyTurn && !isBuzzer && buzzEnabled && !buzzerId && (
-        <BuzzerButton
-          onPress={handleBuzz}
-          disabled={myTokens <= 0}
-          buzzerName={null}
-        />
-      )}
-
-      {/* Show who buzzed */}
+      {/* Someone else buzzed */}
       {buzzerName && !isBuzzer && (
         <BuzzerButton onPress={() => {}} disabled buzzerName={buzzerName} />
       )}
 
-      {/* Buzzer places in their timeline */}
+      {/* I buzzed — place the song in MY timeline */}
       {isBuzzer && (
-        <>
-          <Text style={styles.turnText}>
-            You buzzed! Place the song in your timeline.
+        <Stage title="Your counter-move" hot>
+          <Text style={styles.buzzPlaceHint}>
+            Place the mystery song where YOU think it belongs
           </Text>
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Your Timeline</Text>
-            <Timeline
-              cards={myTimeline}
-              interactive
-              selectedGap={buzzGap}
-              onGapSelect={onBuzzGapSelect}
-            />
-          </View>
-        </>
-      )}
-
-      {/* Active player sees their own timeline (year hidden for placed song) */}
-      {isMyTurn && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Your Timeline</Text>
           <Timeline
             cards={myTimeline}
-            interactive={false}
-            selectedGap={null}
-            onGapSelect={() => {}}
-            hiddenYearSongId={currentSongId ?? undefined}
+            interactive
+            selectedGap={buzzGap}
+            onGapSelect={onBuzzGapSelect}
           />
-        </View>
+        </Stage>
       )}
 
       <AllPlayerTimelines hideCurrentYear />
@@ -147,27 +119,8 @@ export function HitsterWindowView({ buzzGap, onBuzzGapSelect }: HitsterWindowVie
 const styles = StyleSheet.create({
   container: {
     alignItems: "center",
-    gap: SPACE["2xl"],
+    gap: SPACE.xl,
     width: "100%",
-  },
-  section: {
-    width: "100%",
-    gap: SPACE.sm,
-  },
-  sectionTitle: {
-    ...LABEL_STYLE,
-    marginBottom: SPACE.xs,
-  },
-  turnText: {
-    fontSize: FONT.size.xl,
-    fontWeight: FONT.weight.bold,
-    color: COLORS.accent,
-    textAlign: "center",
-  },
-  turnTextOther: {
-    fontSize: FONT.size.xl,
-    color: COLORS.textPrimary,
-    textAlign: "center",
   },
   guessResultBanner: {
     paddingVertical: SPACE.sm,
@@ -190,5 +143,19 @@ const styles = StyleSheet.create({
     fontSize: FONT.size.md,
     fontWeight: FONT.weight.semibold,
     color: COLORS.textPrimary,
+  },
+  buzzSection: {
+    alignItems: "center",
+    gap: SPACE.xs,
+  },
+  buzzHint: {
+    fontSize: FONT.size.sm,
+    color: COLORS.textSecondary,
+  },
+  buzzPlaceHint: {
+    fontSize: FONT.size.sm,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+    paddingHorizontal: SPACE.lg,
   },
 });

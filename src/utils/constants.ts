@@ -51,6 +51,13 @@ export const SPACE = {
 } as const;
 
 // ─── Typography ─────────────────────────────────────────────────
+/**
+ * Display font for years, headings, stamps (loaded in app/_layout.tsx).
+ * Falls back to the system font until loaded — same metrics-ish, no layout jump
+ * worth guarding against.
+ */
+export const DISPLAY_FONT = "BebasNeue_400Regular";
+
 export const FONT = {
   size: {
     xs: 11,

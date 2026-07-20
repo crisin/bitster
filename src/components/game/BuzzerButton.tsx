@@ -1,7 +1,10 @@
-import React from "react";
-import { Text, View, StyleSheet } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { Text, View, StyleSheet, Animated, Easing, Platform } from "react-native";
 import { Pressable } from "@/components/ui/Pressable";
-import { COLORS, RADIUS, SPACE, FONT } from "@/utils/constants";
+import { COLORS, DISPLAY_FONT, RADIUS, SPACE, FONT } from "@/utils/constants";
+
+const NATIVE_DRIVER = Platform.OS !== "web";
+const SIZE = 132;
 
 interface BuzzerButtonProps {
   onPress: () => void;
@@ -9,7 +12,27 @@ interface BuzzerButtonProps {
   buzzerName?: string | null;
 }
 
+/** The big red-hot party buzzer. Ring pulses while a challenge is possible. */
 export function BuzzerButton({ onPress, disabled, buzzerName }: BuzzerButtonProps) {
+  const ring = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (disabled || buzzerName) return;
+    const loop = Animated.loop(
+      Animated.timing(ring, {
+        toValue: 1,
+        duration: 1400,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: NATIVE_DRIVER,
+      }),
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      ring.setValue(0);
+    };
+  }, [ring, disabled, buzzerName]);
+
   if (buzzerName) {
     return (
       <View
@@ -17,56 +40,110 @@ export function BuzzerButton({ onPress, disabled, buzzerName }: BuzzerButtonProp
         accessibilityRole="text"
         accessibilityLabel={`${buzzerName} buzzed`}
       >
-        <Text style={styles.claimedText}>
-          {buzzerName} buzzed!
-        </Text>
+        <Text style={styles.claimedBolt}>⚡</Text>
+        <Text style={styles.claimedText}>{buzzerName} buzzed!</Text>
       </View>
     );
   }
 
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      label="Hitster buzz — costs 1 star"
-      style={[styles.button, disabled && styles.disabled]}
-    >
-      <Text style={styles.label}>HITSTER! (1★)</Text>
-    </Pressable>
+    <View style={styles.wrap}>
+      {!disabled && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.pulseRing,
+            {
+              opacity: ring.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] }),
+              transform: [
+                { scale: ring.interpolate({ inputRange: [0, 1], outputRange: [1, 1.45] }) },
+              ],
+            },
+          ]}
+        />
+      )}
+      <Pressable
+        onPress={onPress}
+        disabled={disabled}
+        label="Hitster buzz — costs 1 star"
+        style={[styles.button, disabled && styles.disabled]}
+      >
+        <Text style={styles.label}>HITSTER!</Text>
+        <Text style={styles.cost}>1★</Text>
+      </Pressable>
+      {disabled && <Text style={styles.noTokens}>no ★ left to challenge</Text>}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  wrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: SPACE.sm,
+  },
+  pulseRing: {
+    position: "absolute",
+    width: SIZE,
+    height: SIZE,
+    borderRadius: SIZE / 2,
+    borderWidth: 3,
+    borderColor: COLORS.warning,
+  },
   button: {
-    paddingVertical: SPACE.md,
-    paddingHorizontal: SPACE.xl,
-    borderRadius: RADIUS.md,
-    borderWidth: 1.5,
+    width: SIZE,
+    height: SIZE,
+    borderRadius: SIZE / 2,
+    borderWidth: 3,
     borderColor: COLORS.warning,
     backgroundColor: COLORS.warningLight,
     alignItems: "center",
+    justifyContent: "center",
+    shadowColor: COLORS.warning,
+    shadowOpacity: 0.5,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 6,
   },
   disabled: {
     opacity: 0.3,
+    shadowOpacity: 0,
   },
   label: {
-    fontSize: FONT.size.base,
-    fontWeight: FONT.weight.extrabold,
+    fontFamily: DISPLAY_FONT,
+    fontSize: 26,
     color: COLORS.warning,
-    letterSpacing: FONT.tracking.widest,
+    letterSpacing: 2,
   },
-  claimedContainer: {
-    paddingVertical: SPACE.md,
-    paddingHorizontal: SPACE.xl,
-    borderRadius: RADIUS.md,
-    borderWidth: 1.5,
-    borderColor: COLORS.warning,
-    backgroundColor: COLORS.warningLight,
-    alignItems: "center",
-  },
-  claimedText: {
+  cost: {
     fontSize: FONT.size.base,
     fontWeight: FONT.weight.bold,
     color: COLORS.warning,
+    marginTop: 2,
+  },
+  noTokens: {
+    marginTop: SPACE.sm,
+    fontSize: FONT.size.sm,
+    color: COLORS.textSecondary,
+  },
+  claimedContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACE.sm,
+    paddingVertical: SPACE.md,
+    paddingHorizontal: SPACE.xl,
+    borderRadius: RADIUS.full,
+    borderWidth: 2,
+    borderColor: COLORS.warning,
+    backgroundColor: COLORS.warningLight,
+  },
+  claimedBolt: {
+    fontSize: FONT.size.xl,
+  },
+  claimedText: {
+    fontFamily: DISPLAY_FONT,
+    fontSize: FONT.size["2xl"],
+    color: COLORS.warning,
+    letterSpacing: 1.5,
   },
 });

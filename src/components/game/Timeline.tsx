@@ -1,5 +1,5 @@
 import React, { useCallback } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, ScrollView, StyleSheet } from "react-native";
 import type { Song } from "@/game/types";
 import { TimelineCard } from "./TimelineCard";
 import { TimelineGap } from "./TimelineGap";
@@ -15,6 +15,11 @@ interface TimelineProps {
   hiddenYearSongId?: string | null;
 }
 
+/**
+ * A horizontal row of upright album cards with drop slots between them —
+ * scales to any number of cards by scrolling sideways instead of growing
+ * down the page.
+ */
 export function Timeline({
   cards,
   interactive,
@@ -40,7 +45,7 @@ export function Timeline({
           selected={selectedGap === 0}
           label="Place here"
         />
-        <Text style={styles.emptyText}>Tap to place your first song</Text>
+        <Text style={styles.emptyText}>First one's free — tap to place it</Text>
       </View>
     );
   }
@@ -54,7 +59,12 @@ export function Timeline({
   }
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.scroll}
+      contentContainerStyle={styles.row}
+    >
       {interactive && (
         <TimelineGap
           onPress={() => handleGapPress(0)}
@@ -85,20 +95,30 @@ export function Timeline({
           </React.Fragment>
         );
       })}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  scroll: {
     width: "100%",
-    gap: SPACE.sm,
+    flexGrow: 0,
+  },
+  row: {
+    flexDirection: "row",
     alignItems: "center",
+    gap: SPACE.sm,
+    paddingHorizontal: SPACE.lg,
+    paddingVertical: SPACE.sm,
+    // Centers when content is narrower than the viewport; becomes a no-op
+    // (container = content width) once the row overflows and scrolls
+    flexGrow: 1,
+    justifyContent: "center",
   },
   emptyContainer: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: SPACE["3xl"],
+    paddingVertical: SPACE.xl,
     gap: SPACE.md,
   },
   emptyText: {
