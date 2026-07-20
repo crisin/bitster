@@ -334,6 +334,60 @@ export function resolveBuzz(
   };
 }
 
+/**
+ * Optimal-string-alignment distance: Levenshtein plus adjacent transpositions
+ * counting as one edit (so "teh" → "the" is 1, not 2).
+ */
+function editDistance(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+
+  let prevPrev = new Array<number>(n + 1).fill(0);
+  let prev = new Array<number>(n + 1);
+  let curr = new Array<number>(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(
+        prev[j] + 1, // deletion
+        curr[j - 1] + 1, // insertion
+        prev[j - 1] + cost, // substitution
+      );
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        curr[j] = Math.min(curr[j], prevPrev[j - 2] + 1); // transposition
+      }
+    }
+    [prevPrev, prev, curr] = [prev, curr, prevPrev];
+  }
+  return prev[n];
+}
+
+/**
+ * How many typos to forgive, based on the longer string. Short strings stay
+ * strict — with 4 characters a single edit reaches a different word entirely.
+ */
+function typoTolerance(length: number): number {
+  if (length <= 4) return 0;
+  if (length <= 8) return 1;
+  if (length <= 12) return 2;
+  return 3;
+}
+
+/** Equality with length-scaled typo tolerance on normalized strings */
+function fuzzyEquals(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (a.length === 0 || b.length === 0) return false;
+  const tolerance = typoTolerance(Math.max(a.length, b.length));
+  if (tolerance === 0) return false;
+  if (Math.abs(a.length - b.length) > tolerance) return false;
+  return editDistance(a, b) <= tolerance;
+}
+
 /** Normalize a string for fuzzy comparison: strip diacritics, lowercase, ß→ss, non-alphanum removed */
 function normalize(s: string): string {
   return s
@@ -365,20 +419,21 @@ function stripTitleSuffix(title: string): string {
     .trim();
 }
 
-/** Check if a guessed title matches the actual title (fuzzy) */
+/** Check if a guessed title matches the actual title (fuzzy, typo-tolerant) */
 function checkTitleMatch(guess: string, actual: string): boolean {
   const g = normalize(guess);
   const a = normalize(actual);
   if (g.length === 0) return false;
-  if (g === a) return true;
+  if (fuzzyEquals(g, a)) return true;
   // Try with stripped suffixes (handles remixes, feat. tags, edition labels)
   const gStripped = normalize(stripTitleSuffix(guess));
   const aStripped = normalize(stripTitleSuffix(actual));
-  if (gStripped.length > 0 && aStripped.length > 0 && gStripped === aStripped) return true;
+  if (gStripped.length > 0 && aStripped.length > 0 && fuzzyEquals(gStripped, aStripped))
+    return true;
   return false;
 }
 
-/** Check if a guessed artist matches any of the actual artists (fuzzy) */
+/** Check if a guessed artist matches any of the actual artists (fuzzy, typo-tolerant) */
 function checkArtistMatch(guess: string, actual: string): boolean {
   if (normalize(guess).length === 0) return false;
 
@@ -386,11 +441,11 @@ function checkArtistMatch(guess: string, actual: string): boolean {
   const guessParts = splitArtists(guess);
 
   if (actualParts.length === 0 || guessParts.length === 0) {
-    return normalize(guess) === normalize(actual);
+    return fuzzyEquals(normalize(guess), normalize(actual));
   }
 
-  // Any guess part exactly matches any actual part
-  if (guessParts.some((g) => actualParts.some((a) => a === g))) return true;
+  // Any guess part matches any actual part (typo-tolerant)
+  if (guessParts.some((g) => actualParts.some((a) => fuzzyEquals(g, a)))) return true;
 
   // Containment: actual artist found within a guess part (handles "eminemrihanna" containing "eminem")
   if (guessParts.some((g) => actualParts.some((a) => a.length >= 3 && g.includes(a)))) return true;

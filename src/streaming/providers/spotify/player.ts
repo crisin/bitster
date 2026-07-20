@@ -5,21 +5,58 @@ import { log } from "@/utils/logger";
 
 const API = "https://api.spotify.com/v1/me/player";
 
+const NO_DEVICE_MSG =
+  "No Spotify device found. Open the Spotify app, play any song briefly, then try again.";
+
+async function requestPlay(trackUri: string, deviceId: string | null): Promise<Response> {
+  const params = deviceId ? `?device_id=${encodeURIComponent(deviceId)}` : "";
+  return fetchWithAuth(`${API}/play${params}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uris: [trackUri] }),
+  });
+}
+
+/** Pick the device playback should go to after the current target vanished. */
+function pickFallbackDevice(devices: StreamingDevice[]): StreamingDevice | null {
+  const selected = useStreamingStore.getState().activeDevice;
+  return (
+    (selected && devices.find((d) => d.id === selected.id)) ??
+    devices.find((d) => d.isActive) ??
+    devices[0] ??
+    null
+  );
+}
+
 export const spotifyPlayer: StreamingPlayer = {
   async play(trackUri: string): Promise<void> {
     const device = useStreamingStore.getState().activeDevice;
-    const params = device ? `?device_id=${device.id}` : "";
+    let res = await requestPlay(trackUri, device?.id ?? null);
 
-    const res = await fetchWithAuth(`${API}/play${params}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ uris: [trackUri] }),
-    });
+    // 404 = no active device (Spotify Connect targets vanish after a few
+    // minutes of inactivity). Re-discover, transfer, and retry once.
+    if (res.status === 404) {
+      log.warn("spotify", "No active device (404) — re-discovering devices");
+      const devices = await spotifyPlayer.getDevices();
+      const fallback = pickFallbackDevice(devices);
+      if (!fallback) {
+        throw new Error(NO_DEVICE_MSG);
+      }
+      await spotifyPlayer.setDevice(fallback.id);
+      log.info("spotify", `Transferred playback to ${fallback.name}, retrying`);
+      res = await requestPlay(trackUri, fallback.id);
+    }
 
     if (!res.ok && res.status !== 204) {
-      const text = await res.text();
+      const text = await res.text().catch(() => "");
       log.error("spotify", `Play failed (${res.status}): ${text}`);
-      throw new Error(`Playback failed: ${res.status}`);
+      if (res.status === 404) {
+        throw new Error(NO_DEVICE_MSG);
+      }
+      if (res.status === 403) {
+        throw new Error("Spotify Premium is required for playback.");
+      }
+      throw new Error(`Playback failed (${res.status})`);
     }
 
     log.info("spotify", `Playing ${trackUri}`);
@@ -61,10 +98,16 @@ export const spotifyPlayer: StreamingPlayer = {
 
     log.info("spotify", `Found ${devices.length} device(s): ${devices.map((d) => d.name).join(", ") || "(none)"}`);
 
-    useStreamingStore.getState().setAvailableDevices(devices);
+    const store = useStreamingStore.getState();
+    store.setAvailableDevices(devices);
 
-    const active = devices.find((d) => d.isActive) ?? null;
-    useStreamingStore.getState().setActiveDevice(active);
+    // Keep the user's explicit selection as long as the device still exists —
+    // Spotify's is_active flag lags behind transfers and would un-stick it
+    const selected = store.activeDevice;
+    const stillListed = selected
+      ? devices.find((d) => d.id === selected.id) ?? null
+      : null;
+    store.setActiveDevice(stillListed ?? devices.find((d) => d.isActive) ?? null);
 
     return devices;
   },

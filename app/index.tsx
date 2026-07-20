@@ -13,7 +13,11 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ConnectButton } from "@/components/streaming/ConnectButton";
 import { COLORS, FONT, SPACE, LAYOUT } from "@/utils/constants";
-import { sanitizeRoomCodeInput, isValidRoomCode } from "@/utils/roomCode";
+import {
+  sanitizeRoomCodeInput,
+  isValidRoomCode,
+  hasAmbiguousChars,
+} from "@/utils/roomCode";
 import { generateRoomCode } from "@/game/logic";
 import { useGameStore } from "@/game/store";
 import { useStreamingStore } from "@/streaming/store";
@@ -83,7 +87,10 @@ export default function HomeScreen() {
 
   const handleRoomCodeChange = useCallback((text: string) => {
     setRoomCode(sanitizeRoomCodeInput(text));
-    setError("");
+    // Explain the "vanishing" character instead of silently dropping it
+    setError(
+      hasAmbiguousChars(text) ? "Room codes never contain 0, 1, I or O" : "",
+    );
   }, []);
 
   const handleStreamingConnect = useCallback(async () => {

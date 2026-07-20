@@ -1,30 +1,11 @@
 import { create } from "zustand";
-import type { Phase, Song, PlacementResult, GameSettings } from "./types";
+import type { GameState, GameSettings, Phase, Song, PlacementResult } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
-
-interface PlayedSongInfo {
-  name: string;
-  artist: string;
-  year: number;
-}
-
-interface PlayerInfo {
-  id: string;
-  name: string;
-  score: number;
-  timelineLength: number;
-  tokens: number;
-}
-
-interface GuessResult {
-  titleCorrect: boolean;
-  artistCorrect: boolean;
-}
 
 interface GameStore {
   roomCode: string | null;
   phase: Phase;
-  players: PlayerInfo[];
+  players: GameState["players"];
   currentPlayerId: string | null;
   currentSongUri: string | null;
   currentSongId: string | null;
@@ -33,44 +14,20 @@ interface GameStore {
   lastResult: PlacementResult | null;
   hostId: string | null;
   settings: GameSettings;
-  playedSongs: PlayedSongInfo[];
+  playedSongs: GameState["playedSongs"];
   buzzerId: string | null;
   playlistName: string | null;
-  guessResult: GuessResult | null;
+  guessResult: GameState["guessResult"];
 
   setRoomCode: (code: string | null) => void;
-  setPhase: (phase: Phase) => void;
-  setPlayers: (players: PlayerInfo[]) => void;
-  setCurrentPlayer: (id: string | null) => void;
-  setCurrentSong: (uri: string | null) => void;
-  setTimelines: (timelines: Record<string, Song[]>) => void;
-  setLastResult: (result: PlacementResult | null) => void;
-  setHostId: (id: string | null) => void;
-  setSettings: (settings: GameSettings) => void;
-  applyGameState: (state: {
-    roomCode: string;
-    phase: Phase;
-    players: PlayerInfo[];
-    currentPlayerId: string | null;
-    currentSongUri: string | null;
-    currentSongId?: string | null;
-    timelines: Record<string, Song[]>;
-    failedTimelines?: Record<string, Song[]>;
-    lastResult: PlacementResult | null;
-    hostId: string;
-    settings: GameSettings;
-    playedSongs: PlayedSongInfo[];
-    buzzerId: string | null;
-    playlistName: string | null;
-    guessResult?: GuessResult | null;
-  }) => void;
+  applyGameState: (state: GameState) => void;
   reset: () => void;
 }
 
 const initialState = {
   roomCode: null as string | null,
   phase: "lobby" as Phase,
-  players: [] as PlayerInfo[],
+  players: [] as GameState["players"],
   currentPlayerId: null as string | null,
   currentSongUri: null as string | null,
   currentSongId: null as string | null,
@@ -79,24 +36,16 @@ const initialState = {
   lastResult: null as PlacementResult | null,
   hostId: null as string | null,
   settings: DEFAULT_SETTINGS as GameSettings,
-  playedSongs: [] as PlayedSongInfo[],
+  playedSongs: [] as GameState["playedSongs"],
   buzzerId: null as string | null,
   playlistName: null as string | null,
-  guessResult: null as GuessResult | null,
+  guessResult: null as GameState["guessResult"],
 };
 
 export const useGameStore = create<GameStore>((set) => ({
   ...initialState,
 
   setRoomCode: (code) => set({ roomCode: code }),
-  setPhase: (phase) => set({ phase }),
-  setPlayers: (players) => set({ players }),
-  setCurrentPlayer: (id) => set({ currentPlayerId: id }),
-  setCurrentSong: (uri) => set({ currentSongUri: uri }),
-  setTimelines: (timelines) => set({ timelines }),
-  setLastResult: (result) => set({ lastResult: result }),
-  setHostId: (id) => set({ hostId: id }),
-  setSettings: (settings) => set({ settings }),
 
   applyGameState: (state) =>
     set({
@@ -105,16 +54,16 @@ export const useGameStore = create<GameStore>((set) => ({
       players: state.players,
       currentPlayerId: state.currentPlayerId,
       currentSongUri: state.currentSongUri,
-      currentSongId: state.currentSongId ?? null,
+      currentSongId: state.currentSongId,
       timelines: state.timelines,
-      failedTimelines: state.failedTimelines ?? {},
+      failedTimelines: state.failedTimelines,
       lastResult: state.lastResult,
       hostId: state.hostId,
       settings: state.settings,
       playedSongs: state.playedSongs,
       buzzerId: state.buzzerId,
       playlistName: state.playlistName,
-      guessResult: state.guessResult ?? null,
+      guessResult: state.guessResult,
     }),
 
   reset: () => set(initialState),

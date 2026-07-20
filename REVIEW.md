@@ -77,30 +77,68 @@ Die gemeldeten Verbindungsprobleme sind **keine Mysterien** — beide haben mehr
    "User Management" allowlisten; beide Redirect-URIs exakt registriert halten
    (`hitster://callback` nativ, `https://<domain>/auth/callback` web).
 
-### Phase 2 — Auth-Härtung (nächster Schritt)
+### Phase 2 — Auth-Härtung ✅ erledigt (20.07.2026)
 
-6. Code Verifier vor dem Browser-Hop persistieren (SecureStore) + Cold-Start-Handler im Callback-Screen (Code aus Launch-URL + State-Validierung).
-7. Single-Flight-Refresh (eine laufende Refresh-Promise, alle warten darauf); Tokens nur bei `invalid_grant` löschen, nie bei Netzwerkfehlern; Refresh proaktiv ~60 s vor Ablauf.
-8. Callback-Routen vereinheitlichen (eine Route/ein Pfad für beide Plattformen), Timeout + Fehlerzustand im Callback-Screen, Expo-Go-Erkennung mit klarer Meldung.
+6. ✅ Code Verifier + State werden **vor** dem Browser-Hop persistiert
+   (SecureStore nativ, localStorage web); `completePendingAuth()` im
+   Callback-Screen vollendet den Exchange nach App-Kill/Full-Redirect,
+   inkl. State-Validierung und 10-min-Ablauf der Pending-Session.
+7. ✅ Single-Flight-Refresh (eine geteilte Refresh-Promise); Tokens werden nur
+   noch bei `invalid_grant` gelöscht, Netzwerkfehler behalten sie; 60 s
+   Expiry-Buffer in `getAccessToken`/`restoreSession`.
+8. ✅ Eine Callback-Route für beide Plattformen (`app/auth/callback.tsx`,
+   nativ jetzt `hitster://auth/callback` — Dashboard-Eintrag nötig, sobald
+   native Builds verteilt werden); Callback-Screen mit Timeout, Fehlerzustand
+   und Home-Button; Popup-Erkennung verhindert doppelten Code-Exchange;
+   Expo Go wird erkannt und mit klarer Meldung abgelehnt.
+   Verifiziert im Browser: Cold-Start-Recovery (echter Spotify-Roundtrip),
+   State-Mismatch-Ablehnung, abgelaufene Pending-Session.
 
-### Phase 3 — Verbindungsfeinschliff
+### Phase 3 — Verbindungsfeinschliff ✅ erledigt (20.07.2026)
 
-9. AppState-Listener: Rejoin beim App-Resume anstoßen (Socket-Drop-Reconnect existiert; Resume nach langem Screen-Lock noch nicht).
-10. Raumcode-Charset angleichen (0→O, 1→I beim Input mappen, Validierung an Generierung angleichen).
-11. Host-Platzhalter-Peers aufräumen, die nie ein `join` schicken.
+9. ✅ AppState-Listener: kommt die App mit totem Socket in den Vordergrund,
+   wird sofort per `rejoin` wiederverbunden statt auf Timeouts zu warten.
+10. ✅ Raumcode: Validierung an das Generator-Charset angeglichen (kein I/O
+    mehr gültig). Da 0/1/I/O alle ausgeschlossen sind, gibt es kein sinnvolles
+    Mapping — stattdessen erklärt ein Hinweis "Room codes never contain
+    0, 1, I or O", warum das getippte Zeichen verschwindet.
+11. ✅ Host prunt Platzhalter-Peers, die 10 s lang kein `join` schicken (mit Test).
 
-### Phase 4 — Playback-Robustheit
+### Phase 4 — Playback-Robustheit ✅ erledigt (20.07.2026)
 
-12. `NO_ACTIVE_DEVICE` (404): Geräte neu holen, transferieren, einmal retrien; sonst "Öffne Spotify auf deinem Handy"-Hinweis. Playback-Fehler in den Store und an `NowPlaying.error` durchreichen.
-13. `getDevices()` darf die manuelle Auswahl nicht überschreiben; 429 mit `Retry-After`-Backoff in `fetchWithAuth`.
+12. ✅ `play()` behandelt `NO_ACTIVE_DEVICE` (404): Geräte neu holen → auf das
+    beste Gerät transferieren (manuelle Auswahl > `is_active` > erstes) → ein
+    Retry; ohne Geräte klare Meldung "Open the Spotify app, play any song
+    briefly...". Playback-Fehler landen im Streaming-Store (`playbackError`)
+    und werden in `NowPlaying` statt der Equalizer-Animation angezeigt —
+    Host- und Peer-Pfad, verifiziert im Zwei-Tab-Test.
+13. ✅ `getDevices()` behält die manuelle Geräteauswahl, solange das Gerät noch
+    existiert; `fetchWithAuth` wartet bei 429 das `Retry-After` ab (max 15 s)
+    und retried einmal.
 
-### Phase 5 — Refactoring & Hygiene
+### Phase 5 — Refactoring & Hygiene ✅ erledigt (20.07.2026)
 
-14. `connection.ts` splitten: `host.ts` (Action-Processing, Reveal, Broadcast, Playback-Orchestrierung — Host-State in Store/Klasse statt Modul-Variablen), `peer.ts` (Message-Processing, Join-Retry), `connection.ts` nur Transport. Danach Host-Flow testbar machen + Tests für `validateAction` und Stores.
-15. `app/game.tsx` in Phase-Komponenten zerlegen (`LobbyView`, `PlayingView`, …), kopierten Timeline-Block extrahieren.
-16. `game-state`-Payload strukturell validieren (statt Doppel-Cast).
-17. Aufräumen: `client/` + `server/` löschen, tote Setter/Actions entfernen, Guess-Logs sind bereits auf Debug reduziert.
-18. Docs aktualisieren: TODO.md neu schreiben, P2P_ARCHITECTURE.md/IMPLEMENTATION_PLAN.md auf Relay-Architektur nachziehen (CLAUDE.md ✅ erledigt).
+14. ✅ `connection.ts` gesplittet: `host.ts` (`HostSession`-Klasse mit injizierter
+    Send-Funktion — Host-State in der Klasse statt Modul-Variablen, dadurch
+    testbar), `peer.ts` (Host-Message-Handling via Callbacks, keine Import-Zyklen),
+    `connection.ts` nur noch Transport (~370 statt ~800 Zeilen).
+    Neue Tests: `host.test.ts` (Lobby-/Spielfluss, Join-Rejection, Pruning,
+    Antwort-Leak auf Integrationsebene) + `protocol.test.ts` — 87 Tests gesamt.
+15. ✅ `app/game.tsx` (807 → ~380 Zeilen) in Phase-Views zerlegt
+    (`components/game/phases/…`), 3× kopierter Timeline-Block →
+    `AllPlayerTimelines`. Nebenbei gefixt: doppelte "Your Timeline"-Sektion für
+    Nicht-aktive Spieler; `guessSubmitted` resettet jetzt pro Song (vorher
+    blieb es nach einem Skip hängen).
+16. ✅ `game-state` und `update-settings` werden strukturell validiert
+    (`validateGameState` — Spieler, Timelines, Songs, Settings, Ergebnisse);
+    unbekannte Felder werden gestrippt.
+17. ✅ `client/` + `server/` gelöscht (22 Legacy-Dateien), tote Store-Setter
+    entfernt (`applyGameState` nutzt jetzt den geteilten `GameState`-Typ),
+    tote Protocol-Actions entfernt (`player-joined`, `player-left`,
+    `pause-song`, `kick-player`), ungenutztes `getPlaylistTracks` entfernt.
+18. ✅ Docs: TODO.md neu geschrieben, P2P_ARCHITECTURE.md auf die
+    Relay-Architektur umgeschrieben, IMPLEMENTATION_PLAN.md als historisch
+    markiert (CLAUDE.md war bereits aktuell).
 
 ### Native Builds (separat zu entscheiden)
 

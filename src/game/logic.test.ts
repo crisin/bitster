@@ -451,6 +451,41 @@ describe("guessSongInfo — fuzzy matching", () => {
     expect(result.artistCorrect).toBe(true);
   });
 
+  it("forgives small typos in longer titles", () => {
+    const room = makeRoomWithSong("Bohemian Rhapsody", "Queen");
+    expect(guessSongInfo(room, "host-1", "Bohemian Rapsody", "Queen").titleCorrect).toBe(true);
+    expect(guessSongInfo(room, "host-1", "Bohemien Rapsody", "Queen").titleCorrect).toBe(true);
+  });
+
+  it("forgives transposed letters", () => {
+    const room = makeRoomWithSong("Blinding Lights", "The Weeknd");
+    expect(guessSongInfo(room, "host-1", "Blidning Lights", "Teh Weeknd").titleCorrect).toBe(true);
+    expect(guessSongInfo(room, "host-1", "Blidning Lights", "Teh Weeknd").artistCorrect).toBe(true);
+  });
+
+  it("forgives typos in artist names", () => {
+    const room = makeRoomWithSong("Song", "Nirvana");
+    expect(guessSongInfo(room, "host-1", "Song", "Nirvna").artistCorrect).toBe(true);
+    expect(guessSongInfo(room, "host-1", "Song", "Nirvanna").artistCorrect).toBe(true);
+  });
+
+  it("keeps short titles strict — no tolerance under 5 characters", () => {
+    const room = makeRoomWithSong("Yo", "Artist Somebody");
+    expect(guessSongInfo(room, "host-1", "No", "Artist Somebody").titleCorrect).toBe(false);
+  });
+
+  it("does not match a genuinely different title", () => {
+    const room = makeRoomWithSong("Hello", "Adele");
+    expect(guessSongInfo(room, "host-1", "Hollow", "Adele").titleCorrect).toBe(false);
+    expect(guessSongInfo(room, "host-1", "Wonderwall", "Adele").titleCorrect).toBe(false);
+  });
+
+  it("does not stretch tolerance across large length differences", () => {
+    const room = makeRoomWithSong("Smells Like Teen Spirit", "Nirvana");
+    expect(guessSongInfo(room, "host-1", "Smells", "Nirvana").titleCorrect).toBe(false);
+    expect(guessSongInfo(room, "host-1", "Smels Like Teen Spirit", "Nirvana").titleCorrect).toBe(true);
+  });
+
   it("strips remix suffix from title", () => {
     const room = makeRoomWithSong("Blinding Lights (Remix)", "The Weeknd");
     expect(guessSongInfo(room, "host-1", "Blinding Lights", "The Weeknd").titleCorrect).toBe(true);

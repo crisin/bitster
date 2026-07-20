@@ -1,11 +1,5 @@
 import React, { useState, useCallback, useEffect } from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  useWindowDimensions,
-} from "react-native";
+import { View, Text, ScrollView, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
 import { useGameStore } from "@/game/store";
@@ -16,30 +10,13 @@ import { useP2PStore } from "@/p2p/store";
 import { StatusDot } from "@/components/ui/StatusDot";
 import { Button } from "@/components/ui/Button";
 import { BottomBar } from "@/components/ui/BottomBar";
-import { Pressable } from "@/components/ui/Pressable";
-import { Timeline } from "@/components/game/Timeline";
-import { PlayerList } from "@/components/game/PlayerList";
-import { RevealCard } from "@/components/game/RevealCard";
-import { NowPlaying } from "@/components/game/NowPlaying";
-import { ScoreBoard } from "@/components/game/ScoreBoard";
-import { PlayedSongs } from "@/components/game/PlayedSongs";
-import { BuzzerButton } from "@/components/game/BuzzerButton";
-import { PlayerTimeline } from "@/components/game/PlayerTimeline";
-import { GuessForm } from "@/components/game/GuessForm";
-import { RoomCode } from "@/components/lobby/RoomCode";
-import { PlayerSlot } from "@/components/lobby/PlayerSlot";
-import { GameSettings } from "@/components/lobby/GameSettings";
-import { DeviceSelector } from "@/components/streaming/DeviceSelector";
-import { Input } from "@/components/ui/Input";
+import { LobbyView } from "@/components/game/phases/LobbyView";
+import { PlayingView } from "@/components/game/phases/PlayingView";
+import { HitsterWindowView } from "@/components/game/phases/HitsterWindowView";
+import { RevealView } from "@/components/game/phases/RevealView";
+import { FinishedView } from "@/components/game/phases/FinishedView";
 import { haptics } from "@/hooks/useHaptics";
-import {
-  COLORS,
-  FONT,
-  RADIUS,
-  SPACE,
-  LAYOUT,
-  LABEL_STYLE,
-} from "@/utils/constants";
+import { COLORS, FONT, RADIUS, SPACE, LAYOUT } from "@/utils/constants";
 
 export default function GameScreen() {
   const params = useLocalSearchParams<{
@@ -51,35 +28,17 @@ export default function GameScreen() {
   const phase = useGameStore((s) => s.phase);
   const players = useGameStore((s) => s.players);
   const lastResult = useGameStore((s) => s.lastResult);
-  const hostId = useGameStore((s) => s.hostId);
-  const currentPlayerId = useGameStore((s) => s.currentPlayerId);
-  const playedSongs = useGameStore((s) => s.playedSongs);
   const buzzerId = useGameStore((s) => s.buzzerId);
-  const settings = useGameStore((s) => s.settings);
-  const timelines = useGameStore((s) => s.timelines);
-  const failedTimelines = useGameStore((s) => s.failedTimelines);
   const playlistName = useGameStore((s) => s.playlistName);
-  const currentSongId = useGameStore((s) => s.currentSongId);
-  const guessResult = useGameStore((s) => s.guessResult);
   const connectionStatus = useConnectionStatus();
   const connectionError = useP2PStore((s) => s.lastError);
-  const { isMyTurn, isHost, myTimeline, currentPlayer, myPeerId } =
-    useCurrentPlayer();
-
-  const { width: windowWidth } = useWindowDimensions();
-  const isWide = windowWidth >= 768;
-  const myTokens = players.find((p) => p.id === myPeerId)?.tokens ?? 0;
+  const { isMyTurn, isHost, myPeerId } = useCurrentPlayer();
 
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [selectedGap, setSelectedGap] = useState<number | null>(null);
   const [buzzGap, setBuzzGap] = useState<number | null>(null);
-  const [guessSubmitted, setGuessSubmitted] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const isBuzzer = buzzerId === myPeerId;
-  const buzzerName = buzzerId
-    ? players.find((p) => p.id === buzzerId)?.name ?? null
-    : null;
-  const buzzEnabled = settings.rules?.buzz?.enabled ?? true;
+  const isBuzzer = buzzerId != null && buzzerId === myPeerId;
 
   useEffect(() => {
     return () => {
@@ -97,11 +56,9 @@ export default function GameScreen() {
     setBuzzGap(null);
   }, [buzzerId]);
 
-  // Reset guess state when a new round starts
+  // Clear gap selection when the phase moves on
   useEffect(() => {
-    if (phase === "playing") {
-      setGuessSubmitted(false);
-    }
+    setSelectedGap(null);
   }, [phase]);
 
   // In-game errors from the host ("Not your turn", ...) show as a brief toast;
@@ -127,31 +84,6 @@ export default function GameScreen() {
     haptics.medium();
   }, [selectedGap]);
 
-  const handleNextRound = useCallback(() => {
-    dispatch({ type: "next-round" });
-  }, []);
-
-  const handleStartGame = useCallback(() => {
-    dispatch({
-      type: "start-game",
-      payload: { playlistUrl: playlistUrl.trim() },
-    });
-  }, [playlistUrl]);
-
-  const handleGoHome = useCallback(() => {
-    leave();
-    router.replace("/");
-  }, []);
-
-  const handleRematch = useCallback(() => {
-    dispatch({ type: "rematch" });
-  }, []);
-
-  const handleBuzz = useCallback(() => {
-    dispatch({ type: "hitster-buzz" });
-    haptics.medium();
-  }, []);
-
   const handleBuzzGapSelect = useCallback((position: number) => {
     setBuzzGap(position);
     haptics.tap();
@@ -164,18 +96,28 @@ export default function GameScreen() {
     haptics.medium();
   }, [buzzGap]);
 
-  const handleSkipSong = useCallback(() => {
-    dispatch({ type: "skip-song" });
-    haptics.tap();
-  }, []);
+  const handleStartGame = useCallback(() => {
+    dispatch({
+      type: "start-game",
+      payload: { playlistUrl: playlistUrl.trim() },
+    });
+  }, [playlistUrl]);
 
-  const handleGuess = useCallback((title: string, artist: string) => {
-    dispatch({ type: "guess-song", payload: { title, artist } });
-    setGuessSubmitted(true);
+  const handleNextRound = useCallback(() => {
+    dispatch({ type: "next-round" });
   }, []);
 
   const handleReveal = useCallback(() => {
     dispatch({ type: "reveal-song" });
+  }, []);
+
+  const handleRematch = useCallback(() => {
+    dispatch({ type: "rematch" });
+  }, []);
+
+  const handleGoHome = useCallback(() => {
+    leave();
+    router.replace("/");
   }, []);
 
   const code = params.code ?? "";
@@ -252,336 +194,30 @@ export default function GameScreen() {
         style={styles.content}
         contentContainerStyle={styles.contentInner}
       >
-        {/* LOBBY */}
         {phase === "lobby" && (
-          <View style={styles.phaseContainer}>
-            <RoomCode code={code} />
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>
-                Players ({players.length})
-              </Text>
-              {players.map((p) => (
-                <PlayerSlot
-                  key={p.id}
-                  name={p.name}
-                  isHost={p.id === hostId}
-                  connectionStatus="connected"
-                />
-              ))}
-              {players.length === 0 && (
-                <Text style={styles.hint}>Waiting for players...</Text>
-              )}
-            </View>
-
-            <DeviceSelector />
-
-            {isHost && (
-              <>
-                <View style={styles.section}>
-                  <Input
-                    placeholder="Spotify playlist URL"
-                    label="Enter Spotify playlist URL"
-                    value={playlistUrl}
-                    onChangeText={setPlaylistUrl}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    returnKeyType="go"
-                    onSubmitEditing={handleStartGame}
-                  />
-                </View>
-                <GameSettings />
-              </>
-            )}
-
-            {!isHost && (
-              <Text style={styles.hint}>Waiting for host to start...</Text>
-            )}
-
-            <Pressable
-              onPress={handleGoHome}
-              label="Leave lobby"
-              style={styles.leaveBtn}
-            >
-              <Text style={styles.leaveLink}>Leave lobby</Text>
-            </Pressable>
-          </View>
+          <LobbyView
+            code={code}
+            playlistUrl={playlistUrl}
+            onPlaylistUrlChange={setPlaylistUrl}
+            onStartGame={handleStartGame}
+            onLeave={handleGoHome}
+          />
         )}
 
-        {/* PLAYING — active player guesses + places */}
         {phase === "playing" && (
-          <View style={styles.phaseContainer}>
-            {isMyTurn ? (
-              <Text style={styles.turnText}>
-                Your turn! Guess the song, then place it.
-              </Text>
-            ) : (
-              <Text style={styles.turnTextOther}>
-                {currentPlayer?.name ?? "Someone"} is guessing & placing...
-              </Text>
-            )}
-
-            <NowPlaying />
-
-            {/* Desktop: guess + timeline side by side */}
-            {isMyTurn && isWide ? (
-              <View style={styles.splitRow}>
-                <View style={styles.splitLeft}>
-                  {!guessSubmitted ? (
-                    <GuessForm onSubmit={handleGuess} disabled={false} />
-                  ) : (
-                    <Text style={styles.guessSubmitted}>
-                      Guess submitted! Now place the song.
-                    </Text>
-                  )}
-                  {myTokens > 0 && (
-                    <Button
-                      title={`Skip Song (costs 1★)`}
-                      onPress={handleSkipSong}
-                      variant="ghost"
-                      label="Skip this song, costs one star token"
-                    />
-                  )}
-                </View>
-                <View style={styles.splitRight}>
-                  <Text style={styles.sectionTitle}>Your Timeline</Text>
-                  <Timeline
-                    cards={myTimeline}
-                    interactive
-                    selectedGap={selectedGap}
-                    onGapSelect={handleGapSelect}
-                  />
-                </View>
-              </View>
-            ) : (
-              <>
-                {/* Mobile: stacked layout */}
-                {isMyTurn && !guessSubmitted && (
-                  <GuessForm onSubmit={handleGuess} disabled={false} />
-                )}
-                {isMyTurn && guessSubmitted && (
-                  <Text style={styles.guessSubmitted}>
-                    Guess submitted! Now place the song.
-                  </Text>
-                )}
-
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Your Timeline</Text>
-                  <Timeline
-                    cards={myTimeline}
-                    interactive={isMyTurn}
-                    selectedGap={selectedGap}
-                    onGapSelect={handleGapSelect}
-                  />
-                </View>
-
-                {isMyTurn && myTokens > 0 && (
-                  <Button
-                    title={`Skip Song (costs 1★)`}
-                    onPress={handleSkipSong}
-                    variant="ghost"
-                    label="Skip this song, costs one star token"
-                  />
-                )}
-              </>
-            )}
-
-            {/* Non-active player sees their own timeline (non-interactive) */}
-            {!isMyTurn && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Your Timeline</Text>
-                <Timeline
-                  cards={myTimeline}
-                  interactive={false}
-                  selectedGap={null}
-                  onGapSelect={() => {}}
-                />
-              </View>
-            )}
-
-            {/* All player timelines */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>All Players</Text>
-              {players.map((p) => (
-                <PlayerTimeline
-                  key={p.id}
-                  name={p.id === myPeerId ? `${p.name} (you)` : p.name}
-                  songs={timelines[p.id] ?? []}
-                  isCurrent={p.id === currentPlayerId}
-                  tokens={p.tokens}
-                  failedSongs={failedTimelines[p.id] ?? []}
-                />
-              ))}
-            </View>
-
-            <PlayedSongs songs={playedSongs} />
-          </View>
+          <PlayingView selectedGap={selectedGap} onGapSelect={handleGapSelect} />
         )}
 
-        {/* HITSTER WINDOW — song placed, year hidden, buzz opportunity */}
         {phase === "hitster-window" && (
-          <View style={styles.phaseContainer}>
-            {isMyTurn ? (
-              <Text style={styles.turnText}>
-                Song placed! Waiting for challenges...
-              </Text>
-            ) : (
-              <Text style={styles.turnTextOther}>
-                {currentPlayer?.name ?? "Someone"} placed a song. Hitster?
-              </Text>
-            )}
-
-            {/* Guess result — shown after placing */}
-            {guessResult && isMyTurn && (
-              <View
-                style={[
-                  styles.guessResultBanner,
-                  guessResult.titleCorrect && guessResult.artistCorrect
-                    ? styles.guessResultSuccess
-                    : styles.guessResultPartial,
-                ]}
-                accessibilityRole="alert"
-              >
-                <Text style={styles.guessResultText}>
-                  {guessResult.titleCorrect ? "✓ Title" : "✗ Title"}
-                  {"  "}
-                  {guessResult.artistCorrect ? "✓ Artist" : "✗ Artist"}
-                  {guessResult.titleCorrect && guessResult.artistCorrect
-                    ? "  +1★"
-                    : ""}
-                </Text>
-              </View>
-            )}
-
-            <NowPlaying />
-
-            {/* Show active player's timeline to non-active players (year hidden) */}
-            {!isMyTurn && currentPlayerId && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>
-                  {currentPlayer?.name ?? "Player"}'s Timeline
-                </Text>
-                <Timeline
-                  cards={timelines[currentPlayerId] ?? []}
-                  interactive={false}
-                  selectedGap={null}
-                  onGapSelect={() => {}}
-                  hiddenYearSongId={currentSongId}
-                />
-              </View>
-            )}
-
-            {/* Buzz button — only non-active, non-buzzer players */}
-            {!isMyTurn && !isBuzzer && buzzEnabled && !buzzerId && (
-              <BuzzerButton
-                onPress={handleBuzz}
-                disabled={myTokens <= 0}
-                buzzerName={null}
-              />
-            )}
-
-            {/* Show who buzzed */}
-            {buzzerName && !isBuzzer && (
-              <BuzzerButton
-                onPress={() => {}}
-                disabled
-                buzzerName={buzzerName}
-              />
-            )}
-
-            {/* Buzzer places in their timeline */}
-            {isBuzzer && (
-              <>
-                <Text style={styles.turnText}>
-                  You buzzed! Place the song in your timeline.
-                </Text>
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Your Timeline</Text>
-                  <Timeline
-                    cards={myTimeline}
-                    interactive
-                    selectedGap={buzzGap}
-                    onGapSelect={handleBuzzGapSelect}
-                  />
-                </View>
-              </>
-            )}
-
-            {/* Active player sees their own timeline (year hidden for placed song) */}
-            {isMyTurn && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Your Timeline</Text>
-                <Timeline
-                  cards={myTimeline}
-                  interactive={false}
-                  selectedGap={null}
-                  onGapSelect={() => {}}
-                  hiddenYearSongId={currentSongId}
-                />
-              </View>
-            )}
-
-            {/* All player timelines */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>All Players</Text>
-              {players.map((p) => (
-                <PlayerTimeline
-                  key={p.id}
-                  name={p.id === myPeerId ? `${p.name} (you)` : p.name}
-                  songs={timelines[p.id] ?? []}
-                  isCurrent={p.id === currentPlayerId}
-                  tokens={p.tokens}
-                  hiddenYearSongId={
-                    p.id === currentPlayerId ? currentSongId : undefined
-                  }
-                  failedSongs={failedTimelines[p.id] ?? []}
-                />
-              ))}
-            </View>
-
-            <PlayedSongs songs={playedSongs} />
-          </View>
+          <HitsterWindowView
+            buzzGap={buzzGap}
+            onBuzzGapSelect={handleBuzzGapSelect}
+          />
         )}
 
-        {/* REVEAL — result shown */}
-        {phase === "reveal" && lastResult && (
-          <View style={styles.phaseContainer}>
-            <RevealCard correct={lastResult.correct} song={lastResult.song} />
+        {phase === "reveal" && <RevealView />}
 
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Your Timeline</Text>
-              <Timeline
-                cards={myTimeline}
-                interactive={false}
-                selectedGap={null}
-                onGapSelect={() => {}}
-              />
-            </View>
-
-            {/* All player timelines */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>All Players</Text>
-              {players.map((p) => (
-                <PlayerTimeline
-                  key={p.id}
-                  name={p.id === myPeerId ? `${p.name} (you)` : p.name}
-                  songs={timelines[p.id] ?? []}
-                  isCurrent={p.id === currentPlayerId}
-                  tokens={p.tokens}
-                  failedSongs={failedTimelines[p.id] ?? []}
-                />
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* FINISHED */}
-        {phase === "finished" && (
-          <View style={styles.phaseContainer}>
-            <Text style={styles.gameOverTitle}>Game Over!</Text>
-            <ScoreBoard players={players} myId={myPeerId} />
-          </View>
-        )}
+        {phase === "finished" && <FinishedView />}
       </ScrollView>
 
       {/* Bottom Bar */}
@@ -749,92 +385,6 @@ const styles = StyleSheet.create({
   contentInner: {
     padding: SPACE.xl,
     paddingBottom: SPACE["4xl"],
-  },
-  phaseContainer: {
-    alignItems: "center",
-    gap: SPACE["2xl"],
-  },
-  section: {
-    width: "100%",
-    gap: SPACE.sm,
-  },
-  sectionTitle: {
-    ...LABEL_STYLE,
-    marginBottom: SPACE.xs,
-  },
-  hint: {
-    color: COLORS.textSecondary,
-    fontSize: FONT.size.base,
-    textAlign: "center",
-    paddingVertical: SPACE.sm,
-  },
-  turnText: {
-    fontSize: FONT.size.xl,
-    fontWeight: FONT.weight.bold,
-    color: COLORS.accent,
-    textAlign: "center",
-  },
-  turnTextOther: {
-    fontSize: FONT.size.xl,
-    color: COLORS.textPrimary,
-    textAlign: "center",
-  },
-  gameOverTitle: {
-    fontSize: FONT.size["6xl"],
-    fontWeight: FONT.weight.black,
-    color: COLORS.textPrimary,
-    textAlign: "center",
-  },
-  guessSubmitted: {
-    fontSize: FONT.size.base,
-    color: COLORS.textSecondary,
-    textAlign: "center",
-    fontStyle: "italic",
-  },
-  guessResultBanner: {
-    paddingVertical: SPACE.sm,
-    paddingHorizontal: SPACE.lg,
-    borderRadius: RADIUS.md,
-    width: "100%",
-    alignItems: "center",
-  },
-  guessResultSuccess: {
-    backgroundColor: COLORS.successLight,
-    borderWidth: 1,
-    borderColor: COLORS.success,
-  },
-  guessResultPartial: {
-    backgroundColor: COLORS.warningLight,
-    borderWidth: 1,
-    borderColor: COLORS.warning,
-  },
-  guessResultText: {
-    fontSize: FONT.size.md,
-    fontWeight: FONT.weight.semibold,
-    color: COLORS.textPrimary,
-  },
-  leaveBtn: {
-    minHeight: 36,
-    minWidth: 36,
-  },
-  leaveLink: {
-    fontSize: FONT.size.base,
-    color: COLORS.textSecondary,
-    opacity: 0.6,
-    marginTop: SPACE.sm,
-  },
-  splitRow: {
-    flexDirection: "row",
-    gap: SPACE["2xl"],
-    width: "100%",
-  },
-  splitLeft: {
-    flex: 1,
-    gap: SPACE.lg,
-  },
-  splitRight: {
-    flex: 1,
-    gap: SPACE.sm,
   },
   finishedButtons: {
     flexDirection: "row",

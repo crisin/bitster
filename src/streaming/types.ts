@@ -36,7 +36,6 @@ export interface StreamingPlayer {
 }
 
 export interface StreamingLibrary {
-  getPlaylistTracks(playlistId: string): Promise<Track[]>;
   getTrackAtIndex(playlistId: string, index: number): Promise<Track | null>;
   parsePlaylistUrl(url: string): string | null;
   getPlaylistMeta(playlistId: string): Promise<PlaylistMeta>;

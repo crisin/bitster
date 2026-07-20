@@ -275,7 +275,7 @@ npx tsc --noEmit                  # Type Check
 ## Nicht vergessen
 
 - Jeder Streaming-Provider braucht registrierte Redirect URIs im jeweiligen Developer Dashboard
-- Deep Links für Auth Callback: `hitster://callback` (native) / `https://domain/auth/callback` (web)
+- Deep Links für Auth Callback: `hitster://auth/callback` (native) / `https://domain/auth/callback` (web) — eine Route (`app/auth/callback.tsx`) für beide
 - **Spotify Development Mode:** max. 25 Nutzer, jeder Spieler-Account muss im Spotify
   Developer Dashboard unter "User Management" eingetragen sein — sonst 403 nach dem Login!
 - Nativ braucht der Client `EXPO_PUBLIC_RELAY_URL` (Web nimmt automatisch den eigenen Origin)

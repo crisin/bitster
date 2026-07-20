@@ -9,12 +9,15 @@ interface StreamingStore {
   tokenExpiresAt: number | null;
   activeDevice: StreamingDevice | null;
   availableDevices: StreamingDevice[];
+  /** Last playback failure on THIS client (each player sees their own) */
+  playbackError: string | null;
 
   setActiveProvider: (id: string | null) => void;
   setAuthStatus: (status: AuthStatus) => void;
   setTokenExpiry: (expiresAt: number | null) => void;
   setActiveDevice: (device: StreamingDevice | null) => void;
   setAvailableDevices: (devices: StreamingDevice[]) => void;
+  setPlaybackError: (error: string | null) => void;
   reset: () => void;
 }
 
@@ -24,6 +27,7 @@ const initialState = {
   tokenExpiresAt: null as number | null,
   activeDevice: null as StreamingDevice | null,
   availableDevices: [] as StreamingDevice[],
+  playbackError: null as string | null,
 };
 
 export const useStreamingStore = create<StreamingStore>((set) => ({
@@ -34,5 +38,6 @@ export const useStreamingStore = create<StreamingStore>((set) => ({
   setTokenExpiry: (expiresAt) => set({ tokenExpiresAt: expiresAt }),
   setActiveDevice: (device) => set({ activeDevice: device }),
   setAvailableDevices: (devices) => set({ availableDevices: devices }),
+  setPlaybackError: (error) => set({ playbackError: error }),
   reset: () => set(initialState),
 }));
