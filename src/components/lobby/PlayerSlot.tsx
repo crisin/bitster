@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { COLORS, FONT, RADIUS, SPACE } from "@/utils/constants";
+import { FONT, RADIUS, SPACE } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 import { StatusDot } from "@/components/ui/StatusDot";
 import { Pressable } from "@/components/ui/Pressable";
 import type { ConnectionStatus } from "@/p2p/store";
@@ -22,6 +23,7 @@ export function PlayerSlot({
   connectionStatus,
   onRemove,
 }: PlayerSlotProps) {
+  const styles = useStyles();
   return (
     <View
       style={styles.container}
@@ -56,7 +58,7 @@ export function PlayerSlot({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   container: {
     flexDirection: "row",
     alignItems: "center",
@@ -108,4 +110,4 @@ const styles = StyleSheet.create({
     fontSize: FONT.size.lg,
     color: COLORS.textSecondary,
   },
-});
+}));

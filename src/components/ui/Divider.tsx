@@ -1,6 +1,6 @@
 import React from "react";
 import { View, StyleSheet, type ViewStyle } from "react-native";
-import { COLORS } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 interface DividerProps {
   /** Custom color */
@@ -11,6 +11,7 @@ interface DividerProps {
 }
 
 export function Divider({ color, spacing = 0, style }: DividerProps) {
+  const styles = useStyles();
   return (
     <View
       style={[
@@ -23,10 +24,12 @@ export function Divider({ color, spacing = 0, style }: DividerProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  divider: {
-    height: 1,
-    width: "100%",
-    backgroundColor: COLORS.border,
-  },
-});
+const useStyles = createThemedStyles((COLORS) =>
+  StyleSheet.create({
+    divider: {
+      height: 1,
+      width: "100%",
+      backgroundColor: COLORS.border,
+    },
+  }),
+);

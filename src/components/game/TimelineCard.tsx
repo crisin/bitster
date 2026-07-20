@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { View, Text, Image, StyleSheet, Animated, Easing, Platform } from "react-native";
-import { COLORS, DISPLAY_FONT, FONT, RADIUS, SPACE } from "@/utils/constants";
+import { DISPLAY_FONT, FONT, RADIUS, SPACE } from "@/utils/constants";
+import { createThemedStyles, useThemeColors } from "@/theme/themedStyles";
 import type { Song } from "@/game/types";
 
 export const CARD_WIDTH = 104;
@@ -18,6 +19,7 @@ interface TimelineCardProps {
 
 /** The pulsing "?" of the mystery card */
 function MysteryMark() {
+  const styles = useStyles();
   const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -61,9 +63,12 @@ function MysteryMark() {
 export function TimelineCard({
   song,
   highlighted = false,
-  highlightColor = COLORS.success,
+  highlightColor,
   hideYear = false,
 }: TimelineCardProps) {
+  const styles = useStyles();
+  const COLORS = useThemeColors();
+  const resolvedHighlightColor = highlightColor ?? COLORS.success;
   const enter = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -85,7 +90,7 @@ export function TimelineCard({
       }
       style={[
         styles.card,
-        highlighted && { borderColor: highlightColor, borderWidth: 2 },
+        highlighted && { borderColor: resolvedHighlightColor, borderWidth: 2 },
         hideYear && styles.mysteryCard,
         {
           opacity: enter,
@@ -124,7 +129,7 @@ export function TimelineCard({
 
 const COVER_SIZE = CARD_WIDTH - SPACE.sm * 2;
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS, theme) => StyleSheet.create({
   card: {
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
@@ -148,6 +153,15 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderStyle: "dashed",
     backgroundColor: COLORS.bgElevated,
+    ...(theme.effects.glow
+      ? {
+          shadowColor: COLORS.warning,
+          shadowOpacity: 0.6,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 0 },
+          elevation: 8,
+        }
+      : {}),
   },
   cover: {
     width: COVER_SIZE,
@@ -212,4 +226,4 @@ const styles = StyleSheet.create({
     color: COLORS.warning,
     opacity: 0.8,
   },
-});
+}));

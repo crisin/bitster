@@ -1,7 +1,8 @@
 import React from "react";
 import { Text, StyleSheet } from "react-native";
 import { Pressable } from "./Pressable";
-import { COLORS, RADIUS, SPACE, FONT } from "@/utils/constants";
+import { RADIUS, SPACE, FONT } from "@/utils/constants";
+import { createThemedStyles, useThemeColors } from "@/theme/themedStyles";
 
 interface ChipProps {
   label: string;
@@ -20,8 +21,11 @@ export function Chip({
   selected = false,
   onPress,
   disabled = false,
-  activeColor = COLORS.accent,
+  activeColor,
 }: ChipProps) {
+  const styles = useStyles();
+  const COLORS = useThemeColors();
+  const resolvedActiveColor = activeColor ?? COLORS.accent;
   return (
     <Pressable
       onPress={onPress}
@@ -29,7 +33,10 @@ export function Chip({
       label={label}
       style={[
         styles.chip,
-        selected && { backgroundColor: activeColor, borderColor: activeColor },
+        selected && {
+          backgroundColor: resolvedActiveColor,
+          borderColor: resolvedActiveColor,
+        },
       ]}
     >
       <Text style={[styles.text, selected && styles.textActive]}>
@@ -39,23 +46,25 @@ export function Chip({
   );
 }
 
-const styles = StyleSheet.create({
-  chip: {
-    minHeight: 40,
-    minWidth: 40,
-    paddingVertical: SPACE.sm,
-    paddingHorizontal: SPACE.lg,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.bgCard,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  text: {
-    fontSize: FONT.size.base,
-    color: COLORS.textSecondary,
-  },
-  textActive: {
-    color: COLORS.textPrimary,
-    fontWeight: FONT.weight.semibold,
-  },
-});
+const useStyles = createThemedStyles((COLORS) =>
+  StyleSheet.create({
+    chip: {
+      minHeight: 40,
+      minWidth: 40,
+      paddingVertical: SPACE.sm,
+      paddingHorizontal: SPACE.lg,
+      borderRadius: RADIUS.md,
+      backgroundColor: COLORS.bgCard,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    text: {
+      fontSize: FONT.size.base,
+      color: COLORS.textSecondary,
+    },
+    textActive: {
+      color: COLORS.textPrimary,
+      fontWeight: FONT.weight.semibold,
+    },
+  }),
+);

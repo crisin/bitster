@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { View, Text, StyleSheet, Animated, Platform } from "react-native";
-import { COLORS, DISPLAY_FONT, FONT, RADIUS, SPACE } from "@/utils/constants";
+import { DISPLAY_FONT, FONT, RADIUS, SPACE } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 const NATIVE_DRIVER = Platform.OS !== "web";
 
@@ -54,6 +55,7 @@ function Row({
 }
 
 export function ScoreBoard({ players, myId }: ScoreBoardProps) {
+  const styles = useStyles();
   const sorted = [...players].sort((a, b) => b.score - a.score);
   const [winner, ...rest] = sorted;
 
@@ -93,7 +95,7 @@ export function ScoreBoard({ players, myId }: ScoreBoardProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   container: {
     width: "100%",
     maxWidth: 360,
@@ -164,4 +166,4 @@ const styles = StyleSheet.create({
     fontSize: FONT.size["2xl"],
     color: COLORS.textSecondary,
   },
-});
+}));

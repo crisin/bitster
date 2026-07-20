@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { View, Text, Image, StyleSheet, Animated, Easing, Platform } from "react-native";
-import { COLORS, DISPLAY_FONT, FONT, RADIUS, SPACE } from "@/utils/constants";
+import { DISPLAY_FONT, FONT, RADIUS, SPACE } from "@/utils/constants";
+import { createThemedStyles, useThemeColors } from "@/theme/themedStyles";
 import type { Song } from "@/game/types";
 
 const NATIVE_DRIVER = Platform.OS !== "web";
@@ -21,6 +22,8 @@ interface RevealCardProps {
  * verdict slams down like a rubber stamp.
  */
 export function RevealCard({ correct, song }: RevealCardProps) {
+  const styles = useStyles();
+  const COLORS = useThemeColors();
   const flip = useRef(new Animated.Value(0)).current;
   const stamp = useRef(new Animated.Value(0)).current;
   const shake = useRef(new Animated.Value(0)).current;
@@ -136,7 +139,7 @@ export function RevealCard({ correct, song }: RevealCardProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   wrap: {
     width: CARD_W,
     height: CARD_H,
@@ -223,4 +226,4 @@ const styles = StyleSheet.create({
     fontSize: 40,
     letterSpacing: 3,
   },
-});
+}));

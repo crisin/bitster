@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from "react";
 import { Text, View, StyleSheet, Animated, Easing, Platform } from "react-native";
 import { Pressable } from "@/components/ui/Pressable";
-import { COLORS, DISPLAY_FONT, RADIUS, SPACE, FONT } from "@/utils/constants";
+import { DISPLAY_FONT, RADIUS, SPACE, FONT } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 const NATIVE_DRIVER = Platform.OS !== "web";
 const SIZE = 132;
@@ -14,6 +15,7 @@ interface BuzzerButtonProps {
 
 /** The big red-hot party buzzer. Ring pulses while a challenge is possible. */
 export function BuzzerButton({ onPress, disabled, buzzerName }: BuzzerButtonProps) {
+  const styles = useStyles();
   const ring = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -76,7 +78,7 @@ export function BuzzerButton({ onPress, disabled, buzzerName }: BuzzerButtonProp
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   wrap: {
     alignItems: "center",
     justifyContent: "center",
@@ -146,4 +148,4 @@ const styles = StyleSheet.create({
     color: COLORS.warning,
     letterSpacing: 1.5,
   },
-});
+}));

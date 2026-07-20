@@ -6,9 +6,12 @@ import { useStreamingStore } from "@/streaming/store";
 import { getProvider } from "@/streaming/registry";
 import { ConnectionCheck } from "@/components/streaming/ConnectionCheck";
 import { log } from "@/utils/logger";
-import { COLORS, FONT, RADIUS, SPACE, LABEL_STYLE, TOUCH } from "@/utils/constants";
+import { FONT, RADIUS, SPACE, LABEL_STYLE, TOUCH } from "@/utils/constants";
+import { createThemedStyles, useThemeColors } from "@/theme/themedStyles";
 
 export function DeviceSelector() {
+  const styles = useStyles();
+  const COLORS = useThemeColors();
   const activeProviderId = useStreamingStore((s) => s.activeProviderId);
   const authStatus = useStreamingStore((s) => s.authStatus);
   const activeDevice = useStreamingStore((s) => s.activeDevice);
@@ -170,7 +173,7 @@ export function DeviceSelector() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   container: {
     width: "100%",
     gap: SPACE.sm,
@@ -182,6 +185,7 @@ const styles = StyleSheet.create({
   },
   label: {
     ...LABEL_STYLE,
+    color: COLORS.textSecondary,
   },
   refreshBtn: {
     minHeight: TOUCH.minHeight,
@@ -262,4 +266,4 @@ const styles = StyleSheet.create({
     fontWeight: FONT.weight.semibold,
     textTransform: "uppercase",
   },
-});
+}));

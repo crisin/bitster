@@ -5,7 +5,8 @@ import {
   type ViewStyle,
   type PressableProps as RNPressableProps,
 } from "react-native";
-import { COLORS, TOUCH } from "@/utils/constants";
+import { TOUCH } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 /** Style value that accepts conditional expressions: `[styles.a, condition && styles.b]` */
 type FlexibleStyle = ViewStyle | false | null | undefined;
@@ -38,6 +39,7 @@ export function Pressable({
   children,
   ...rest
 }: PressableProps) {
+  const styles = useStyles();
   const [focused, setFocused] = useState(false);
 
   const handleFocus = useCallback(() => setFocused(true), []);
@@ -72,20 +74,22 @@ export function Pressable({
   );
 }
 
-const styles = StyleSheet.create({
-  base: {
-    minHeight: TOUCH.minHeight,
-    minWidth: TOUCH.minWidth,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  disabled: {
-    opacity: 0.4,
-  },
-  focusRing: {
-    outlineWidth: 2,
-    outlineColor: COLORS.accent,
-    outlineStyle: "solid",
-    outlineOffset: 2,
-  } as ViewStyle,
-});
+const useStyles = createThemedStyles((COLORS) =>
+  StyleSheet.create({
+    base: {
+      minHeight: TOUCH.minHeight,
+      minWidth: TOUCH.minWidth,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    disabled: {
+      opacity: 0.4,
+    },
+    focusRing: {
+      outlineWidth: 2,
+      outlineColor: COLORS.accent,
+      outlineStyle: "solid",
+      outlineOffset: 2,
+    } as ViewStyle,
+  }),
+);

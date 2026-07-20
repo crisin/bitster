@@ -2,7 +2,8 @@ import React, { useState, useRef } from "react";
 import { View, Text, TextInput, StyleSheet } from "react-native";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { COLORS, FONT, SPACE, LABEL_STYLE } from "@/utils/constants";
+import { FONT, SPACE, LABEL_STYLE } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 interface GuessFormProps {
   onSubmit: (title: string, artist: string) => void;
@@ -10,6 +11,7 @@ interface GuessFormProps {
 }
 
 export function GuessForm({ onSubmit, disabled }: GuessFormProps) {
+  const styles = useStyles();
   const [title, setTitle] = useState("");
   const [artist, setArtist] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -64,13 +66,14 @@ export function GuessForm({ onSubmit, disabled }: GuessFormProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   container: {
     width: "100%",
     gap: SPACE.sm,
   },
   label: {
     ...LABEL_STYLE,
+    color: COLORS.textSecondary,
   },
   submitted: {
     fontSize: FONT.size.base,
@@ -78,4 +81,4 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingVertical: SPACE.sm,
   },
-});
+}));

@@ -1,0 +1,235 @@
+import React, { useEffect, useRef } from "react";
+import {
+  Animated,
+  Easing,
+  Platform,
+  StyleSheet,
+  useWindowDimensions,
+  type ViewStyle,
+} from "react-native";
+import { useTheme } from "./themedStyles";
+
+const NATIVE_DRIVER = Platform.OS !== "web";
+
+/** One emoji drifting up the screen in an endless loop */
+function Floatie({ emoji, index, width, height }: {
+  emoji: string;
+  index: number;
+  width: number;
+  height: number;
+}) {
+  const drift = useRef(new Animated.Value(0)).current;
+  // Deterministic per-index spread (same trick as the confetti)
+  const x = ((index * 173) % 100) / 100;
+  const duration = 9000 + ((index * 811) % 6000);
+  const size = 18 + ((index * 97) % 14);
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(drift, {
+        toValue: 1,
+        duration,
+        delay: index * 900,
+        easing: Easing.linear,
+        useNativeDriver: NATIVE_DRIVER,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [drift, duration, index]);
+
+  return (
+    <Animated.Text
+      style={{
+        position: "absolute",
+        left: x * Math.max(width - 40, 0),
+        fontSize: size,
+        opacity: drift.interpolate({
+          inputRange: [0, 0.1, 0.85, 1],
+          outputRange: [0, 0.5, 0.35, 0],
+        }),
+        transform: [
+          {
+            translateY: drift.interpolate({
+              inputRange: [0, 1],
+              outputRange: [height + 40, -60],
+            }),
+          },
+          {
+            translateX: drift.interpolate({
+              inputRange: [0, 0.5, 1],
+              outputRange: [0, index % 2 === 0 ? 24 : -24, 0],
+            }),
+          },
+        ],
+      }}
+    >
+      {emoji}
+    </Animated.Text>
+  );
+}
+
+/** Pulsing ambient accent light (rave) */
+function Pulse({ color }: { color: string }) {
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 420,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: NATIVE_DRIVER,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 420,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: NATIVE_DRIVER,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  return (
+    <Animated.View
+      style={[
+        StyleSheet.absoluteFillObject,
+        {
+          backgroundColor: color,
+          opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.02, 0.1] }),
+        },
+      ]}
+    />
+  );
+}
+
+const RAINBOW = [
+  "rgba(255, 60, 60, 1)",
+  "rgba(255, 200, 0, 1)",
+  "rgba(60, 255, 120, 1)",
+  "rgba(60, 180, 255, 1)",
+  "rgba(200, 60, 255, 1)",
+  "rgba(255, 60, 60, 1)",
+];
+
+/** Slow rainbow wash cycling over the whole screen (trippy) */
+function Rainbow() {
+  const cycle = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(cycle, {
+        toValue: 1,
+        duration: 9000,
+        easing: Easing.linear,
+        // Color interpolation never runs on the native driver
+        useNativeDriver: false,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [cycle]);
+
+  return (
+    <Animated.View
+      style={[
+        StyleSheet.absoluteFillObject,
+        {
+          opacity: 0.09,
+          backgroundColor: cycle.interpolate({
+            inputRange: RAINBOW.map((_, i) => i / (RAINBOW.length - 1)),
+            outputRange: RAINBOW,
+          }),
+        },
+      ]}
+    />
+  );
+}
+
+/** Projector-style brightness flicker (old film) */
+function Flicker() {
+  const flicker = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(flicker, { toValue: 1, duration: 90, useNativeDriver: NATIVE_DRIVER }),
+        Animated.timing(flicker, { toValue: 0.2, duration: 140, useNativeDriver: NATIVE_DRIVER }),
+        Animated.timing(flicker, { toValue: 0.8, duration: 70, useNativeDriver: NATIVE_DRIVER }),
+        Animated.timing(flicker, { toValue: 0, duration: 900, useNativeDriver: NATIVE_DRIVER }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [flicker]);
+
+  return (
+    <Animated.View
+      style={[
+        StyleSheet.absoluteFillObject,
+        {
+          backgroundColor: "#000",
+          opacity: flicker.interpolate({ inputRange: [0, 1], outputRange: [0, 0.08] }),
+        },
+      ]}
+    />
+  );
+}
+
+// Web-only textures — CSS gradients aren't expressible in plain RN styles
+const scanlineStyle =
+  Platform.OS === "web"
+    ? ({
+        backgroundImage:
+          "repeating-linear-gradient(0deg, rgba(0,0,0,0.25) 0px, rgba(0,0,0,0.25) 1px, transparent 1px, transparent 3px)",
+      } as unknown as ViewStyle)
+    : null;
+
+const vignetteStyle =
+  Platform.OS === "web"
+    ? ({
+        backgroundImage:
+          "radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%)",
+      } as unknown as ViewStyle)
+    : null;
+
+/**
+ * Full-screen, non-interactive effect layer. Mounted once in the root layout,
+ * above the app content — which effects render is up to the active theme.
+ */
+export function ThemeOverlay() {
+  const theme = useTheme();
+  const { width, height } = useWindowDimensions();
+  const fx = theme.effects;
+
+  const hasAny =
+    fx.pulse || fx.rainbow || fx.flicker || fx.scanlines || fx.vignette || fx.floaties;
+  if (!hasAny) return null;
+
+  return (
+    <Animated.View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+      {fx.rainbow && <Rainbow />}
+      {fx.pulse && <Pulse color={theme.colors.accent} />}
+      {fx.flicker && <Flicker />}
+      {fx.scanlines && scanlineStyle && (
+        <Animated.View style={[StyleSheet.absoluteFillObject, scanlineStyle, { opacity: 0.5 }]} />
+      )}
+      {fx.vignette && vignetteStyle && (
+        <Animated.View style={[StyleSheet.absoluteFillObject, vignetteStyle]} />
+      )}
+      {fx.floaties?.map((emoji, i) => (
+        <Floatie
+          key={`${theme.id}-${i}`}
+          emoji={emoji}
+          index={i + 1}
+          width={width}
+          height={height}
+        />
+      ))}
+    </Animated.View>
+  );
+}

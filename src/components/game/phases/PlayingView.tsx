@@ -12,7 +12,8 @@ import { GuessForm } from "@/components/game/GuessForm";
 import { PlayedSongs } from "@/components/game/PlayedSongs";
 import { Stage } from "@/components/game/Stage";
 import { AllPlayerTimelines } from "@/components/game/AllPlayerTimelines";
-import { COLORS, FONT, SPACE } from "@/utils/constants";
+import { FONT, SPACE } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 interface PlayingViewProps {
   selectedGap: number | null;
@@ -20,6 +21,7 @@ interface PlayingViewProps {
 }
 
 export function PlayingView({ selectedGap, onGapSelect }: PlayingViewProps) {
+  const styles = useStyles();
   const playedSongs = useGameStore((s) => s.playedSongs);
   const currentSongId = useGameStore((s) => s.currentSongId);
   const currentPlayerId = useGameStore((s) => s.currentPlayerId);
@@ -122,7 +124,7 @@ export function PlayingView({ selectedGap, onGapSelect }: PlayingViewProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   container: {
     alignItems: "center",
     gap: SPACE.xl,
@@ -159,4 +161,4 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-});
+}));

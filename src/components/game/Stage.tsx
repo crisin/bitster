@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { COLORS, DISPLAY_FONT, FONT, RADIUS, SPACE } from "@/utils/constants";
+import { DISPLAY_FONT, FONT, RADIUS, SPACE } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 interface StageProps {
   /** Whose timeline is in the spotlight */
@@ -15,6 +16,7 @@ interface StageProps {
  * attention while a song is being guessed and challenged.
  */
 export function Stage({ title, hot = false, children }: StageProps) {
+  const styles = useStyles();
   return (
     <View style={[styles.stage, hot && styles.stageHot]}>
       <View style={styles.marquee}>
@@ -29,7 +31,7 @@ export function Stage({ title, hot = false, children }: StageProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS, theme) => StyleSheet.create({
   stage: {
     width: "100%",
     borderRadius: RADIUS.xl,
@@ -46,6 +48,7 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 0 },
     elevation: 6,
+    ...(theme.effects.glow ? { shadowOpacity: 0.55, shadowRadius: 32 } : {}),
   },
   marquee: {
     flexDirection: "row",
@@ -69,4 +72,4 @@ const styles = StyleSheet.create({
   marqueeHot: {
     color: COLORS.accent,
   },
-});
+}));

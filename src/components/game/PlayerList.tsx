@@ -1,7 +1,8 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Pressable } from "@/components/ui/Pressable";
-import { COLORS, FONT, RADIUS, SPACE, LABEL_STYLE } from "@/utils/constants";
+import { FONT, RADIUS, SPACE, LABEL_STYLE } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 interface PlayerInfo {
   id: string;
@@ -27,6 +28,7 @@ export function PlayerList({
   onPlayerPress,
   compact = false,
 }: PlayerListProps) {
+  const styles = useStyles();
   return (
     <View style={styles.container} accessibilityRole="list">
       {!compact && (
@@ -70,10 +72,11 @@ export function PlayerList({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   container: {},
   title: {
     ...LABEL_STYLE,
+    color: COLORS.textSecondary,
     marginBottom: SPACE.sm,
   },
   item: {
@@ -126,4 +129,4 @@ const styles = StyleSheet.create({
     fontSize: FONT.size.sm,
     color: COLORS.accent,
   },
-});
+}));

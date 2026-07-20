@@ -1,7 +1,8 @@
 import React from "react";
 import { View, Text, Image, ScrollView, StyleSheet } from "react-native";
 import type { Song } from "@/game/types";
-import { COLORS, DISPLAY_FONT, FONT, RADIUS, SPACE } from "@/utils/constants";
+import { DISPLAY_FONT, FONT, RADIUS, SPACE } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 export interface MiniSong extends Song {
   failed?: boolean;
@@ -17,6 +18,7 @@ interface MiniTimelineProps {
  * in chronological order. Failed placements show crossed out.
  */
 export function MiniTimeline({ songs, hiddenYearSongId }: MiniTimelineProps) {
+  const styles = useStyles();
   if (songs.length === 0) {
     return <Text style={styles.empty}>No songs yet</Text>;
   }
@@ -66,7 +68,7 @@ export function MiniTimeline({ songs, hiddenYearSongId }: MiniTimelineProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   scroll: {
     flexGrow: 0,
   },
@@ -131,4 +133,4 @@ const styles = StyleSheet.create({
     opacity: 0.7,
     paddingVertical: SPACE.xs,
   },
-});
+}));

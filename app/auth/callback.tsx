@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/Button";
 import { useStreamingStore } from "@/streaming/store";
 import { completePendingAuth } from "@/streaming/providers/spotify/auth";
 import { log } from "@/utils/logger";
-import { COLORS, FONT, SPACE } from "@/utils/constants";
+import { FONT, SPACE } from "@/utils/constants";
+import { createThemedStyles, useThemeColors } from "@/theme/themedStyles";
 
 // Popup flow (web): posts the result back to the opener window and closes
 WebBrowser.maybeCompleteAuthSession();
@@ -23,6 +24,8 @@ function isAuthPopup(): boolean {
 }
 
 export default function AuthCallbackScreen() {
+  const styles = useStyles();
+  const COLORS = useThemeColors();
   const params = useLocalSearchParams<{
     code?: string;
     state?: string;
@@ -103,7 +106,7 @@ export default function AuthCallbackScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.bgPrimary,
@@ -127,4 +130,4 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 20,
   },
-});
+}));

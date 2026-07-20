@@ -3,7 +3,8 @@ import { View, Text, ScrollView, StyleSheet } from "react-native";
 import type { Song } from "@/game/types";
 import { TimelineCard } from "./TimelineCard";
 import { TimelineGap } from "./TimelineGap";
-import { COLORS, FONT, SPACE } from "@/utils/constants";
+import { FONT, SPACE } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 interface TimelineProps {
   cards: Song[];
@@ -29,6 +30,7 @@ export function Timeline({
   highlightColor,
   hiddenYearSongId,
 }: TimelineProps) {
+  const styles = useStyles();
   const handleGapPress = useCallback(
     (position: number) => {
       if (!interactive) return;
@@ -99,7 +101,7 @@ export function Timeline({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   scroll: {
     width: "100%",
     flexGrow: 0,
@@ -125,4 +127,4 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: FONT.size.base,
   },
-});
+}));

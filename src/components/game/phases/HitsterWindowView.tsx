@@ -12,7 +12,8 @@ import { BuzzerButton } from "@/components/game/BuzzerButton";
 import { PlayedSongs } from "@/components/game/PlayedSongs";
 import { Stage } from "@/components/game/Stage";
 import { AllPlayerTimelines } from "@/components/game/AllPlayerTimelines";
-import { COLORS, DISPLAY_FONT, FONT, RADIUS, SPACE } from "@/utils/constants";
+import { DISPLAY_FONT, FONT, RADIUS, SPACE } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 interface HitsterWindowViewProps {
   buzzGap: number | null;
@@ -40,6 +41,7 @@ function useBuzzCountdown(deadline: number | null): number | null {
 }
 
 function BuzzCountdown({ deadline }: { deadline: number | null }) {
+  const styles = useStyles();
   const remaining = useBuzzCountdown(deadline);
   if (remaining == null) return null;
 
@@ -58,6 +60,7 @@ function BuzzCountdown({ deadline }: { deadline: number | null }) {
 }
 
 export function HitsterWindowView({ buzzGap, onBuzzGapSelect }: HitsterWindowViewProps) {
+  const styles = useStyles();
   const players = useGameStore((s) => s.players);
   const buzzerId = useGameStore((s) => s.buzzerId);
   const buzzDeadline = useGameStore((s) => s.buzzDeadline);
@@ -267,6 +270,7 @@ function ChallengerStatus({
   buzzerId,
   passedIds,
 }: ChallengerStatusProps) {
+  const styles = useStyles();
   const challengers = players.filter((p) => p.id !== currentPlayerId);
   if (challengers.length === 0) return null;
 
@@ -305,7 +309,7 @@ function ChallengerStatus({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   container: {
     alignItems: "center",
     gap: SPACE.xl,
@@ -431,4 +435,4 @@ const styles = StyleSheet.create({
     color: COLORS.warning,
     fontWeight: FONT.weight.bold,
   },
-});
+}));

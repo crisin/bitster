@@ -2,7 +2,8 @@ import React, { useState } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Pressable } from "@/components/ui/Pressable";
 import { Divider } from "@/components/ui/Divider";
-import { COLORS, FONT, RADIUS, SPACE, LABEL_STYLE } from "@/utils/constants";
+import { FONT, RADIUS, SPACE, LABEL_STYLE } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 interface PlayedSongInfo {
   name: string;
@@ -15,6 +16,7 @@ interface PlayedSongsProps {
 }
 
 export function PlayedSongs({ songs }: PlayedSongsProps) {
+  const styles = useStyles();
   const [expanded, setExpanded] = useState(false);
 
   if (songs.length === 0) return null;
@@ -60,7 +62,7 @@ export function PlayedSongs({ songs }: PlayedSongsProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   container: {
     width: "100%",
     borderRadius: RADIUS.md,
@@ -79,6 +81,7 @@ const styles = StyleSheet.create({
   },
   headerText: {
     ...LABEL_STYLE,
+    color: COLORS.textSecondary,
   },
   chevron: {
     fontSize: FONT.size.xs,
@@ -112,4 +115,4 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: 1,
   },
-});
+}));

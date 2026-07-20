@@ -7,13 +7,15 @@ import {
   Platform,
 } from "react-native";
 import { Pressable } from "@/components/ui/Pressable";
-import { COLORS, FONT, RADIUS, SPACE, LABEL_STYLE, TOUCH } from "@/utils/constants";
+import { FONT, RADIUS, SPACE, LABEL_STYLE, TOUCH } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 interface RoomCodeProps {
   code: string;
 }
 
 export function RoomCode({ code }: RoomCodeProps) {
+  const styles = useStyles();
   const handleCopy = useCallback(async () => {
     if (Platform.OS === "web") {
       await navigator.clipboard.writeText(code);
@@ -63,13 +65,14 @@ export function RoomCode({ code }: RoomCodeProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   container: {
     alignItems: "center",
     gap: SPACE.sm,
   },
   label: {
     ...LABEL_STYLE,
+    color: COLORS.textSecondary,
   },
   codeRow: {
     flexDirection: "row",
@@ -101,4 +104,4 @@ const styles = StyleSheet.create({
   actionIcon: {
     fontSize: FONT.size.xl,
   },
-});
+}));

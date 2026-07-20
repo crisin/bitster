@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from "react";
 import { Text, StyleSheet, Animated, Easing, Platform } from "react-native";
 import { Pressable } from "@/components/ui/Pressable";
-import { COLORS, DISPLAY_FONT, RADIUS, FONT } from "@/utils/constants";
+import { DISPLAY_FONT, RADIUS, FONT } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 import { CARD_HEIGHT } from "./TimelineCard";
 
 const NATIVE_DRIVER = Platform.OS !== "web";
@@ -20,6 +21,7 @@ export function TimelineGap({
   disabled = false,
   label,
 }: TimelineGapProps) {
+  const styles = useStyles();
   const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -86,7 +88,7 @@ export function TimelineGap({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   slot: {
     width: 34,
     height: CARD_HEIGHT,
@@ -124,4 +126,4 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     textAlign: "center",
   },
-});
+}));

@@ -13,7 +13,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ConnectButton } from "@/components/streaming/ConnectButton";
 import { ConnectionCheck } from "@/components/streaming/ConnectionCheck";
-import { COLORS, FONT, SPACE, LAYOUT } from "@/utils/constants";
+import { FONT, SPACE, LAYOUT } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 import {
   sanitizeRoomCodeInput,
   isValidRoomCode,
@@ -28,6 +29,7 @@ import * as p2p from "@/p2p/connection";
 type Mode = "idle" | "join";
 
 export default function HomeScreen() {
+  const styles = useStyles();
   const [name, setName] = useState("");
   const [roomCode, setRoomCode] = useState("");
   const [mode, setMode] = useState<Mode>("idle");
@@ -221,7 +223,7 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: COLORS.bgPrimary,
@@ -273,4 +275,4 @@ const styles = StyleSheet.create({
   joinSection: {
     gap: SPACE.md,
   },
-});
+}));

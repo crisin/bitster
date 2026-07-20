@@ -16,9 +16,11 @@ import { HitsterWindowView } from "@/components/game/phases/HitsterWindowView";
 import { RevealView } from "@/components/game/phases/RevealView";
 import { FinishedView } from "@/components/game/phases/FinishedView";
 import { haptics } from "@/hooks/useHaptics";
-import { COLORS, FONT, RADIUS, SPACE, LAYOUT } from "@/utils/constants";
+import { FONT, RADIUS, SPACE, LAYOUT } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 export default function GameScreen() {
+  const styles = useStyles();
   const params = useLocalSearchParams<{
     code: string;
     host: string;
@@ -347,7 +349,7 @@ export default function GameScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: COLORS.bgPrimary,
@@ -455,4 +457,4 @@ const styles = StyleSheet.create({
   flex1: {
     flex: 1,
   },
-});
+}));

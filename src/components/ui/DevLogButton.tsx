@@ -2,9 +2,11 @@ import React, { useState } from "react";
 import { Text, StyleSheet, Alert, Platform } from "react-native";
 import { Pressable } from "./Pressable";
 import { log } from "@/utils/logger";
-import { COLORS, RADIUS, SPACE, FONT, TOUCH } from "@/utils/constants";
+import { RADIUS, SPACE, FONT, TOUCH } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 export function DevLogButton() {
+  const styles = useStyles();
   const [exporting, setExporting] = useState(false);
 
   const handlePress = async () => {
@@ -40,26 +42,28 @@ export function DevLogButton() {
   );
 }
 
-const styles = StyleSheet.create({
-  button: {
-    position: "absolute",
-    bottom: 100,
-    right: SPACE.lg,
-    width: TOUCH.minWidth,
-    height: TOUCH.minHeight,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.bgCard,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 9999,
-    opacity: 0.6,
-  },
-  disabled: {
-    opacity: 0.3,
-  },
-  text: {
-    fontSize: FONT.size.xl,
-  },
-});
+const useStyles = createThemedStyles((COLORS) =>
+  StyleSheet.create({
+    button: {
+      position: "absolute",
+      bottom: 100,
+      right: SPACE.lg,
+      width: TOUCH.minWidth,
+      height: TOUCH.minHeight,
+      borderRadius: RADIUS.full,
+      backgroundColor: COLORS.bgCard,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 9999,
+      opacity: 0.6,
+    },
+    disabled: {
+      opacity: 0.3,
+    },
+    text: {
+      fontSize: FONT.size.xl,
+    },
+  }),
+);

@@ -1,15 +1,21 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { COLORS, FONT, RADIUS, SPACE } from "@/utils/constants";
+import { FONT, RADIUS, SPACE } from "@/utils/constants";
+import { createThemedStyles, useThemeColors } from "@/theme/themedStyles";
+import type { ThemeColors } from "@/theme/themes";
 
 type BadgeVariant = "default" | "success" | "warning" | "error";
 
-const VARIANT_COLORS: Record<BadgeVariant, { bg: string; text: string }> = {
-  default: { bg: COLORS.accent, text: COLORS.white },
-  success: { bg: COLORS.success, text: COLORS.white },
-  warning: { bg: COLORS.warning, text: COLORS.white },
-  error: { bg: COLORS.error, text: COLORS.white },
-};
+function variantColors(
+  COLORS: ThemeColors,
+): Record<BadgeVariant, { bg: string; text: string }> {
+  return {
+    default: { bg: COLORS.accent, text: COLORS.white },
+    success: { bg: COLORS.success, text: COLORS.white },
+    warning: { bg: COLORS.warning, text: COLORS.white },
+    error: { bg: COLORS.error, text: COLORS.white },
+  };
+}
 
 interface BadgeProps {
   label: string;
@@ -20,7 +26,8 @@ interface BadgeProps {
 }
 
 export function Badge({ label, variant = "default", color }: BadgeProps) {
-  const colors = VARIANT_COLORS[variant];
+  const styles = useStyles();
+  const colors = variantColors(useThemeColors())[variant];
   const bg = color ?? colors.bg;
 
   return (
@@ -34,16 +41,18 @@ export function Badge({ label, variant = "default", color }: BadgeProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  badge: {
-    paddingHorizontal: SPACE.sm,
-    paddingVertical: 2,
-    borderRadius: RADIUS.xs,
-    alignSelf: "flex-start",
-  },
-  text: {
-    fontSize: FONT.size.xs,
-    fontWeight: FONT.weight.bold,
-    letterSpacing: FONT.tracking.wide,
-  },
-});
+const useStyles = createThemedStyles(() =>
+  StyleSheet.create({
+    badge: {
+      paddingHorizontal: SPACE.sm,
+      paddingVertical: 2,
+      borderRadius: RADIUS.xs,
+      alignSelf: "flex-start",
+    },
+    text: {
+      fontSize: FONT.size.xs,
+      fontWeight: FONT.weight.bold,
+      letterSpacing: FONT.tracking.wide,
+    },
+  }),
+);

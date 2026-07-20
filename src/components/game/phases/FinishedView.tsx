@@ -3,13 +3,15 @@ import { View, Text, StyleSheet, Animated, Easing, Platform, useWindowDimensions
 import { useGameStore } from "@/game/store";
 import { useP2PStore } from "@/p2p/store";
 import { ScoreBoard } from "@/components/game/ScoreBoard";
-import { COLORS, DISPLAY_FONT, SPACE } from "@/utils/constants";
+import { DISPLAY_FONT, SPACE } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 const NATIVE_DRIVER = Platform.OS !== "web";
 
 const CONFETTI = ["🎉", "🎵", "★", "🎶", "✦", "🎊", "♪", "★"];
 
 function ConfettiPiece({ emoji, index, width }: { emoji: string; index: number; width: number }) {
+  const styles = useStyles();
   const fall = useRef(new Animated.Value(0)).current;
   // Deterministic per-index spread so we don't need Math.random on every render
   const x = ((index * 137) % 100) / 100;
@@ -56,6 +58,7 @@ function ConfettiPiece({ emoji, index, width }: { emoji: string; index: number; 
 }
 
 export function FinishedView() {
+  const styles = useStyles();
   const players = useGameStore((s) => s.players);
   const myPeerId = useP2PStore((s) => s.myPeerId);
   const { width } = useWindowDimensions();
@@ -74,7 +77,7 @@ export function FinishedView() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   container: {
     alignItems: "center",
     gap: SPACE["2xl"],
@@ -93,4 +96,4 @@ const styles = StyleSheet.create({
     top: 0,
     fontSize: 22,
   },
-});
+}));

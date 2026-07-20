@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { View, Text, StyleSheet, Animated, Easing, Platform } from "react-native";
-import { COLORS, FONT, RADIUS, SPACE } from "@/utils/constants";
+import { FONT, RADIUS, SPACE } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 const NATIVE_DRIVER = Platform.OS !== "web";
 
@@ -10,6 +11,7 @@ interface NowPlayingProps {
 
 /** A little spinning vinyl record */
 function Vinyl() {
+  const styles = useStyles();
   const spin = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -51,6 +53,7 @@ function Vinyl() {
 }
 
 function AnimatedBar({ delay }: { delay: number }) {
+  const styles = useStyles();
   const anim = useRef(new Animated.Value(0.4)).current;
 
   useEffect(() => {
@@ -77,6 +80,7 @@ function AnimatedBar({ delay }: { delay: number }) {
 }
 
 export function NowPlaying({ error }: NowPlayingProps) {
+  const styles = useStyles();
   if (error) {
     return (
       <View style={[styles.container, styles.errorContainer]} accessibilityRole="alert">
@@ -104,7 +108,7 @@ export function NowPlaying({ error }: NowPlayingProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   container: {
     flexDirection: "row",
     alignItems: "center",
@@ -184,4 +188,4 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accent,
     borderRadius: 2,
   },
-});
+}));

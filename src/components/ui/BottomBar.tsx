@@ -1,13 +1,15 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { COLORS, SPACE } from "@/utils/constants";
+import { SPACE } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 interface BottomBarProps {
   children: React.ReactNode;
 }
 
 export function BottomBar({ children }: BottomBarProps) {
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
 
   return (
@@ -22,12 +24,14 @@ export function BottomBar({ children }: BottomBarProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    backgroundColor: COLORS.bgPrimary,
-    paddingHorizontal: SPACE.xl,
-    paddingTop: SPACE.md,
-  },
-});
+const useStyles = createThemedStyles((COLORS) =>
+  StyleSheet.create({
+    container: {
+      borderTopWidth: 1,
+      borderTopColor: COLORS.border,
+      backgroundColor: COLORS.bgPrimary,
+      paddingHorizontal: SPACE.xl,
+      paddingTop: SPACE.md,
+    },
+  }),
+);

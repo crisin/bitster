@@ -1,14 +1,17 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
-import { COLORS } from "@/utils/constants";
+import { createThemedStyles, useThemeColors } from "@/theme/themedStyles";
+import type { ThemeColors } from "@/theme/themes";
 import type { ConnectionStatus } from "@/p2p/store";
 
-const STATUS_COLORS: Record<ConnectionStatus, string> = {
-  connected: COLORS.success,
-  connecting: COLORS.warning,
-  disconnected: COLORS.textSecondary,
-  error: COLORS.error,
-};
+function statusColors(COLORS: ThemeColors): Record<ConnectionStatus, string> {
+  return {
+    connected: COLORS.success,
+    connecting: COLORS.warning,
+    disconnected: COLORS.textSecondary,
+    error: COLORS.error,
+  };
+}
 
 const STATUS_LABELS: Record<ConnectionStatus, string> = {
   connected: "Connected",
@@ -23,6 +26,8 @@ interface StatusDotProps {
 }
 
 export function StatusDot({ status, size = 10 }: StatusDotProps) {
+  const styles = useStyles();
+  const STATUS_COLORS = statusColors(useThemeColors());
   return (
     <View
       accessibilityRole="text"
@@ -40,6 +45,8 @@ export function StatusDot({ status, size = 10 }: StatusDotProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  dot: {},
-});
+const useStyles = createThemedStyles(() =>
+  StyleSheet.create({
+    dot: {},
+  }),
+);

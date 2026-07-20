@@ -12,7 +12,8 @@ import { RoomCode } from "@/components/lobby/RoomCode";
 import { PlayerSlot } from "@/components/lobby/PlayerSlot";
 import { GameSettings } from "@/components/lobby/GameSettings";
 import { DeviceSelector } from "@/components/streaming/DeviceSelector";
-import { COLORS, FONT, RADIUS, SPACE, LABEL_STYLE } from "@/utils/constants";
+import { FONT, RADIUS, SPACE, LABEL_STYLE } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 interface LobbyViewProps {
   code: string;
@@ -33,6 +34,7 @@ export function LobbyView({
   onStartGame,
   onLeave,
 }: LobbyViewProps) {
+  const styles = useStyles();
   const players = useGameStore((s) => s.players);
   const hostId = useGameStore((s) => s.hostId);
   const playlistName = useGameStore((s) => s.playlistName);
@@ -221,7 +223,7 @@ export function LobbyView({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   container: {
     alignItems: "center",
     gap: SPACE["2xl"],
@@ -232,6 +234,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...LABEL_STYLE,
+    color: COLORS.textSecondary,
     marginBottom: SPACE.xs,
   },
   hint: {
@@ -314,4 +317,4 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     marginTop: SPACE.sm,
   },
-});
+}));

@@ -7,7 +7,9 @@ import { useStreamingStore } from "@/streaming/store";
 import { getProvider } from "@/streaming/registry";
 import type { DiagnosticCheck } from "@/streaming/types";
 import { log } from "@/utils/logger";
-import { COLORS, FONT, RADIUS, SPACE } from "@/utils/constants";
+import { FONT, RADIUS, SPACE } from "@/utils/constants";
+import { createThemedStyles, useThemeColors } from "@/theme/themedStyles";
+import type { ThemeColors } from "@/theme/themes";
 
 const STATUS_ICON: Record<DiagnosticCheck["status"], string> = {
   ok: "✓",
@@ -15,11 +17,15 @@ const STATUS_ICON: Record<DiagnosticCheck["status"], string> = {
   fail: "✗",
 };
 
-const STATUS_COLOR: Record<DiagnosticCheck["status"], string> = {
-  ok: COLORS.success,
-  warn: COLORS.warning,
-  fail: COLORS.error,
-};
+function statusColors(
+  COLORS: ThemeColors,
+): Record<DiagnosticCheck["status"], string> {
+  return {
+    ok: COLORS.success,
+    warn: COLORS.warning,
+    fail: COLORS.error,
+  };
+}
 
 /**
  * Collapsible "is my Spotify actually working?" panel: which account is
@@ -27,6 +33,9 @@ const STATUS_COLOR: Record<DiagnosticCheck["status"], string> = {
  * Includes a copyable report (for sending to the host) and a full reconnect.
  */
 export function ConnectionCheck() {
+  const styles = useStyles();
+  const COLORS = useThemeColors();
+  const STATUS_COLOR = statusColors(COLORS);
   const activeProviderId = useStreamingStore((s) => s.activeProviderId);
   const authStatus = useStreamingStore((s) => s.authStatus);
   const account = useStreamingStore((s) => s.account);
@@ -174,7 +183,7 @@ export function ConnectionCheck() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   toggle: {
     minHeight: 36,
     alignItems: "center",
@@ -265,4 +274,4 @@ const styles = StyleSheet.create({
   flex1: {
     flex: 1,
   },
-});
+}));

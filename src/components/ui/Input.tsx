@@ -7,7 +7,8 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from "react-native";
-import { COLORS, FONT, RADIUS, SPACE, LAYOUT } from "@/utils/constants";
+import { FONT, RADIUS, SPACE, LAYOUT } from "@/utils/constants";
+import { createThemedStyles, useThemeColors } from "@/theme/themedStyles";
 
 interface InputProps extends Omit<TextInputProps, "style"> {
   /** Validation error message */
@@ -20,6 +21,8 @@ interface InputProps extends Omit<TextInputProps, "style"> {
 
 export const Input = forwardRef<TextInput, InputProps>(
   ({ error, label, style, placeholder, ...props }, ref) => {
+    const styles = useStyles();
+    const COLORS = useThemeColors();
     const [focused, setFocused] = useState(false);
 
     const handleFocus = useCallback(
@@ -62,35 +65,37 @@ export const Input = forwardRef<TextInput, InputProps>(
 
 Input.displayName = "Input";
 
-const styles = StyleSheet.create({
-  container: {
-    width: "100%",
-  },
-  input: {
-    width: "100%",
-    height: LAYOUT.inputHeight,
-    minHeight: LAYOUT.inputHeight,
-    paddingHorizontal: SPACE.lg,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.bgCard,
-    color: COLORS.textPrimary,
-    fontSize: FONT.size.lg,
-  },
-  inputFocused: {
-    borderColor: COLORS.borderFocused,
-    outlineWidth: 2,
-    outlineColor: COLORS.accent,
-    outlineStyle: "solid",
-    outlineOffset: 1,
-  } as ViewStyle,
-  inputError: {
-    borderColor: COLORS.error,
-  },
-  errorText: {
-    color: COLORS.error,
-    fontSize: FONT.size.sm,
-    marginTop: SPACE.xs,
-  },
-});
+const useStyles = createThemedStyles((COLORS) =>
+  StyleSheet.create({
+    container: {
+      width: "100%",
+    },
+    input: {
+      width: "100%",
+      height: LAYOUT.inputHeight,
+      minHeight: LAYOUT.inputHeight,
+      paddingHorizontal: SPACE.lg,
+      borderRadius: RADIUS.md,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.bgCard,
+      color: COLORS.textPrimary,
+      fontSize: FONT.size.lg,
+    },
+    inputFocused: {
+      borderColor: COLORS.borderFocused,
+      outlineWidth: 2,
+      outlineColor: COLORS.accent,
+      outlineStyle: "solid",
+      outlineOffset: 1,
+    } as ViewStyle,
+    inputError: {
+      borderColor: COLORS.error,
+    },
+    errorText: {
+      color: COLORS.error,
+      fontSize: FONT.size.sm,
+      marginTop: SPACE.xs,
+    },
+  }),
+);

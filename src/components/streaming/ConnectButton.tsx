@@ -2,7 +2,8 @@ import React, { useEffect } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Pressable } from "@/components/ui/Pressable";
 import { Button } from "@/components/ui/Button";
-import { COLORS, FONT, SPACE } from "@/utils/constants";
+import { FONT, SPACE } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 import { useStreamingStore } from "@/streaming/store";
 import { getProvider } from "@/streaming/registry";
 
@@ -19,6 +20,7 @@ export function ConnectButton({
   onConnect,
   onDisconnect,
 }: ConnectButtonProps) {
+  const styles = useStyles();
   const authStatus = useStreamingStore((s) => s.authStatus);
   const activeProviderId = useStreamingStore((s) => s.activeProviderId);
   const account = useStreamingStore((s) => s.account);
@@ -71,7 +73,7 @@ export function ConnectButton({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   connected: {
     alignItems: "center",
     gap: SPACE.xs,
@@ -104,4 +106,4 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     opacity: 0.7,
   },
-});
+}));

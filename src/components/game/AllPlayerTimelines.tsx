@@ -3,7 +3,8 @@ import { View, Text, StyleSheet } from "react-native";
 import { useGameStore } from "@/game/store";
 import { useP2PStore } from "@/p2p/store";
 import { MiniTimeline, type MiniSong } from "./MiniTimeline";
-import { COLORS, DISPLAY_FONT, FONT, RADIUS, SPACE, LABEL_STYLE } from "@/utils/constants";
+import { DISPLAY_FONT, FONT, RADIUS, SPACE, LABEL_STYLE } from "@/utils/constants";
+import { createThemedStyles } from "@/theme/themedStyles";
 
 interface AllPlayerTimelinesProps {
   /** Hide the year of the current player's freshly placed card (hitster-window) */
@@ -12,6 +13,7 @@ interface AllPlayerTimelinesProps {
 
 /** Compact rail of every player: name, score, tokens, mini timeline. */
 export function AllPlayerTimelines({ hideCurrentYear = false }: AllPlayerTimelinesProps) {
+  const styles = useStyles();
   const players = useGameStore((s) => s.players);
   const timelines = useGameStore((s) => s.timelines);
   const failedTimelines = useGameStore((s) => s.failedTimelines);
@@ -68,13 +70,14 @@ export function AllPlayerTimelines({ hideCurrentYear = false }: AllPlayerTimelin
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   section: {
     width: "100%",
     gap: SPACE.sm,
   },
   sectionTitle: {
     ...LABEL_STYLE,
+    color: COLORS.textSecondary,
     marginBottom: SPACE.xs,
   },
   rail: {
@@ -136,4 +139,4 @@ const styles = StyleSheet.create({
     fontSize: FONT.size.sm,
     color: COLORS.textSecondary,
   },
-});
+}));
