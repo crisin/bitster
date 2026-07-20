@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Pressable } from "@/components/ui/Pressable";
 import { Button } from "@/components/ui/Button";
 import { COLORS, FONT, SPACE } from "@/utils/constants";
 import { useStreamingStore } from "@/streaming/store";
+import { getProvider } from "@/streaming/registry";
 
 interface ConnectButtonProps {
   providerName: string;
@@ -19,6 +20,16 @@ export function ConnectButton({
   onDisconnect,
 }: ConnectButtonProps) {
   const authStatus = useStreamingStore((s) => s.authStatus);
+  const activeProviderId = useStreamingStore((s) => s.activeProviderId);
+  const account = useStreamingStore((s) => s.account);
+
+  // Show WHICH account is connected — with Duo/Family the wrong login is
+  // the most common cause of "I have Premium but it says I don't"
+  useEffect(() => {
+    if (authStatus !== "authenticated" || account) return;
+    const provider = activeProviderId ? getProvider(activeProviderId) : undefined;
+    void provider?.diagnostics?.loadAccount();
+  }, [authStatus, account, activeProviderId]);
 
   if (authStatus === "authenticated") {
     return (
@@ -26,9 +37,14 @@ export function ConnectButton({
         <View style={styles.connectedRow}>
           <View style={[styles.dot, { backgroundColor: providerColor }]} />
           <Text style={[styles.text, { color: providerColor }]}>
-            {providerName} connected
+            {account
+              ? `${providerName}: ${account.name}${account.product ? ` · ${account.product}` : ""}`
+              : `${providerName} connected`}
           </Text>
         </View>
+        {account?.email != null && (
+          <Text style={styles.accountEmail}>{account.email}</Text>
+        )}
         <Pressable
           onPress={onDisconnect}
           label={`Disconnect ${providerName}`}
@@ -74,6 +90,10 @@ const styles = StyleSheet.create({
   text: {
     fontSize: FONT.size.base,
     fontWeight: FONT.weight.medium,
+  },
+  accountEmail: {
+    fontSize: FONT.size.sm,
+    color: COLORS.textSecondary,
   },
   disconnectBtn: {
     minHeight: 36,

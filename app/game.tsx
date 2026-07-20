@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useEffect } from "react";
-import { View, Text, ScrollView, StyleSheet } from "react-native";
+import React, { useState, useCallback, useEffect, useRef } from "react";
+import { View, Text, ScrollView, StyleSheet, Alert, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams, router } from "expo-router";
+import { useLocalSearchParams, useNavigation, router } from "expo-router";
 import { useGameStore } from "@/game/store";
 import { useCurrentPlayer } from "@/hooks/useCurrentPlayer";
 import { useConnectionStatus } from "@/hooks/useConnectionStatus";
@@ -32,19 +32,66 @@ export default function GameScreen() {
   const playlistName = useGameStore((s) => s.playlistName);
   const connectionStatus = useConnectionStatus();
   const connectionError = useP2PStore((s) => s.lastError);
-  const { isMyTurn, isHost, myPeerId } = useCurrentPlayer();
+  const { isMyTurn, isHost, actsForCurrent, actingId, controlsBuzzer, buzzActingId } =
+    useCurrentPlayer();
 
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [selectedGap, setSelectedGap] = useState<number | null>(null);
   const [buzzGap, setBuzzGap] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const isBuzzer = buzzerId != null && buzzerId === myPeerId;
+
+  const navigation = useNavigation();
+  // Set once the user confirmed leaving (or used an in-app leave button)
+  const leaveConfirmed = useRef(false);
+  const inActiveRoom = connectionStatus !== "error" && phase !== "finished";
 
   useEffect(() => {
     return () => {
       leave();
     };
   }, []);
+
+  // Back button / back gesture: confirm before dropping out of a live room
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
+      if (leaveConfirmed.current || !inActiveRoom) return;
+      e.preventDefault();
+      const proceed = () => {
+        leaveConfirmed.current = true;
+        navigation.dispatch(e.data.action);
+      };
+      if (Platform.OS === "web") {
+        if (window.confirm("Leave the game? You'll be removed from the room.")) {
+          proceed();
+        } else if (params.code) {
+          // The browser already popped the URL — push the game URL back
+          const url =
+            `/game?code=${encodeURIComponent(params.code)}` +
+            `&host=${encodeURIComponent(params.host ?? "false")}` +
+            `&name=${encodeURIComponent(params.name ?? "")}`;
+          window.history.pushState(null, "", url);
+        }
+      } else {
+        Alert.alert("Leave the game?", "You'll be removed from the room.", [
+          { text: "Stay", style: "cancel" },
+          { text: "Leave", style: "destructive", onPress: proceed },
+        ]);
+      }
+    });
+    return unsubscribe;
+  }, [navigation, inActiveRoom, params.code, params.host, params.name]);
+
+  // Tab close / reload on web: native browser confirmation
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+    if (!inActiveRoom) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [inActiveRoom]);
 
   useEffect(() => {
     if (lastResult) {
@@ -78,23 +125,29 @@ export default function GameScreen() {
   }, []);
 
   const handleConfirmPlacement = useCallback(() => {
-    if (selectedGap === null) return;
-    dispatch({ type: "place-song", payload: { position: selectedGap } });
+    if (selectedGap === null || actingId == null) return;
+    dispatch({ type: "place-song", payload: { position: selectedGap } }, { as: actingId });
     setSelectedGap(null);
     haptics.medium();
-  }, [selectedGap]);
+  }, [selectedGap, actingId]);
 
-  const handleBuzzGapSelect = useCallback((position: number) => {
-    setBuzzGap(position);
-    haptics.tap();
-  }, []);
+  const handleBuzzGapSelect = useCallback(
+    (position: number) => {
+      if (buzzActingId == null) return;
+      setBuzzGap(position);
+      // Provisional pick — the host locks it in if the buzz timer runs out
+      dispatch({ type: "buzz-select", payload: { position } }, { as: buzzActingId });
+      haptics.tap();
+    },
+    [buzzActingId],
+  );
 
   const handleConfirmBuzzPlacement = useCallback(() => {
-    if (buzzGap === null) return;
-    dispatch({ type: "buzz-place", payload: { position: buzzGap } });
+    if (buzzGap === null || buzzActingId == null) return;
+    dispatch({ type: "buzz-place", payload: { position: buzzGap } }, { as: buzzActingId });
     setBuzzGap(null);
     haptics.medium();
-  }, [buzzGap]);
+  }, [buzzGap, buzzActingId]);
 
   const handleStartGame = useCallback(() => {
     dispatch({
@@ -116,6 +169,7 @@ export default function GameScreen() {
   }, []);
 
   const handleGoHome = useCallback(() => {
+    leaveConfirmed.current = true;
     leave();
     router.replace("/");
   }, []);
@@ -227,30 +281,36 @@ export default function GameScreen() {
             title="Start Game"
             onPress={handleStartGame}
             disabled={players.length < 2}
+            cooldownMs={2000}
             label="Start the game"
           />
         )}
 
-        {phase === "playing" && isMyTurn && selectedGap !== null && (
+        {phase === "playing" && actsForCurrent && selectedGap !== null && (
           <Button
             title="Place Here"
             onPress={handleConfirmPlacement}
+            cooldownMs={1500}
             label="Confirm song placement"
           />
         )}
 
-        {phase === "hitster-window" && isBuzzer && buzzGap !== null && (
+        {phase === "hitster-window" && controlsBuzzer && buzzGap !== null && (
           <Button
             title="Place Here"
             onPress={handleConfirmBuzzPlacement}
+            cooldownMs={1500}
             label="Confirm buzz placement"
           />
         )}
 
-        {phase === "hitster-window" && !isBuzzer && (isMyTurn || isHost) && (
+        {/* No reveal while a Hitster challenge is running — the buzzer's
+            countdown decides when the window closes */}
+        {phase === "hitster-window" && buzzerId == null && (isMyTurn || isHost) && (
           <Button
             title="Reveal →"
             onPress={handleReveal}
+            cooldownMs={1500}
             label="Reveal the song year"
           />
         )}
@@ -259,6 +319,7 @@ export default function GameScreen() {
           <Button
             title="Next Round →"
             onPress={handleNextRound}
+            cooldownMs={1500}
             label="Start next round"
           />
         )}
@@ -275,6 +336,7 @@ export default function GameScreen() {
             <Button
               title="Rematch"
               onPress={handleRematch}
+              cooldownMs={2000}
               style={styles.flex1}
               label="Start a new game with same players"
             />

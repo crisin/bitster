@@ -25,10 +25,12 @@ export function PlayingView({ selectedGap, onGapSelect }: PlayingViewProps) {
   const currentPlayerId = useGameStore((s) => s.currentPlayerId);
   const timelines = useGameStore((s) => s.timelines);
   const playbackError = useStreamingStore((s) => s.playbackError);
-  const { isMyTurn, myTimeline, currentPlayer, me } = useCurrentPlayer();
+  const { isMyTurn, currentPlayer, actsForCurrent, actingId } = useCurrentPlayer();
   const { width: windowWidth } = useWindowDimensions();
   const isWide = windowWidth >= 900;
-  const myTokens = me?.tokens ?? 0;
+  // Tokens of whoever is placing — with pass-and-play that can be a local
+  // player on this device, not "me"
+  const actingTokens = actsForCurrent ? currentPlayer?.tokens ?? 0 : 0;
 
   const [guessSubmitted, setGuessSubmitted] = useState(false);
 
@@ -37,33 +39,40 @@ export function PlayingView({ selectedGap, onGapSelect }: PlayingViewProps) {
     setGuessSubmitted(false);
   }, [currentSongId]);
 
-  const handleGuess = useCallback((title: string, artist: string) => {
-    dispatch({ type: "guess-song", payload: { title, artist } });
-    setGuessSubmitted(true);
-  }, []);
+  const handleGuess = useCallback(
+    (title: string, artist: string) => {
+      if (actingId == null) return;
+      dispatch({ type: "guess-song", payload: { title, artist } }, { as: actingId });
+      setGuessSubmitted(true);
+    },
+    [actingId],
+  );
 
   const handleSkipSong = useCallback(() => {
-    dispatch({ type: "skip-song" });
+    if (actingId == null) return;
+    dispatch({ type: "skip-song" }, { as: actingId });
     haptics.tap();
-  }, []);
+  }, [actingId]);
 
   // The stage always shows the ACTIVE player's timeline — that's what
   // everyone needs to see to follow the round (and plan a Hitster!)
-  const stageTimeline = isMyTurn ? myTimeline : (timelines[currentPlayerId ?? ""] ?? []);
+  const stageTimeline = timelines[currentPlayerId ?? ""] ?? [];
   const stageTitle = isMyTurn
     ? "You're on stage"
-    : `${currentPlayer?.name ?? "???"} is on stage`;
+    : actsForCurrent
+      ? `${currentPlayer?.name ?? "???"} is on stage — this device!`
+      : `${currentPlayer?.name ?? "???"} is on stage`;
 
   const stage = (
-    <Stage title={stageTitle} hot={isMyTurn}>
+    <Stage title={stageTitle} hot={actsForCurrent}>
       <NowPlaying error={playbackError} />
       <Timeline
         cards={stageTimeline}
-        interactive={isMyTurn}
-        selectedGap={isMyTurn ? selectedGap : null}
-        onGapSelect={isMyTurn ? onGapSelect : () => {}}
+        interactive={actsForCurrent}
+        selectedGap={actsForCurrent ? selectedGap : null}
+        onGapSelect={actsForCurrent ? onGapSelect : () => {}}
       />
-      {!isMyTurn && (
+      {!actsForCurrent && (
         <Text style={styles.watchHint}>
           Listen along — know where it belongs? Get ready to HITSTER!
         </Text>
@@ -71,20 +80,21 @@ export function PlayingView({ selectedGap, onGapSelect }: PlayingViewProps) {
     </Stage>
   );
 
-  const guessPanel = isMyTurn && (
+  const guessPanel = actsForCurrent && (
     <View style={styles.guessPanel}>
       {!guessSubmitted ? (
-        <GuessForm onSubmit={handleGuess} disabled={false} />
+        <GuessForm key={`${currentSongId}-${actingId}`} onSubmit={handleGuess} disabled={false} />
       ) : (
         <Text style={styles.guessSubmitted}>
-          Guess locked in! Now place the song in your timeline.
+          Guess locked in! Now place the song in the timeline.
         </Text>
       )}
-      {myTokens > 0 && (
+      {actingTokens > 0 && (
         <Button
           title={`Skip Song (costs 1★)`}
           onPress={handleSkipSong}
           variant="ghost"
+          cooldownMs={2000}
           label="Skip this song, costs one star token"
         />
       )}
@@ -93,7 +103,7 @@ export function PlayingView({ selectedGap, onGapSelect }: PlayingViewProps) {
 
   return (
     <View style={styles.container}>
-      {isMyTurn && isWide ? (
+      {actsForCurrent && isWide ? (
         <View style={styles.splitRow}>
           <View style={styles.splitLeft}>{guessPanel}</View>
           <View style={styles.splitRight}>{stage}</View>

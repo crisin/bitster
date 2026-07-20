@@ -188,7 +188,10 @@ Dieses Projekt wird **vollständig KI-gestützt** entwickelt. Keine manuellen Ze
 ## Spielablauf
 
 1. **Home:** Spieler gibt Namen ein, erstellt oder joint Raum (6-Zeichen-Code)
-2. **Lobby:** Host gibt Spotify-Playlist ein, alle connecten Spotify via PKCE
+2. **Lobby:** Host gibt Spotify-Playlist ein, alle connecten Spotify via PKCE.
+   Host kann zusätzlich **lokale Spieler** anlegen (Pass-and-Play am Host-Gerät,
+   `Player.isLocal`); das Host-Gerät steuert deren Züge/Buzzes via `dispatch(action, { as: localId })`.
+   Online-Peers können keine lokalen Spieler haben.
 3. **Playing:** Song spielt auf allen Geräten, aktiver Spieler platziert in Timeline
 4. **Reveal:** Ergebnis wird gezeigt (richtig/falsch), nächste Runde
 5. **Finished:** Gewinner wird angezeigt, Rematch-Option
@@ -278,6 +281,12 @@ npx tsc --noEmit                  # Type Check
 - Deep Links für Auth Callback: `hitster://auth/callback` (native) / `https://domain/auth/callback` (web) — eine Route (`app/auth/callback.tsx`) für beide
 - **Spotify Development Mode:** max. 25 Nutzer, jeder Spieler-Account muss im Spotify
   Developer Dashboard unter "User Management" eingetragen sein — sonst 403 nach dem Login!
+  Es zählt die exakte Mail des Spotify-Accounts (bei Duo/Family bzw. Google/Facebook-Signup
+  oft nicht die erwartete) — der "Spotify check" in der App zeigt den verbundenen Account.
+- **Spotify Redirect-URIs (seit Nov 2025):** nur HTTPS oder Loopback-IP erlaubt, `localhost`
+  wird abgelehnt. Web-Dev deshalb über `http://127.0.0.1:5173` öffnen und
+  `http://127.0.0.1:5173/auth/callback` im Dashboard registrieren (Login wirft sonst eine
+  entsprechende Fehlermeldung).
 - Nativ braucht der Client `EXPO_PUBLIC_RELAY_URL` (Web nimmt automatisch den eigenen Origin)
 - Das Dockerfile kopiert `node_modules/ws` explizit ins Runtime-Image (kein npm ci dort)
 - iOS: Background Audio läuft über die jeweilige Streaming-App, nicht über die Hitster-App

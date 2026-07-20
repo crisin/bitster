@@ -9,11 +9,16 @@ import type {
 
 export type P2PAction =
   | { type: "join"; payload: { name: string } }
+  | { type: "add-local-player"; payload: { name: string } }
+  | { type: "remove-local-player"; payload: { playerId: string } }
   | { type: "game-state"; payload: GameState }
   | { type: "start-game"; payload: { playlistUrl: string } }
   | { type: "place-song"; payload: { position: number } }
   | { type: "hitster-buzz" }
+  | { type: "hitster-pass" }
+  | { type: "buzz-select"; payload: { position: number } }
   | { type: "buzz-place"; payload: { position: number } }
+  | { type: "set-playlist"; payload: { playlistUrl: string } }
   | { type: "guess-song"; payload: { title: string; artist: string } }
   | { type: "skip-song" }
   | { type: "next-round" }
@@ -113,12 +118,14 @@ function parsePlayers(v: unknown): GameState["players"] | null {
     ) {
       return null;
     }
+    if (item.isLocal !== undefined && typeof item.isLocal !== "boolean") return null;
     players.push({
       id: item.id,
       name: item.name,
       score: item.score,
       timelineLength: item.timelineLength,
       tokens: item.tokens,
+      isLocal: item.isLocal === true,
     });
   }
   return players;
@@ -126,10 +133,20 @@ function parsePlayers(v: unknown): GameState["players"] | null {
 
 function parseRules(v: unknown): GameRules | null {
   if (!isObject(v) || !isObject(v.buzz)) return null;
-  const { enabled, penalty } = v.buzz;
+  const { enabled, penalty, timerSeconds } = v.buzz;
   if (typeof enabled !== "boolean") return null;
   if (penalty !== "none" && penalty !== "lose-point") return null;
-  return { buzz: { enabled, penalty } };
+  // Tolerate older hosts that don't send a timer yet
+  if (timerSeconds !== undefined && (!isFiniteInt(timerSeconds) || timerSeconds <= 0)) {
+    return null;
+  }
+  return {
+    buzz: {
+      enabled,
+      penalty,
+      timerSeconds: timerSeconds === undefined ? 30 : (timerSeconds as number),
+    },
+  };
 }
 
 function parseSettings(v: unknown): GameSettings | null {
@@ -187,10 +204,27 @@ export function validateGameState(v: unknown): GameState | null {
     !isStringOrNull(v.currentSongUri ?? null) ||
     !isStringOrNull(v.currentSongId ?? null) ||
     !isStringOrNull(v.buzzerId ?? null) ||
-    !isStringOrNull(v.playlistName ?? null)
+    !isStringOrNull(v.playlistName ?? null) ||
+    !isStringOrNull(v.playlistImageUrl ?? null)
   ) {
     return null;
   }
+
+  const rawDeadline = v.buzzDeadline ?? null;
+  if (rawDeadline !== null && !isFiniteInt(rawDeadline)) return null;
+  const buzzDeadline = rawDeadline as number | null;
+
+  const rawPassed = v.passedIds ?? [];
+  if (!Array.isArray(rawPassed)) return null;
+  const passedIds: string[] = [];
+  for (const id of rawPassed) {
+    if (!isNonEmptyString(id)) return null;
+    passedIds.push(id);
+  }
+
+  const rawTrackCount = v.playlistTrackCount ?? 0;
+  if (!isNonNegativeInt(rawTrackCount)) return null;
+  const playlistTrackCount = rawTrackCount;
 
   const players = parsePlayers(v.players);
   const timelines = parseTimelines(v.timelines);
@@ -236,7 +270,11 @@ export function validateGameState(v: unknown): GameState | null {
     settings,
     playedSongs,
     buzzerId: (v.buzzerId ?? null) as string | null,
+    buzzDeadline,
+    passedIds,
     playlistName: (v.playlistName ?? null) as string | null,
+    playlistImageUrl: (v.playlistImageUrl ?? null) as string | null,
+    playlistTrackCount,
     guessResult,
   };
 }
@@ -250,6 +288,14 @@ export function validateAction(data: unknown): P2PAction | null {
     case "join":
       if (!isObject(p) || !isNonEmptyString(p.name)) return null;
       return { type: "join", payload: { name: p.name } };
+
+    case "add-local-player":
+      if (!isObject(p) || !isNonEmptyString(p.name)) return null;
+      return { type: "add-local-player", payload: { name: p.name } };
+
+    case "remove-local-player":
+      if (!isObject(p) || !isNonEmptyString(p.playerId)) return null;
+      return { type: "remove-local-player", payload: { playerId: p.playerId } };
 
     case "game-state": {
       const state = validateGameState(p);
@@ -268,9 +314,20 @@ export function validateAction(data: unknown): P2PAction | null {
     case "hitster-buzz":
       return { type: "hitster-buzz" };
 
+    case "hitster-pass":
+      return { type: "hitster-pass" };
+
+    case "buzz-select":
+      if (!isObject(p) || !isNonNegativeInt(p.position)) return null;
+      return { type: "buzz-select", payload: { position: p.position } };
+
     case "buzz-place":
       if (!isObject(p) || !isNonNegativeInt(p.position)) return null;
       return { type: "buzz-place", payload: { position: p.position } };
+
+    case "set-playlist":
+      if (!isObject(p) || typeof p.playlistUrl !== "string") return null;
+      return { type: "set-playlist", payload: { playlistUrl: p.playlistUrl } };
 
     case "guess-song":
       if (!isObject(p) || typeof p.title !== "string" || typeof p.artist !== "string") return null;

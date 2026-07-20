@@ -28,6 +28,9 @@ export class HostSession {
   private pendingResult: PlacementResult | null = null;
   private pendingGuessResult: GuessOutcome | null = null;
   private placeholderTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private buzzTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Gap the buzzer has provisionally selected — auto-locked in on timeout */
+  private pendingBuzzPosition: number | null = null;
 
   constructor(
     private readonly send: SendFn,
@@ -43,6 +46,7 @@ export class HostSession {
       clearTimeout(timer);
     }
     this.placeholderTimers.clear();
+    this.clearBuzzTimer();
   }
 
   /** A peer's socket connected — track it and show them the room is alive */
@@ -84,7 +88,8 @@ export class HostSession {
     this.room = logic.removePlayer(this.room, peerId);
 
     if (wasBuzzer) {
-      this.room = { ...this.room, buzzerId: null };
+      this.clearBuzzTimer();
+      this.room = { ...this.room, buzzerId: null, buzzDeadline: null };
     }
 
     // Not enough players to continue
@@ -112,6 +117,12 @@ export class HostSession {
       return;
     }
 
+    // The departure may have satisfied the "everyone passed" condition
+    if (this.room.phase === "hitster-window" && logic.allChallengersPassed(this.room)) {
+      this.doRevealSong(null);
+      return;
+    }
+
     this.broadcastState();
   }
 
@@ -128,18 +139,52 @@ export class HostSession {
           break;
         }
 
+        case "add-local-player": {
+          // Pass-and-play: extra players on the host's device. Only the host
+          // may manage them (online peers play on their own connection).
+          if (fromPeerId !== this.room.hostId) return;
+          const localId = `local-${Math.random().toString(36).slice(2, 10)}`;
+          this.room = logic.addPlayer(this.room, localId, action.payload.name, true);
+          this.broadcastState();
+          break;
+        }
+
+        case "remove-local-player": {
+          if (fromPeerId !== this.room.hostId) return;
+          if (this.room.phase !== "lobby") return;
+          const target = this.room.players.find(
+            (p) => p.id === action.payload.playerId,
+          );
+          if (!target?.isLocal) return;
+          this.room = logic.removePlayer(this.room, target.id);
+          this.broadcastState();
+          break;
+        }
+
         case "start-game": {
           if (fromPeerId !== this.room.hostId) return;
           this.pendingGuessResult = null;
-          const meta = await this.resolvePlaylist(action.payload.playlistUrl);
+          // Prefer the playlist already checked in the lobby; fall back to
+          // resolving the URL in the payload (older clients / direct start)
+          const stored = this.room.playlistId
+            ? {
+                playlistId: this.room.playlistId,
+                name: this.room.playlistName ?? "Playlist",
+                trackCount: this.room.playlistTrackCount,
+                imageUrl: this.room.playlistImageUrl,
+              }
+            : null;
+          const meta = stored ?? (await this.resolvePlaylist(action.payload.playlistUrl));
           if (meta) {
             // Lazy loading — only fetch meta, songs loaded on demand
             this.room = logic.startGame(
               this.room, [], meta.name, meta.playlistId, meta.trackCount,
             );
+            this.room = { ...this.room, playlistImageUrl: meta.imageUrl };
           } else {
             // No provider or URL — fallback to mock
             this.room = logic.startGame(this.room, getMockPlaylist(), "Demo Playlist");
+            this.room = { ...this.room, playlistImageUrl: null };
           }
           const picked = await this.pickAndPlayNextSong();
           if (!picked) {
@@ -240,8 +285,40 @@ export class HostSession {
         case "hitster-buzz": {
           // Other players can Hitster during hitster-window (before year is revealed)
           if (this.room.phase !== "hitster-window") return;
-          this.room = logic.handleBuzz(this.room, fromPeerId);
+          const buzzed = logic.handleBuzz(this.room, fromPeerId);
+          if (buzzed.buzzerId === fromPeerId && this.room.buzzerId !== fromPeerId) {
+            // Buzz accepted — start the lock-in countdown
+            const timerMs = buzzed.settings.rules.buzz.timerSeconds * 1000;
+            this.room = { ...buzzed, buzzDeadline: Date.now() + timerMs };
+            this.pendingBuzzPosition = null;
+            this.clearBuzzTimer();
+            this.buzzTimer = setTimeout(() => this.handleBuzzTimeout(), timerMs);
+          } else {
+            this.room = buzzed;
+          }
           this.broadcastState();
+          break;
+        }
+
+        case "hitster-pass": {
+          if (this.room.phase !== "hitster-window") return;
+          const passed = logic.recordPass(this.room, fromPeerId);
+          if (passed === this.room) return;
+          this.room = passed;
+          if (logic.allChallengersPassed(this.room)) {
+            // Everyone waved it through — straight to the reveal
+            this.doRevealSong(null);
+          } else {
+            this.broadcastState();
+          }
+          break;
+        }
+
+        case "buzz-select": {
+          // Buzzer picked a gap (not yet confirmed) — locked in on timeout
+          if (this.room.phase !== "hitster-window") return;
+          if (this.room.buzzerId !== fromPeerId) return;
+          this.pendingBuzzPosition = action.payload.position;
           break;
         }
 
@@ -258,9 +335,38 @@ export class HostSession {
 
         case "reveal-song": {
           if (this.room.phase !== "hitster-window") return;
+          if (this.room.buzzerId) {
+            this.sendError("A Hitster challenge is running", fromPeerId);
+            return;
+          }
           const currentForReveal = logic.getCurrentPlayer(this.room);
           if (fromPeerId !== currentForReveal?.id && fromPeerId !== this.room.hostId) return;
           this.doRevealSong(null);
+          break;
+        }
+
+        case "set-playlist": {
+          // Host checked a playlist URL in the lobby — resolve + share with everyone
+          if (fromPeerId !== this.room.hostId) return;
+          if (this.room.phase !== "lobby") return;
+          const url = action.payload.playlistUrl.trim();
+          const playlistMeta = url ? await this.resolvePlaylist(url) : null;
+          this.room = playlistMeta
+            ? {
+                ...this.room,
+                playlistName: playlistMeta.name,
+                playlistImageUrl: playlistMeta.imageUrl,
+                playlistId: playlistMeta.playlistId,
+                playlistTrackCount: playlistMeta.trackCount,
+              }
+            : {
+                ...this.room,
+                playlistName: null,
+                playlistImageUrl: null,
+                playlistId: null,
+                playlistTrackCount: 0,
+              };
+          this.broadcastState();
           break;
         }
 
@@ -278,6 +384,8 @@ export class HostSession {
           if (fromPeerId !== this.room.hostId) return;
           this.pendingGuessResult = null;
           this.pendingResult = null;
+          this.clearBuzzTimer();
+          this.pendingBuzzPosition = null;
           this.room = {
             ...this.room,
             phase: "lobby",
@@ -286,6 +394,8 @@ export class HostSession {
             currentSong: null,
             currentPlayerIndex: 0,
             buzzerId: null,
+            buzzDeadline: null,
+            passedIds: [],
             players: this.room.players.map((p) => ({
               ...p,
               score: 0,
@@ -340,6 +450,8 @@ export class HostSession {
    */
   private doRevealSong(buzzPosition: number | null): void {
     if (!this.pendingResult) return;
+    this.clearBuzzTimer();
+    this.pendingBuzzPosition = null;
 
     const currentPlayer = logic.getCurrentPlayer(this.room);
 
@@ -359,22 +471,51 @@ export class HostSession {
         this.room = { ...this.room, buzzerId: null };
       } else {
         // Active player wrong — resolve buzzer's placement
-        const { room: buzzRoom } = logic.resolveBuzz(this.room, buzzPosition);
-        this.room = buzzRoom;
+        try {
+          const { room: buzzRoom } = logic.resolveBuzz(this.room, buzzPosition);
+          this.room = buzzRoom;
+        } catch (err) {
+          // Invalid position (e.g. stale provisional pick) — buzz forfeits
+          logger.warn("p2p", `Buzz resolution failed: ${err}`);
+          this.room = { ...this.room, buzzerId: null };
+        }
       }
     }
 
     // Transition to reveal
-    this.room = { ...this.room, phase: "reveal", buzzerId: null };
+    this.room = { ...this.room, phase: "reveal", buzzerId: null, buzzDeadline: null };
     this.broadcastState(this.pendingResult);
     this.pendingResult = null;
+  }
+
+  /** The buzzer's countdown ran out — lock in their provisional pick or forfeit */
+  private handleBuzzTimeout(): void {
+    this.buzzTimer = null;
+    if (this.room.phase !== "hitster-window" || !this.room.buzzerId) return;
+    logger.info(
+      "p2p",
+      `Buzz timer expired — ${this.pendingBuzzPosition !== null ? "locking in provisional pick" : "forfeiting"}`,
+    );
+    this.doRevealSong(this.pendingBuzzPosition);
+  }
+
+  private clearBuzzTimer(): void {
+    if (this.buzzTimer) {
+      clearTimeout(this.buzzTimer);
+      this.buzzTimer = null;
+    }
   }
 
   // -- Streaming Integration --
 
   private async resolvePlaylist(
     playlistUrl: string,
-  ): Promise<{ playlistId: string; name: string; trackCount: number } | null> {
+  ): Promise<{
+    playlistId: string;
+    name: string;
+    trackCount: number;
+    imageUrl: string | null;
+  } | null> {
     const providerId = useStreamingStore.getState().activeProviderId;
     const provider = providerId ? getProvider(providerId) : null;
 
@@ -387,7 +528,12 @@ export class HostSession {
       const meta = await provider.library.getPlaylistMeta(playlistId);
       if (meta.trackCount === 0) return null;
       logger.info("p2p", `Playlist "${meta.name}" — ${meta.trackCount} tracks (lazy loading)`);
-      return { playlistId, name: meta.name, trackCount: meta.trackCount };
+      return {
+        playlistId,
+        name: meta.name,
+        trackCount: meta.trackCount,
+        imageUrl: meta.imageUrl,
+      };
     } catch (err) {
       logger.error("p2p", `Playlist meta failed: ${err}`);
       return null;

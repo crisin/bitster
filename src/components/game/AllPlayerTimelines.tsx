@@ -40,7 +40,7 @@ export function AllPlayerTimelines({ hideCurrentYear = false }: AllPlayerTimelin
                   numberOfLines={1}
                 >
                   {p.name}
-                  {p.id === myPeerId ? " (you)" : ""}
+                  {p.id === myPeerId ? " (you)" : p.isLocal ? " (local)" : ""}
                 </Text>
               </View>
               <View style={styles.railRight}>

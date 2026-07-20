@@ -3,6 +3,7 @@ import { registerProvider } from "@/streaming/registry";
 import { spotifyAuth, restoreSession } from "./auth";
 import { spotifyPlayer } from "./player";
 import { spotifyLibrary } from "./playlist";
+import { spotifyDiagnostics } from "./diagnostics";
 
 export const spotifyProvider: StreamingProvider = {
   id: "spotify",
@@ -12,6 +13,7 @@ export const spotifyProvider: StreamingProvider = {
   auth: spotifyAuth,
   player: spotifyPlayer,
   library: spotifyLibrary,
+  diagnostics: spotifyDiagnostics,
 };
 
 export function initSpotify(): void {

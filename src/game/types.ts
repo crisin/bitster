@@ -17,19 +17,26 @@ export interface Player {
   tokens: number;
   /** Songs the player placed incorrectly (removed during reveal) */
   failedSongs: Song[];
+  /** Plays on the host's device (pass-and-play) instead of their own connection */
+  isLocal: boolean;
 }
 
 export interface BuzzRules {
   enabled: boolean;
   penalty: "none" | "lose-point";
+  /** Seconds the buzzer has to lock in their placement */
+  timerSeconds: number;
 }
 
 export interface GameRules {
   buzz: BuzzRules;
 }
 
+export const BUZZ_TIMER_OPTIONS = [15, 30, 45, 60] as const;
+export const DEFAULT_BUZZ_TIMER_SECONDS = 30;
+
 export const DEFAULT_RULES: GameRules = {
-  buzz: { enabled: true, penalty: "none" },
+  buzz: { enabled: true, penalty: "none", timerSeconds: DEFAULT_BUZZ_TIMER_SECONDS },
 };
 
 export interface GameSettings {
@@ -55,7 +62,12 @@ export interface Room {
   phase: Phase;
   settings: GameSettings;
   buzzerId: string | null;
+  /** Epoch ms until which the buzzer may lock in — null when no buzz is running */
+  buzzDeadline: number | null;
+  /** Players who declared "no Hitster" for the current window */
+  passedIds: string[];
   playlistName: string | null;
+  playlistImageUrl: string | null;
   // Lazy loading — fetch songs on demand instead of loading entire playlist
   playlistId: string | null;
   playlistTrackCount: number;
@@ -73,6 +85,7 @@ export interface PlayerState {
   score: number;
   timelineLength: number;
   tokens: number;
+  isLocal: boolean;
 }
 
 export interface GameState {
@@ -90,6 +103,10 @@ export interface GameState {
   settings: GameSettings;
   playedSongs: { name: string; artist: string; year: number }[];
   buzzerId: string | null;
+  buzzDeadline: number | null;
+  passedIds: string[];
   playlistName: string | null;
+  playlistImageUrl: string | null;
+  playlistTrackCount: number;
   guessResult: { titleCorrect: boolean; artistCorrect: boolean } | null;
 }

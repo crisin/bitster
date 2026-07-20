@@ -107,11 +107,10 @@ export function TimelineCard({
         </View>
       )}
 
-      <Text style={[styles.year, hideYear && styles.mysteryYear]}>
-        {hideYear ? "19??" : song.year}
-      </Text>
+      {/* The year IS the secret — the mystery card shows none at all */}
+      {!hideYear && <Text style={styles.year}>{song.year}</Text>}
 
-      <View style={styles.info}>
+      <View style={[styles.info, hideYear && styles.infoMystery]}>
         <Text style={[styles.title, hideYear && styles.mysteryText]} numberOfLines={1}>
           {hideYear ? "· · ·" : song.name}
         </Text>
@@ -189,12 +188,14 @@ const styles = StyleSheet.create({
     marginTop: SPACE.xs,
     letterSpacing: 1,
   },
-  mysteryYear: {
-    color: COLORS.warning,
-  },
   info: {
     width: "100%",
     alignItems: "center",
+  },
+  // No year line on the mystery card — center the hint text in the free space
+  infoMystery: {
+    flex: 1,
+    justifyContent: "center",
   },
   title: {
     fontSize: FONT.size.xs,

@@ -14,6 +14,8 @@ interface SpotifyTrack {
     id: string;
     uri: string;
     name: string;
+    is_playable?: boolean;
+    is_local?: boolean;
     artists: { name: string }[];
     album: {
       release_date: string;
@@ -28,8 +30,13 @@ function extractYear(releaseDate: string): number {
 
 export const spotifyLibrary: StreamingLibrary = {
   async getTrackAtIndex(playlistId: string, index: number): Promise<Track | null> {
+    // market=from_token relinks region-locked tracks and fills is_playable —
+    // without it Spotify happily returns tracks the account cannot play
+    // ("Spotify can't play this file"), which then stall the round.
+    const fields =
+      "items(track(id,uri,name,is_playable,is_local,artists(name),album(release_date,images)))";
     const res = await fetchWithAuth(
-      `${API}/playlists/${playlistId}/tracks?fields=items(track(id,uri,name,artists(name),album(release_date,images)))&offset=${index}&limit=1`,
+      `${API}/playlists/${playlistId}/tracks?fields=${fields}&market=from_token&offset=${index}&limit=1`,
     );
     if (!res.ok) throw new Error(`Fetch track at index ${index} failed: ${res.status}`);
 
@@ -38,6 +45,7 @@ export const spotifyLibrary: StreamingLibrary = {
     if (items.length === 0 || !items[0].track || !items[0].track.id) return null;
 
     const t = items[0].track;
+    if (t.is_local === true || t.is_playable === false) return null;
     const year = extractYear(t.album.release_date);
     if (isNaN(year)) return null;
 

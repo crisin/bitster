@@ -1,6 +1,7 @@
 import type { StreamingPlayer, StreamingDevice } from "@/streaming/types";
 import { useStreamingStore } from "@/streaming/store";
 import { fetchWithAuth } from "./auth";
+import { friendly403 } from "./errors";
 import { log } from "@/utils/logger";
 
 const API = "https://api.spotify.com/v1/me/player";
@@ -54,7 +55,8 @@ export const spotifyPlayer: StreamingPlayer = {
         throw new Error(NO_DEVICE_MSG);
       }
       if (res.status === 403) {
-        throw new Error("Spotify Premium is required for playback.");
+        // The body distinguishes "no Premium" from "not allow-listed" (dev mode)
+        throw new Error(friendly403(text));
       }
       throw new Error(`Playback failed (${res.status})`);
     }
@@ -78,10 +80,7 @@ export const spotifyPlayer: StreamingPlayer = {
       log.error("spotify", `Get devices failed (${res.status}): ${text}`);
 
       if (res.status === 403) {
-        throw new Error(
-          "SPOTIFY_403: Spotify Premium is required for playback control. " +
-          "If you have Premium, try reconnecting your account (your token may have outdated permissions).",
-        );
+        throw new Error(`SPOTIFY_403: ${friendly403(text)}`);
       }
       throw new Error(`Get devices failed: ${res.status}`);
     }

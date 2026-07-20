@@ -111,6 +111,72 @@ describe("HostSession — lobby", () => {
   });
 });
 
+describe("HostSession — local players (pass-and-play)", () => {
+  it("adds and removes local players, host only", async () => {
+    const session = makeSession();
+    await session.handleAction({ type: "join", payload: { name: "Bob" } }, "peer-2");
+
+    // Peers may not manage local players
+    await session.handleAction(
+      { type: "add-local-player", payload: { name: "Sneaky" } },
+      "peer-2",
+    );
+    expect(lastBroadcastState().players).toHaveLength(2);
+
+    await session.handleAction(
+      { type: "add-local-player", payload: { name: "Karl" } },
+      "host-1",
+    );
+    const withKarl = lastBroadcastState();
+    expect(withKarl.players).toHaveLength(3);
+    const karl = withKarl.players.find((p) => p.name === "Karl");
+    expect(karl?.isLocal).toBe(true);
+
+    await session.handleAction(
+      { type: "remove-local-player", payload: { playerId: karl!.id } },
+      "host-1",
+    );
+    expect(lastBroadcastState().players).toHaveLength(2);
+  });
+
+  it("refuses to remove an online player via remove-local-player", async () => {
+    const session = makeSession();
+    await session.handleAction({ type: "join", payload: { name: "Bob" } }, "peer-2");
+    await session.handleAction(
+      { type: "remove-local-player", payload: { playerId: "peer-2" } },
+      "host-1",
+    );
+    expect(lastBroadcastState().players).toHaveLength(2);
+  });
+
+  it("lets a local player take a full turn", async () => {
+    const session = makeSession();
+    await session.handleAction(
+      { type: "add-local-player", payload: { name: "Karl" } },
+      "host-1",
+    );
+    const karlId = lastBroadcastState().players.find((p) => p.name === "Karl")!.id;
+    await startDemoGame(session);
+
+    // Round 1: host plays through
+    await session.handleAction({ type: "place-song", payload: { position: 0 } }, "host-1");
+    await session.handleAction({ type: "reveal-song" }, "host-1");
+    await session.handleAction({ type: "next-round" }, "host-1");
+
+    // Round 2: the local player is on turn — actions arrive AS the local id
+    expect(lastBroadcastState().currentPlayerId).toBe(karlId);
+    await session.handleAction({ type: "place-song", payload: { position: 0 } }, karlId);
+    expect(lastBroadcastState().phase).toBe("hitster-window");
+    await session.handleAction({ type: "reveal-song" }, "host-1");
+    const reveal = lastBroadcastState();
+    expect(reveal.phase).toBe("reveal");
+    expect(reveal.timelines[karlId]).toHaveLength(1);
+
+    await session.handleAction({ type: "next-round" }, "host-1");
+    expect(lastBroadcastState().currentPlayerId).toBe("peer-2");
+  });
+});
+
 describe("HostSession — game flow", () => {
   it("starts the demo game and hides the current song from playedSongs", async () => {
     const session = makeSession();
@@ -186,6 +252,62 @@ describe("HostSession — game flow", () => {
 
     session.handlePeerLeft("peer-2");
     expect(lastBroadcastState().phase).toBe("finished");
+  });
+
+  it("blocks reveal-song while a Hitster challenge is running", async () => {
+    const session = makeSession();
+    await startDemoGame(session);
+    await session.handleAction({ type: "place-song", payload: { position: 0 } }, "host-1");
+    await session.handleAction({ type: "hitster-buzz" }, "peer-2");
+
+    const buzzState = lastBroadcastState();
+    expect(buzzState.buzzerId).toBe("peer-2");
+    expect(buzzState.buzzDeadline).not.toBeNull();
+
+    await session.handleAction({ type: "reveal-song" }, "host-1");
+    expect(lastBroadcastState().phase).toBe("hitster-window");
+    session.destroy();
+  });
+
+  it("forfeits the buzz when the timer expires without a pick", async () => {
+    vi.useFakeTimers();
+    const session = makeSession();
+    await startDemoGame(session);
+    await session.handleAction({ type: "place-song", payload: { position: 0 } }, "host-1");
+    await session.handleAction({ type: "hitster-buzz" }, "peer-2");
+
+    vi.advanceTimersByTime(31_000);
+    const state = lastBroadcastState();
+    expect(state.phase).toBe("reveal");
+    expect(state.buzzerId).toBeNull();
+    // The wasted token stays spent
+    expect(state.players.find((p) => p.id === "peer-2")?.tokens).toBe(1);
+    session.destroy();
+  });
+
+  it("resolves the challenge immediately on buzz-place", async () => {
+    const session = makeSession();
+    await startDemoGame(session);
+    await session.handleAction({ type: "place-song", payload: { position: 0 } }, "host-1");
+    await session.handleAction({ type: "hitster-buzz" }, "peer-2");
+    await session.handleAction({ type: "buzz-place", payload: { position: 0 } }, "peer-2");
+
+    const state = lastBroadcastState();
+    expect(state.phase).toBe("reveal");
+    expect(state.buzzerId).toBeNull();
+    session.destroy();
+  });
+
+  it("auto-reveals once every challenger passed", async () => {
+    const session = makeSession();
+    await startDemoGame(session);
+    await session.handleAction({ type: "place-song", payload: { position: 0 } }, "host-1");
+    await session.handleAction({ type: "hitster-pass" }, "peer-2");
+
+    const state = lastBroadcastState();
+    expect(state.phase).toBe("reveal");
+    expect(state.lastResult).not.toBeNull();
+    session.destroy();
   });
 
   it("resets to lobby on rematch", async () => {

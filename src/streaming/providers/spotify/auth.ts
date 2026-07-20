@@ -11,6 +11,9 @@ const SCOPES = [
   "user-read-playback-state",
   "playlist-read-private",
   "playlist-read-collaborative",
+  // Diagnostics: /me only returns product (Premium?) and email with these
+  "user-read-private",
+  "user-read-email",
 ];
 
 /** Sorted, joined scope string — changes whenever SCOPES is updated */
@@ -81,21 +84,67 @@ async function saveTokens(t: StoredTokens): Promise<void> {
   useStreamingStore.getState().setTokenExpiry(t.expiresAt);
 }
 
-async function loadTokens(): Promise<StoredTokens | null> {
+function parseStoredTokens(json: string): StoredTokens | null {
   try {
-    const json = await storageGet(TOKEN_KEY);
-    if (!json) return null;
-    tokens = JSON.parse(json) as StoredTokens;
-    return tokens;
+    const parsed = JSON.parse(json) as Partial<StoredTokens>;
+    if (
+      typeof parsed.accessToken !== "string" ||
+      typeof parsed.refreshToken !== "string" ||
+      typeof parsed.expiresAt !== "number"
+    ) {
+      return null;
+    }
+    return parsed as StoredTokens;
   } catch {
     return null;
   }
+}
+
+/** Re-reads storage — the source of truth, since another tab may have rotated */
+async function loadTokens(): Promise<StoredTokens | null> {
+  const json = await storageGet(TOKEN_KEY);
+  if (!json) return null;
+  const parsed = parseStoredTokens(json);
+  if (parsed) tokens = parsed;
+  return parsed;
 }
 
 async function clearTokens(): Promise<void> {
   tokens = null;
   await storageDelete(TOKEN_KEY);
   useStreamingStore.getState().setTokenExpiry(null);
+}
+
+let tokenSyncInitialized = false;
+
+/**
+ * Web: keep the in-memory tokens in sync across browser tabs. Spotify rotates
+ * refresh tokens on every refresh — a tab holding a stale in-memory copy would
+ * refresh with a dead token, get invalid_grant, and log the user out even
+ * though the other tab just saved perfectly valid tokens.
+ */
+function initTokenSync(): void {
+  if (tokenSyncInitialized || Platform.OS !== "web" || typeof window === "undefined") {
+    return;
+  }
+  tokenSyncInitialized = true;
+  window.addEventListener("storage", (e: StorageEvent) => {
+    if (e.key !== TOKEN_KEY) return;
+    const store = useStreamingStore.getState();
+    if (!e.newValue) {
+      tokens = null;
+      store.setTokenExpiry(null);
+      store.setAuthStatus("unauthenticated");
+      log.info("spotify", "Logged out in another tab");
+      return;
+    }
+    const parsed = parseStoredTokens(e.newValue);
+    if (!parsed) return;
+    tokens = parsed;
+    store.setTokenExpiry(parsed.expiresAt);
+    if (isTokenFresh(parsed)) store.setAuthStatus("authenticated");
+    log.debug("spotify", "Tokens synced from another tab");
+  });
 }
 
 async function savePendingAuth(p: PendingAuth): Promise<void> {
@@ -131,6 +180,20 @@ export function getAccessToken(): string | null {
   if (!tokens) return null;
   if (!isTokenFresh(tokens)) return null;
   return tokens.accessToken;
+}
+
+/** Read-only token facts for the connection check — never exposes the tokens */
+export function getTokenInfo(): {
+  expiresAt: number;
+  hasRefreshToken: boolean;
+  scopesCurrent: boolean;
+} | null {
+  if (!tokens) return null;
+  return {
+    expiresAt: tokens.expiresAt,
+    hasRefreshToken: tokens.refreshToken.length > 0,
+    scopesCurrent: tokens.scopeFingerprint === SCOPE_FINGERPRINT,
+  };
 }
 
 function getRedirectUri(): string {
@@ -225,6 +288,20 @@ export const spotifyAuth: StreamingAuth = {
         "Spotify login doesn't work in Expo Go. Use a development build (npx expo run:ios / run:android) or the web version.",
       );
     }
+    if (
+      Platform.OS === "web" &&
+      typeof window !== "undefined" &&
+      window.location.hostname === "localhost"
+    ) {
+      // Since Nov 2025 Spotify rejects 'localhost' redirect URIs — only HTTPS
+      // or loopback IPs are allowed. Same app, different hostname fixes it.
+      store.setAuthStatus("unauthenticated");
+      throw new Error(
+        "Spotify no longer accepts 'localhost' redirect URIs. Open the app via " +
+        `http://127.0.0.1:${window.location.port || "80"} instead (and register ` +
+        "that redirect URI in the Spotify Developer Dashboard).",
+      );
+    }
 
     store.setAuthStatus("loading");
 
@@ -305,15 +382,26 @@ function isInvalidGrant(err: unknown): boolean {
 }
 
 async function doRefreshToken(): Promise<void> {
-  if (!tokens?.refreshToken) {
+  // Storage is the source of truth — another tab may have refreshed (and
+  // thereby ROTATED) the tokens since our in-memory copy was loaded
+  const stored = await loadTokens();
+  if (!stored?.refreshToken) {
     throw new Error("No refresh token available");
   }
+  if (isTokenFresh(stored)) {
+    // Someone else already did the work
+    useStreamingStore.getState().setTokenExpiry(stored.expiresAt);
+    useStreamingStore.getState().setAuthStatus("authenticated");
+    log.debug("spotify", "Token already fresh (refreshed in another tab)");
+    return;
+  }
 
+  const usedRefreshToken = stored.refreshToken;
   try {
     const result = await AuthSession.refreshAsync(
       {
         clientId: CLIENT_ID,
-        refreshToken: tokens.refreshToken,
+        refreshToken: usedRefreshToken,
       },
       discovery,
     );
@@ -321,15 +409,28 @@ async function doRefreshToken(): Promise<void> {
     const now = Date.now();
     await saveTokens({
       accessToken: result.accessToken,
-      refreshToken: result.refreshToken ?? tokens.refreshToken,
+      refreshToken: result.refreshToken ?? usedRefreshToken,
       expiresAt: now + (result.expiresIn ?? 3600) * 1000,
-      scopeFingerprint: tokens.scopeFingerprint,
+      scopeFingerprint: stored.scopeFingerprint,
     });
 
     useStreamingStore.getState().setAuthStatus("authenticated");
     log.info("spotify", "Token refreshed");
   } catch (err) {
     if (isInvalidGrant(err)) {
+      // Before giving up: did another tab rotate the token mid-flight?
+      // Then OUR token was stale, but THEIRS is valid — keep it.
+      const latest = await loadTokens();
+      if (latest && latest.refreshToken !== usedRefreshToken) {
+        log.info("spotify", "Refresh raced another tab — adopting its tokens");
+        useStreamingStore.getState().setTokenExpiry(latest.expiresAt);
+        if (isTokenFresh(latest)) {
+          useStreamingStore.getState().setAuthStatus("authenticated");
+          return;
+        }
+        // Their tokens exist but aren't fresh — let the next call retry
+        throw err;
+      }
       // Refresh token definitively dead — a full re-login is required
       log.error("spotify", "Refresh token rejected (invalid_grant), logging out");
       await clearTokens();
@@ -343,6 +444,7 @@ async function doRefreshToken(): Promise<void> {
 }
 
 export async function restoreSession(): Promise<boolean> {
+  initTokenSync();
   const stored = await loadTokens();
   if (!stored) return false;
 

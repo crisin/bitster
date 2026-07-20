@@ -41,6 +41,44 @@ describe("validateAction", () => {
     expect(action?.type).toBe("game-state");
   });
 
+  it("validates the buzz actions", () => {
+    expect(validateAction({ type: "hitster-pass" })).toEqual({ type: "hitster-pass" });
+    expect(validateAction({ type: "buzz-select", payload: { position: 2 } })).toEqual({
+      type: "buzz-select",
+      payload: { position: 2 },
+    });
+    expect(validateAction({ type: "buzz-select", payload: { position: -1 } })).toBeNull();
+  });
+
+  it("validates the local-player actions", () => {
+    expect(
+      validateAction({ type: "add-local-player", payload: { name: "Karl" } }),
+    ).toEqual({ type: "add-local-player", payload: { name: "Karl" } });
+    expect(validateAction({ type: "add-local-player", payload: { name: "" } })).toBeNull();
+    expect(
+      validateAction({ type: "remove-local-player", payload: { playerId: "local-1" } }),
+    ).toEqual({ type: "remove-local-player", payload: { playerId: "local-1" } });
+    expect(validateAction({ type: "remove-local-player", payload: {} })).toBeNull();
+  });
+
+  it("validates set-playlist", () => {
+    expect(
+      validateAction({ type: "set-playlist", payload: { playlistUrl: "https://x" } }),
+    ).toEqual({ type: "set-playlist", payload: { playlistUrl: "https://x" } });
+    expect(validateAction({ type: "set-playlist", payload: {} })).toBeNull();
+  });
+
+  it("defaults a missing buzz timer to 30 seconds", () => {
+    const action = validateAction({
+      type: "update-settings",
+      payload: { rules: { buzz: { enabled: true, penalty: "none" } } },
+    });
+    expect(action).toEqual({
+      type: "update-settings",
+      payload: { rules: { buzz: { enabled: true, penalty: "none", timerSeconds: 30 } } },
+    });
+  });
+
   it("validates update-settings structurally", () => {
     expect(
       validateAction({ type: "update-settings", payload: { winScore: 5 } }),

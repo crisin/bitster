@@ -5,6 +5,30 @@ export interface StreamingDevice {
   isActive: boolean;
 }
 
+/** The account actually connected — key evidence when auth "works" but playback doesn't */
+export interface StreamingAccount {
+  id: string;
+  name: string;
+  email: string | null;
+  /** e.g. Spotify: "premium" | "free" | "open" */
+  product: string | null;
+  country: string | null;
+}
+
+export interface DiagnosticCheck {
+  key: string;
+  label: string;
+  status: "ok" | "warn" | "fail";
+  detail: string;
+}
+
+export interface StreamingDiagnostics {
+  /** Load the connected account's profile (also stores it in the streaming store) */
+  loadAccount(): Promise<StreamingAccount | null>;
+  /** Run all connection checks — never throws, failures become "fail" entries */
+  run(): Promise<DiagnosticCheck[]>;
+}
+
 export interface PlaylistMeta {
   id: string;
   name: string;
@@ -49,4 +73,6 @@ export interface StreamingProvider {
   auth: StreamingAuth;
   player: StreamingPlayer;
   library: StreamingLibrary;
+  /** Optional connection troubleshooting (account info, health checks) */
+  diagnostics?: StreamingDiagnostics;
 }

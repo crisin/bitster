@@ -6,7 +6,10 @@ import type { Song } from "@/game/types";
 const NATIVE_DRIVER = Platform.OS !== "web";
 
 const CARD_W = 240;
-const CARD_H = 340;
+const CARD_H = 380;
+// Fixed cover size so title, artist and year always fit below it —
+// at full card width a two-line title used to push the artist off the card
+const COVER_SIZE = 168;
 
 interface RevealCardProps {
   correct: boolean;
@@ -172,8 +175,8 @@ const styles = StyleSheet.create({
     fontSize: FONT.size.base,
   },
   cover: {
-    width: CARD_W - SPACE.xl * 2,
-    height: CARD_W - SPACE.xl * 2,
+    width: COVER_SIZE,
+    height: COVER_SIZE,
     borderRadius: RADIUS.md,
     backgroundColor: COLORS.secondary,
     marginBottom: SPACE.lg,

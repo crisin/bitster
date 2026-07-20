@@ -16,7 +16,11 @@ interface GameStore {
   settings: GameSettings;
   playedSongs: GameState["playedSongs"];
   buzzerId: string | null;
+  buzzDeadline: number | null;
+  passedIds: string[];
   playlistName: string | null;
+  playlistImageUrl: string | null;
+  playlistTrackCount: number;
   guessResult: GameState["guessResult"];
 
   setRoomCode: (code: string | null) => void;
@@ -38,7 +42,11 @@ const initialState = {
   settings: DEFAULT_SETTINGS as GameSettings,
   playedSongs: [] as GameState["playedSongs"],
   buzzerId: null as string | null,
+  buzzDeadline: null as number | null,
+  passedIds: [] as string[],
   playlistName: null as string | null,
+  playlistImageUrl: null as string | null,
+  playlistTrackCount: 0,
   guessResult: null as GameState["guessResult"],
 };
 
@@ -62,7 +70,11 @@ export const useGameStore = create<GameStore>((set) => ({
       settings: state.settings,
       playedSongs: state.playedSongs,
       buzzerId: state.buzzerId,
+      buzzDeadline: state.buzzDeadline,
+      passedIds: state.passedIds,
       playlistName: state.playlistName,
+      playlistImageUrl: state.playlistImageUrl,
+      playlistTrackCount: state.playlistTrackCount,
       guessResult: state.guessResult,
     }),
 

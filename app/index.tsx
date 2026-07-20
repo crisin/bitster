@@ -12,6 +12,7 @@ import { router } from "expo-router";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ConnectButton } from "@/components/streaming/ConnectButton";
+import { ConnectionCheck } from "@/components/streaming/ConnectionCheck";
 import { COLORS, FONT, SPACE, LAYOUT } from "@/utils/constants";
 import {
   sanitizeRoomCodeInput,
@@ -133,6 +134,8 @@ export default function HomeScreen() {
               onConnect={handleStreamingConnect}
               onDisconnect={handleStreamingDisconnect}
             />
+
+            <ConnectionCheck />
 
             {error ? <Text style={styles.error}>{error}</Text> : null}
 

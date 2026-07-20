@@ -29,7 +29,10 @@ export function createRoom(
     phase: "lobby",
     settings: { ...DEFAULT_SETTINGS, ...settings },
     buzzerId: null,
+    buzzDeadline: null,
+    passedIds: [],
     playlistName: null,
+    playlistImageUrl: null,
     playlistId: null,
     playlistTrackCount: 0,
     playedIndices: [],
@@ -38,11 +41,19 @@ export function createRoom(
 
 const STARTING_TOKENS = 2;
 
-export function createPlayer(id: string, name: string): Player {
-  return { id, name, score: 0, timeline: [], tokens: STARTING_TOKENS, failedSongs: [] };
+export function createPlayer(id: string, name: string, isLocal = false): Player {
+  return {
+    id,
+    name,
+    score: 0,
+    timeline: [],
+    tokens: STARTING_TOKENS,
+    failedSongs: [],
+    isLocal,
+  };
 }
 
-export function addPlayer(room: Room, id: string, name: string): Room {
+export function addPlayer(room: Room, id: string, name: string, isLocal = false): Room {
   // Same peer ID reconnecting — update name only
   const existingById = room.players.find((p) => p.id === id);
   if (existingById) {
@@ -67,7 +78,7 @@ export function addPlayer(room: Room, id: string, name: string): Room {
 
   return {
     ...room,
-    players: [...room.players, createPlayer(id, name)],
+    players: [...room.players, createPlayer(id, name, isLocal)],
   };
 }
 
@@ -93,6 +104,8 @@ export function removePlayer(room: Room, playerId: string): Room {
     hostId: newHostId,
     currentPlayerIndex,
     buzzerId: room.buzzerId === playerId ? null : room.buzzerId,
+    buzzDeadline: room.buzzerId === playerId ? null : room.buzzDeadline,
+    passedIds: room.passedIds.filter((id) => id !== playerId),
   };
 }
 
@@ -204,6 +217,8 @@ export function placeSong(
       ...room,
       players: updatedPlayers,
       phase: "hitster-window",
+      passedIds: [],
+      buzzDeadline: null,
     },
     result: { correct, song },
   };
@@ -233,6 +248,8 @@ export function advanceTurn(room: Room): Room {
     currentSong: null,
     phase: "playing",
     buzzerId: null,
+    buzzDeadline: null,
+    passedIds: [],
   };
 }
 
@@ -270,6 +287,8 @@ export function startGame(
     currentSong: null,
     phase: "playing",
     buzzerId: null,
+    buzzDeadline: null,
+    passedIds: [],
     playlistName: playlistName ?? room.playlistName,
     playlistId: playlistId ?? null,
     playlistTrackCount: playlistTrackCount ?? 0,
@@ -285,6 +304,7 @@ export function handleBuzz(
   if (room.buzzerId) return room;
   const currentPlayer = getCurrentPlayer(room);
   if (currentPlayer?.id === buzzerId) return room;
+  if (room.passedIds.includes(buzzerId)) return room;
   const buzzer = room.players.find((p) => p.id === buzzerId);
   if (!buzzer) return room;
   if (buzzer.tokens <= 0) return room;
@@ -297,6 +317,44 @@ export function handleBuzz(
   return { ...room, players: updatedPlayers, buzzerId };
 }
 
+/** A non-active player declares "no Hitster" for this window — binding. */
+export function recordPass(room: Room, playerId: string): Room {
+  if (room.phase !== "hitster-window") return room;
+  if (getCurrentPlayer(room)?.id === playerId) return room;
+  if (room.buzzerId === playerId) return room;
+  if (room.passedIds.includes(playerId)) return room;
+  if (!room.players.some((p) => p.id === playerId)) return room;
+  return { ...room, passedIds: [...room.passedIds, playerId] };
+}
+
+/**
+ * True when every player who could still buzz has explicitly passed.
+ * Players without tokens can't challenge anyway; requires at least one
+ * actual pass so an all-broke lobby doesn't skip the window instantly.
+ */
+export function allChallengersPassed(room: Room): boolean {
+  if (room.buzzerId) return false;
+  if (room.passedIds.length === 0) return false;
+  const currentId = getCurrentPlayer(room)?.id;
+  const eligible = room.players.filter(
+    (p) => p.id !== currentId && p.tokens > 0,
+  );
+  return eligible.every((p) => room.passedIds.includes(p.id));
+}
+
+/** Insert a song into a timeline at its chronologically correct spot. */
+function insertChronologically(timeline: Song[], song: Song): Song[] {
+  const index = timeline.findIndex((s) => s.year > song.year);
+  const at = index === -1 ? timeline.length : index;
+  return [...timeline.slice(0, at), song, ...timeline.slice(at)];
+}
+
+/**
+ * Resolve the buzzer's counter-placement. `position` is a gap in the ACTIVE
+ * player's timeline (with the disputed card already removed) — the buzzer
+ * claims that's where the song really belongs. If they're right, the card
+ * lands in the buzzer's own timeline at the chronologically correct spot.
+ */
 export function resolveBuzz(
   room: Room,
   position: number,
@@ -307,19 +365,17 @@ export function resolveBuzz(
 
   const buzzer = room.players.find((p) => p.id === room.buzzerId);
   if (!buzzer) throw new Error("Buzzer player not found");
-  if (position < 0 || position > buzzer.timeline.length) throw new Error("Invalid position");
+  const target = getCurrentPlayer(room);
+  if (!target) throw new Error("No active player");
+  if (position < 0 || position > target.timeline.length) throw new Error("Invalid position");
 
   const song = room.currentSong;
-  const correct = checkPlacement(buzzer.timeline, song, position);
+  const correct = checkPlacement(target.timeline, song, position);
 
   const updatedPlayers = room.players.map((p) => {
     if (p.id !== room.buzzerId) return p;
     if (correct) {
-      const newTimeline = [
-        ...p.timeline.slice(0, position),
-        song,
-        ...p.timeline.slice(position),
-      ];
+      const newTimeline = insertChronologically(p.timeline, song);
       return { ...p, timeline: newTimeline, score: newTimeline.length };
     }
     if (room.settings.rules.buzz.penalty === "lose-point" && p.score > 0) {
@@ -525,6 +581,7 @@ export function buildGameState(room: Room): import("./types").GameState {
       score: p.score,
       timelineLength: p.timeline.length,
       tokens: p.tokens,
+      isLocal: p.isLocal,
     })),
     currentPlayerId: currentPlayer?.id ?? null,
     currentSongUri: room.currentSong?.uri ?? null,
@@ -542,7 +599,11 @@ export function buildGameState(room: Room): import("./types").GameState {
         year: s.year,
       })),
     buzzerId: room.buzzerId,
+    buzzDeadline: room.buzzDeadline,
+    passedIds: room.passedIds,
     playlistName: room.playlistName,
+    playlistImageUrl: room.playlistImageUrl,
+    playlistTrackCount: room.playlistTrackCount,
     guessResult: null,
   };
 }

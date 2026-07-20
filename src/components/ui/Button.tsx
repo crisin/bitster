@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Text,
   StyleSheet,
@@ -20,6 +20,8 @@ interface ButtonProps {
   compact?: boolean;
   /** Accessible label override (defaults to title) */
   label?: string;
+  /** Ignore further presses for this long after a press (accidental double-taps) */
+  cooldownMs?: number;
   style?: ViewStyle;
 }
 
@@ -39,14 +41,33 @@ export function Button({
   loading = false,
   compact = false,
   label,
+  cooldownMs = 0,
   style,
 }: ButtonProps) {
   const colors = variantStyles[variant];
-  const isDisabled = disabled || loading;
+  const [coolingDown, setCoolingDown] = useState(false);
+  const cooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (cooldownTimer.current) clearTimeout(cooldownTimer.current);
+    };
+  }, []);
+
+  const handlePress = useCallback(() => {
+    if (cooldownMs > 0) {
+      setCoolingDown(true);
+      if (cooldownTimer.current) clearTimeout(cooldownTimer.current);
+      cooldownTimer.current = setTimeout(() => setCoolingDown(false), cooldownMs);
+    }
+    onPress();
+  }, [onPress, cooldownMs]);
+
+  const isDisabled = disabled || loading || coolingDown;
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={handlePress}
       disabled={isDisabled}
       label={label ?? title}
       style={[

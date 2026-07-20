@@ -15,6 +15,10 @@ import {
   buildGameState,
   undoPlacement,
   guessSongInfo,
+  handleBuzz,
+  resolveBuzz,
+  recordPass,
+  allChallengersPassed,
 } from "./logic";
 import type { Song, Room } from "./types";
 
@@ -114,6 +118,29 @@ describe("addPlayer", () => {
     room = { ...room, phase: "playing" };
     const reconnected = addPlayer(room, "peer-2", "Bob");
     expect(reconnected.players).toHaveLength(2);
+  });
+});
+
+describe("local players", () => {
+  it("adds a local player with the flag set", () => {
+    let room = makeTestRoom();
+    room = addPlayer(room, "local-abc", "Karl", true);
+    const karl = room.players.find((p) => p.id === "local-abc");
+    expect(karl?.isLocal).toBe(true);
+    expect(room.players.filter((p) => p.isLocal)).toHaveLength(1);
+  });
+
+  it("defaults to non-local for regular joins", () => {
+    const room = makeTestRoom();
+    expect(room.players.every((p) => p.isLocal === false)).toBe(true);
+  });
+
+  it("carries isLocal into the broadcast state", () => {
+    let room = makeTestRoom();
+    room = addPlayer(room, "local-abc", "Karl", true);
+    const state = buildGameState(room);
+    expect(state.players.find((p) => p.id === "local-abc")?.isLocal).toBe(true);
+    expect(state.players.find((p) => p.id === "host-1")?.isLocal).toBe(false);
   });
 });
 
@@ -386,6 +413,166 @@ describe("undoPlacement", () => {
     };
     const updated = undoPlacement(room, "host-1", "nonexistent");
     expect(updated.players[0].timeline).toHaveLength(1);
+  });
+});
+
+describe("handleBuzz", () => {
+  function makeBuzzRoom(): Room {
+    let room = makeTestRoom();
+    room = startGame(room, [makeSong(2000)]);
+    room = { ...room, phase: "hitster-window", currentSong: makeSong(2000) };
+    return room;
+  }
+
+  it("spends a token and sets the buzzer", () => {
+    const room = handleBuzz(makeBuzzRoom(), "peer-2");
+    expect(room.buzzerId).toBe("peer-2");
+    expect(room.players[1].tokens).toBe(1);
+  });
+
+  it("rejects the active player", () => {
+    const room = handleBuzz(makeBuzzRoom(), "host-1");
+    expect(room.buzzerId).toBeNull();
+  });
+
+  it("rejects a player who already passed", () => {
+    let room = makeBuzzRoom();
+    room = recordPass(room, "peer-2");
+    const buzzed = handleBuzz(room, "peer-2");
+    expect(buzzed.buzzerId).toBeNull();
+    expect(buzzed.players[1].tokens).toBe(2);
+  });
+
+  it("rejects a player without tokens", () => {
+    let room = makeBuzzRoom();
+    room = {
+      ...room,
+      players: room.players.map((p) =>
+        p.id === "peer-2" ? { ...p, tokens: 0 } : p,
+      ),
+    };
+    expect(handleBuzz(room, "peer-2").buzzerId).toBeNull();
+  });
+});
+
+describe("resolveBuzz — counter-placement in the active player's timeline", () => {
+  /**
+   * Active player (host-1) has [1990, 2010] and wrongly placed the mystery
+   * song (2000). For the resolution, the disputed card is already removed —
+   * the buzzer (peer-2, own timeline [1980]) points at a gap in [1990, 2010].
+   */
+  function makeChallengeRoom(): Room {
+    let room = makeTestRoom();
+    room = startGame(room, [makeSong(2000)]);
+    room = {
+      ...room,
+      phase: "hitster-window",
+      currentSong: makeSong(2000, "mystery"),
+      buzzerId: "peer-2",
+      players: room.players.map((p) => {
+        if (p.id === "host-1")
+          return { ...p, timeline: [makeSong(1990), makeSong(2010)] };
+        return { ...p, timeline: [makeSong(1980)], tokens: 1 };
+      }),
+    };
+    return room;
+  }
+
+  it("checks the position against the ACTIVE player's timeline", () => {
+    const { result } = resolveBuzz(makeChallengeRoom(), 1); // between 1990 and 2010
+    expect(result.correct).toBe(true);
+  });
+
+  it("gives the card to the buzzer at the chronologically correct spot", () => {
+    const { room } = resolveBuzz(makeChallengeRoom(), 1);
+    const buzzer = room.players.find((p) => p.id === "peer-2")!;
+    expect(buzzer.timeline.map((s) => s.year)).toEqual([1980, 2000]);
+    expect(buzzer.score).toBe(2);
+    expect(room.buzzerId).toBeNull();
+    expect(room.phase).toBe("reveal");
+  });
+
+  it("awards nothing for a wrong gap", () => {
+    const { room, result } = resolveBuzz(makeChallengeRoom(), 0); // before 1990
+    expect(result.correct).toBe(false);
+    const buzzer = room.players.find((p) => p.id === "peer-2")!;
+    expect(buzzer.timeline).toHaveLength(1);
+  });
+
+  it("applies the lose-point penalty when configured", () => {
+    let room = makeChallengeRoom();
+    room = {
+      ...room,
+      settings: {
+        ...room.settings,
+        rules: { buzz: { enabled: true, penalty: "lose-point", timerSeconds: 30 } },
+      },
+      players: room.players.map((p) =>
+        p.id === "peer-2" ? { ...p, score: 1 } : p,
+      ),
+    };
+    const { room: resolved } = resolveBuzz(room, 0);
+    expect(resolved.players.find((p) => p.id === "peer-2")!.score).toBe(0);
+  });
+
+  it("throws for a position outside the active player's timeline", () => {
+    expect(() => resolveBuzz(makeChallengeRoom(), 5)).toThrow("Invalid position");
+  });
+});
+
+describe("recordPass / allChallengersPassed", () => {
+  function makeWindowRoom(): Room {
+    let room = makeTestRoom();
+    room = addPlayer(room, "peer-3", "Carol");
+    room = startGame(room, [makeSong(2000)]);
+    return { ...room, phase: "hitster-window", currentSong: makeSong(2000) };
+  }
+
+  it("records a pass from a non-active player", () => {
+    const room = recordPass(makeWindowRoom(), "peer-2");
+    expect(room.passedIds).toEqual(["peer-2"]);
+  });
+
+  it("ignores the active player and duplicates", () => {
+    let room = recordPass(makeWindowRoom(), "host-1");
+    expect(room.passedIds).toEqual([]);
+    room = recordPass(room, "peer-2");
+    room = recordPass(room, "peer-2");
+    expect(room.passedIds).toEqual(["peer-2"]);
+  });
+
+  it("is complete only when every token-holding challenger passed", () => {
+    let room = makeWindowRoom();
+    expect(allChallengersPassed(room)).toBe(false); // nobody passed yet
+    room = recordPass(room, "peer-2");
+    expect(allChallengersPassed(room)).toBe(false); // Carol still thinking
+    room = recordPass(room, "peer-3");
+    expect(allChallengersPassed(room)).toBe(true);
+  });
+
+  it("skips broke players when counting", () => {
+    let room = makeWindowRoom();
+    room = {
+      ...room,
+      players: room.players.map((p) =>
+        p.id === "peer-3" ? { ...p, tokens: 0 } : p,
+      ),
+    };
+    room = recordPass(room, "peer-2");
+    expect(allChallengersPassed(room)).toBe(true);
+  });
+
+  it("is never complete while a buzz is running", () => {
+    let room = makeWindowRoom();
+    room = recordPass(room, "peer-2");
+    room = recordPass(room, "peer-3");
+    room = { ...room, buzzerId: "peer-2" };
+    expect(allChallengersPassed(room)).toBe(false);
+  });
+
+  it("clears passes on the next turn", () => {
+    let room = recordPass(makeWindowRoom(), "peer-2");
+    expect(advanceTurn(room).passedIds).toEqual([]);
   });
 });
 

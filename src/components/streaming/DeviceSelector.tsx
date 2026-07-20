@@ -4,6 +4,7 @@ import { Pressable } from "@/components/ui/Pressable";
 import { Button } from "@/components/ui/Button";
 import { useStreamingStore } from "@/streaming/store";
 import { getProvider } from "@/streaming/registry";
+import { ConnectionCheck } from "@/components/streaming/ConnectionCheck";
 import { log } from "@/utils/logger";
 import { COLORS, FONT, RADIUS, SPACE, LABEL_STYLE, TOUCH } from "@/utils/constants";
 
@@ -14,7 +15,7 @@ export function DeviceSelector() {
   const availableDevices = useStreamingStore((s) => s.availableDevices);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [is403, setIs403] = useState(false);
+  const [forbiddenMsg, setForbiddenMsg] = useState<string | null>(null);
 
   const refreshDevices = useCallback(async () => {
     if (!activeProviderId) return;
@@ -23,7 +24,7 @@ export function DeviceSelector() {
 
     setLoading(true);
     setError(null);
-    setIs403(false);
+    setForbiddenMsg(null);
     try {
       await provider.player.getDevices();
     } catch (err) {
@@ -31,7 +32,7 @@ export function DeviceSelector() {
       log.error("DeviceSelector", `Failed to load devices: ${msg}`);
 
       if (msg.startsWith("SPOTIFY_403")) {
-        setIs403(true);
+        setForbiddenMsg(msg.replace(/^SPOTIFY_403:\s*/, ""));
         setError(null);
       } else {
         setError(msg);
@@ -99,35 +100,33 @@ export function DeviceSelector() {
         </Pressable>
       </View>
 
-      {/* 403 Forbidden — Premium required or stale scopes */}
-      {is403 && (
+      {/* 403 Forbidden — no Premium, not allow-listed, or stale scopes */}
+      {forbiddenMsg != null && (
         <View style={styles.forbiddenBox}>
           <Text style={styles.forbiddenTitle}>
-            ⚠ Spotify Premium required
+            ⚠ Spotify playback blocked
           </Text>
-          <Text style={styles.forbiddenDetail}>
-            Playback control needs Spotify Premium. If you already have Premium,
-            your login token may have outdated permissions — reconnect to fix this.
-          </Text>
+          <Text style={styles.forbiddenDetail}>{forbiddenMsg}</Text>
           <Button
             title="Reconnect Spotify"
             onPress={handleReconnect}
             variant="warning"
             compact
+            cooldownMs={2000}
             label="Clear old tokens and reconnect Spotify"
           />
         </View>
       )}
 
       {/* Generic error */}
-      {error != null && !is403 && (
+      {error != null && forbiddenMsg == null && (
         <Text style={styles.errorText}>
           Failed to load devices: {error}
         </Text>
       )}
 
       {/* No devices hint */}
-      {availableDevices.length === 0 && !loading && !is403 && error == null && (
+      {availableDevices.length === 0 && !loading && forbiddenMsg == null && error == null && (
         <View style={styles.hintBox}>
           <Text style={styles.hint}>No devices found.</Text>
           <Text style={styles.hintDetail}>
@@ -165,6 +164,8 @@ export function DeviceSelector() {
           </Pressable>
         );
       })}
+
+      <ConnectionCheck />
     </View>
   );
 }

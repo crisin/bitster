@@ -101,7 +101,13 @@ export function rejoinRoom(code: string, playerName: string): void {
   joinRoom(code, playerName);
 }
 
-export function dispatch(action: P2PAction): void {
+/**
+ * Sends an action to the host session (or relays it there as a peer).
+ * `opts.as` lets the HOST device act on behalf of one of its local
+ * pass-and-play players — it never leaves the device, so remote peers
+ * cannot impersonate anyone (their sender id comes from the relay).
+ */
+export function dispatch(action: P2PAction, opts?: { as?: string }): void {
   if (!role || !myId) {
     logger.warn("p2p", "dispatch called but not connected");
     return;
@@ -110,7 +116,7 @@ export function dispatch(action: P2PAction): void {
   logger.debug("p2p", `dispatch → ${action.type} (role=${role})`);
 
   if (role === "host") {
-    void hostSession?.handleAction(action, myId);
+    void hostSession?.handleAction(action, opts?.as ?? myId);
   } else {
     sendEnvelope({ t: "msg", to: "host", data: action });
   }
@@ -140,8 +146,10 @@ function openSocket(hello: ClientMsg): void {
   const s = new WebSocket(url);
   socket = s;
 
+  // pagehide only: it fires when the page actually unloads. beforeunload would
+  // fire even when the user CANCELS the leave-confirmation dialog — and would
+  // kick them out of the room despite staying on the page.
   if (typeof window !== "undefined") {
-    window.addEventListener("beforeunload", handleUnload);
     window.addEventListener("pagehide", handleUnload);
   }
   ensureAppStateListener();
@@ -420,7 +428,6 @@ function handleUnload(): void {
 function cleanup(): void {
   clearJoinTimers();
   if (typeof window !== "undefined") {
-    window.removeEventListener("beforeunload", handleUnload);
     window.removeEventListener("pagehide", handleUnload);
   }
   appStateSub?.remove();
