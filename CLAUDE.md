@@ -4,15 +4,22 @@
 
 Hitster ist ein Multiplayer-Partyspiel: Songs werden abgespielt, Spieler ordnen sie chronologisch in ihre Timeline ein. Wer zuerst 10 Songs richtig einordnet, gewinnt. Ein Streaming-Dienst liefert die Musik (aktuell Spotify, weitere geplant), die App ist nur Steuerung + Spiellogik.
 
-## Architektur-Ziel: Serverless P2P
+## Architektur: Host-Authority über WebSocket-Relay
 
-Die App wird von Client-Server (Express/Socket.IO) zu einer **serverlosen P2P-Architektur** migriert:
+Die Spiellogik läuft komplett client-seitig; ein **dünner WebSocket-Relay** auf dem
+ohnehin vorhandenen Railway-Server (`server.js`, serviert auch den Web-Build) vermittelt
+die Nachrichten. Der Server kennt keine Spielregeln — er verwaltet nur Räume und leitet
+opake Messages weiter.
 
-- **P2P:** Trystero (WebRTC) mit Firebase Signaling (Spark/Free)
+- **Transport:** WebSocket (`/ws` auf demselben Origin wie die App; nativ via `EXPO_PUBLIC_RELAY_URL`)
 - **Auth:** Provider-spezifisch (Spotify PKCE, etc.), komplett client-seitig
 - **Playback:** Provider-spezifisch (Spotify Web API Remote Control, etc.)
-- **State:** Host-Peer ist Authority, broadcastet State an alle Peers
+- **State:** Host-Peer ist Authority, broadcastet State an alle Peers (Relay = dumb pipe)
 - **Plattform:** React Native (Expo) für iOS + Android, mit Web-Support
+
+Bewusste Entscheidung gegen WebRTC/Trystero: Da der Railway-Server sowieso läuft,
+spart das Relay Signaling-Dienst, TURN-Server und `react-native-webrtc` — und Joins
+funktionieren in jedem Netz, in dem WSS funktioniert.
 
 **Voraussetzung:** Alle Spieler haben einen unterstützten Streaming-Dienst (aktuell Spotify Premium) und die zugehörige App installiert.
 
@@ -26,8 +33,7 @@ Die App wird von Client-Server (Express/Socket.IO) zu einer **serverlosen P2P-Ar
 
 ### Ziel-Stack
 - **App:** React Native (Expo) — iOS, Android, Web
-- **P2P:** Trystero (WebRTC Data Channels)
-- **Signaling:** Firebase Realtime DB (Spark/Free)
+- **Multiplayer:** WebSocket-Relay auf dem Railway-Server (`server.js` + `ws`), Host-Peer als Game Authority
 - **Auth:** Provider-spezifisch, client-only (Spotify PKCE, etc.)
 - **Playback:** Provider-spezifisch (Spotify Remote Control, etc.)
 - **State:** Zustand (ersetzt useReducer + Context)
@@ -58,11 +64,9 @@ src/
       # apple-music/          # Zukünftig
       # youtube-music/        # Zukünftig
 
-  p2p/                        # === P2P Communication Layer ===
-    connection.ts             # Trystero Room Management
-    protocol.ts               # P2P Message Types (discriminated unions)
-    host.ts                   # Host-Peer: empfängt Actions, broadcastet State
-    peer.ts                   # Client-Peer: sendet Actions, empfängt State
+  p2p/                        # === Multiplayer Communication Layer ===
+    connection.ts             # WebSocket-Relay-Client + Host/Peer-Logik
+    protocol.ts               # Message Types (discriminated unions)
     store.ts                  # Zustand – Connection State, Peer List
 
   game/                       # === Pure Game Logic (kein UI, kein I/O) ===
@@ -189,22 +193,33 @@ Dieses Projekt wird **vollständig KI-gestützt** entwickelt. Keine manuellen Ze
 4. **Reveal:** Ergebnis wird gezeigt (richtig/falsch), nächste Runde
 5. **Finished:** Gewinner wird angezeigt, Rematch-Option
 
-## Game State Sync (P2P)
+## Game State Sync
 
 ```
-Host-Peer (p2p/host.ts):
-  - Hält kompletten GameState (game/store)
-  - Validiert Aktionen (place-song, hitster-buzz)
+Relay-Server (server.js, /ws):
+  - Verwaltet Räume (create/join/rejoin/leave), vergibt Peer-IDs
+  - Leitet opake Messages weiter (to: "host" | "all" | <peerId>)
+  - Meldet peer-joined/peer-left/host-down/room-closed
+  - 30s Grace Period wenn der Host-Socket wegbricht
+  - KEINE Spiellogik
+
+Host-Peer (p2p/connection.ts, role="host"):
+  - Hält kompletten GameState (hostRoom)
+  - Validiert Aktionen (place-song, hitster-buzz, ...)
   - Broadcastet State-Updates an alle Peers
   - Koordiniert Playback via StreamingProvider Interface
 
-Peers (p2p/peer.ts):
-  - Senden Actions an Host
-  - Empfangen + rendern State-Updates
+Peers (p2p/connection.ts, role="peer"):
+  - Senden Actions an den Host (via Relay)
+  - Akzeptieren game-state NUR vom Host-Peer
+  - "connected" erst nach erstem game-state vom Host
   - Steuern eigenen StreamingProvider für lokalen Playback
 
+Wichtig: buildGameState() maskiert den aktuellen Song im Broadcast
+(playedSongs + Jahr), solange geraten wird — der Payload IST die Antwort.
+
 Orchestrierung:
-  host.ts / peer.ts lesen und schreiben in alle drei Stores
+  connection.ts liest und schreibt in alle drei Stores
   (game/store, streaming/store, p2p/store).
   Stores kennen sich gegenseitig nicht.
 ```
@@ -213,6 +228,7 @@ Orchestrierung:
 
 ```bash
 # Development
+node server.js 8090               # Relay-Server lokal (Port aus .env.development)
 npx expo start                    # Dev Server (Metro)
 npx expo start --web              # Web-Version
 npx expo run:ios                  # iOS Simulator
@@ -239,7 +255,7 @@ npx tsc --noEmit                  # Type Check
 | expo-router | File-based Navigation |
 | expo-secure-store | Sichere Token-Speicherung |
 | expo-auth-session | Streaming Provider OAuth |
-| trystero | P2P WebRTC (Firebase Strategy) |
+| ws | WebSocket-Server für den Relay (nur server.js) |
 | zustand | State Management |
 | nativewind | Tailwind CSS für RN |
 | @expo/vector-icons | Icons |
@@ -248,7 +264,8 @@ npx tsc --noEmit                  # Type Check
 
 - **Game Logic ist provider-agnostisch.** `game/logic.ts` kennt nur `Track`, nie `SpotifyTrack`.
   Provider-spezifische Daten werden beim Import auf `Track` gemappt.
-- **Stores importieren keine anderen Stores.** Orchestrierung passiert in `host.ts` / `peer.ts`.
+- **Stores importieren keine anderen Stores.** Orchestrierung passiert in `p2p/connection.ts`.
+- **Der Relay-Server bleibt dumm.** Keine Spiellogik in `server.js` — nur Räume + Message-Weiterleitung.
 - **Neue Provider = neuer Ordner unter `streaming/providers/`.** Kein bestehender Code muss sich ändern.
   Provider registriert sich in `registry.ts`, fertig.
 - **Components unter `ui/` haben keine Business-Logik.** Nur Props rein, JSX raus.
@@ -258,9 +275,11 @@ npx tsc --noEmit                  # Type Check
 ## Nicht vergessen
 
 - Jeder Streaming-Provider braucht registrierte Redirect URIs im jeweiligen Developer Dashboard
-- Deep Links für Auth Callback: `hitster://callback` (native) / `https://domain/callback` (web)
-- Firebase Projekt anlegen für Trystero Signaling (nur Realtime DB, kein Auth nötig)
-- TURN-Server für mobile Carrier-NATs (~30% brauchen das) — Metered.ca Free Tier
+- Deep Links für Auth Callback: `hitster://callback` (native) / `https://domain/auth/callback` (web)
+- **Spotify Development Mode:** max. 25 Nutzer, jeder Spieler-Account muss im Spotify
+  Developer Dashboard unter "User Management" eingetragen sein — sonst 403 nach dem Login!
+- Nativ braucht der Client `EXPO_PUBLIC_RELAY_URL` (Web nimmt automatisch den eigenen Origin)
+- Das Dockerfile kopiert `node_modules/ws` explizit ins Runtime-Image (kein npm ci dort)
 - iOS: Background Audio läuft über die jeweilige Streaming-App, nicht über die Hitster-App
 - Rate Limits: Streaming API Calls bündeln, nicht bei jedem State-Update
 - Neuen Provider hinzufügen: `StreamingProvider` implementieren, in `registry.ts` registrieren, `ProviderPicker` zeigt ihn automatisch

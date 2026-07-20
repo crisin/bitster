@@ -100,6 +100,21 @@ describe("addPlayer", () => {
     room = { ...room, phase: "finished" };
     expect(() => addPlayer(room, "peer-2", "Bob")).toThrow("already finished");
   });
+
+  it("throws for a new player when game is in progress", () => {
+    let room = makeTestRoom();
+    room = { ...room, phase: "playing" };
+    expect(() => addPlayer(room, "peer-3", "Charlie")).toThrow(
+      "already in progress"
+    );
+  });
+
+  it("still reconnects an existing player mid-game", () => {
+    let room = makeTestRoom();
+    room = { ...room, phase: "playing" };
+    const reconnected = addPlayer(room, "peer-2", "Bob");
+    expect(reconnected.players).toHaveLength(2);
+  });
 });
 
 describe("removePlayer", () => {
@@ -293,6 +308,54 @@ describe("buildGameState", () => {
     expect(state.phase).toBe("lobby");
     expect(state.hostId).toBe("host-1");
     expect(state.timelines).toBeDefined();
+  });
+
+  it("does not leak the current song via playedSongs while guessing", () => {
+    const song = makeSong(1999, "secret");
+    let room = makeTestRoom();
+    room = {
+      ...room,
+      phase: "playing",
+      currentSong: song,
+      playedSongs: [makeSong(1980, "old"), song],
+    };
+    const state = buildGameState(room);
+    expect(state.playedSongs).toHaveLength(1);
+    expect(state.playedSongs[0].name).toBe("Song 1980");
+  });
+
+  it("masks the current song's year in timelines during hitster-window", () => {
+    const song = makeSong(1999, "secret");
+    let room = makeTestRoom();
+    room = {
+      ...room,
+      phase: "hitster-window",
+      currentSong: song,
+      players: room.players.map((p) =>
+        p.id === "host-1"
+          ? { ...p, timeline: [makeSong(1980, "old"), song] }
+          : p
+      ),
+    };
+    const state = buildGameState(room);
+    const years = state.timelines["host-1"].map((s) => s.year);
+    expect(years).toEqual([1980, 0]);
+    // playedSongs must not contain it either
+    expect(state.playedSongs.some((s) => s.name === song.name)).toBe(false);
+  });
+
+  it("includes the current song again from reveal on", () => {
+    const song = makeSong(1999, "secret");
+    let room = makeTestRoom();
+    room = {
+      ...room,
+      phase: "reveal",
+      currentSong: song,
+      playedSongs: [song],
+    };
+    const state = buildGameState(room);
+    expect(state.playedSongs).toHaveLength(1);
+    expect(state.playedSongs[0].year).toBe(1999);
   });
 });
 

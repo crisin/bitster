@@ -45,6 +45,7 @@ export default function HomeScreen() {
   }, [name]);
 
   const handleCreate = useCallback(() => {
+    if (loading) return;
     if (name.trim().length < 2) {
       setError("Name must be at least 2 characters");
       return;
@@ -58,9 +59,10 @@ export default function HomeScreen() {
       `/game?code=${code}&host=true&name=${encodeURIComponent(name.trim())}`,
     );
     setLoading(false);
-  }, [name, setRoomCodeStore]);
+  }, [loading, name, setRoomCodeStore]);
 
   const handleJoin = useCallback(() => {
+    if (loading) return;
     if (name.trim().length < 2) {
       setError("Name must be at least 2 characters");
       return;
@@ -77,18 +79,23 @@ export default function HomeScreen() {
       `/game?code=${roomCode}&host=false&name=${encodeURIComponent(name.trim())}`,
     );
     setLoading(false);
-  }, [name, roomCode, setRoomCodeStore]);
+  }, [loading, name, roomCode, setRoomCodeStore]);
 
   const handleRoomCodeChange = useCallback((text: string) => {
     setRoomCode(sanitizeRoomCodeInput(text));
     setError("");
   }, []);
 
-  const handleStreamingConnect = useCallback(() => {
+  const handleStreamingConnect = useCallback(async () => {
     const provider = getProvider("spotify");
-    if (provider) {
-      useStreamingStore.getState().setActiveProvider("spotify");
-      provider.auth.login();
+    if (!provider) return;
+    setError("");
+    useStreamingStore.getState().setActiveProvider("spotify");
+    try {
+      await provider.auth.login();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Login failed";
+      setError(`Spotify login failed: ${message}`);
     }
   }, []);
 
@@ -120,6 +127,8 @@ export default function HomeScreen() {
               onDisconnect={handleStreamingDisconnect}
             />
 
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+
             {!isAuthenticated && (
               <Text style={styles.hint}>Connect Spotify to play</Text>
             )}
@@ -138,8 +147,6 @@ export default function HomeScreen() {
                   autoFocus
                   returnKeyType={mode === "join" ? "next" : "go"}
                 />
-
-                {error ? <Text style={styles.error}>{error}</Text> : null}
 
                 <View style={styles.buttonRow}>
                   <Button

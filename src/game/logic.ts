@@ -43,10 +43,6 @@ export function createPlayer(id: string, name: string): Player {
 }
 
 export function addPlayer(room: Room, id: string, name: string): Room {
-  if (room.phase === "finished") {
-    throw new Error("Game is already finished");
-  }
-
   // Same peer ID reconnecting — update name only
   const existingById = room.players.find((p) => p.id === id);
   if (existingById) {
@@ -56,6 +52,13 @@ export function addPlayer(room: Room, id: string, name: string): Room {
         p.id === id ? { ...p, name } : p
       ),
     };
+  }
+
+  if (room.phase === "finished") {
+    throw new Error("Game is already finished");
+  }
+  if (room.phase !== "lobby") {
+    throw new Error("Game is already in progress");
   }
 
   if (room.players.length >= room.settings.maxPlayers) {
@@ -440,10 +443,21 @@ export function skipSong(
 
 export function buildGameState(room: Room): import("./types").GameState {
   const currentPlayer = getCurrentPlayer(room);
+
+  // While the current song is still being guessed/challenged, its metadata must
+  // not reach the peers: it IS the answer (title/artist for the guess, year for
+  // the placement). It appears in playedSongs and timelines only from reveal on.
+  const secretSongId =
+    room.phase === "playing" || room.phase === "hitster-window"
+      ? room.currentSong?.id ?? null
+      : null;
+
   const timelines: Record<string, Song[]> = {};
   const failedTimelines: Record<string, Song[]> = {};
   for (const p of room.players) {
-    timelines[p.id] = p.timeline;
+    timelines[p.id] = secretSongId
+      ? p.timeline.map((s) => (s.id === secretSongId ? { ...s, year: 0 } : s))
+      : p.timeline;
     failedTimelines[p.id] = p.failedSongs;
   }
 
@@ -465,11 +479,13 @@ export function buildGameState(room: Room): import("./types").GameState {
     lastResult: null,
     hostId: room.hostId,
     settings: room.settings,
-    playedSongs: room.playedSongs.map((s) => ({
-      name: s.name,
-      artist: s.artist,
-      year: s.year,
-    })),
+    playedSongs: room.playedSongs
+      .filter((s) => s.id !== secretSongId)
+      .map((s) => ({
+        name: s.name,
+        artist: s.artist,
+        year: s.year,
+      })),
     buzzerId: room.buzzerId,
     playlistName: room.playlistName,
     guessResult: null,

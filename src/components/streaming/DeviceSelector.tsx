@@ -54,7 +54,13 @@ export function DeviceSelector() {
     // Logout clears old tokens, then login gets fresh ones with current scopes
     await provider.auth.logout();
     useStreamingStore.getState().setActiveProvider(activeProviderId);
-    provider.auth.login();
+    try {
+      await provider.auth.login();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error("DeviceSelector", `Reconnect failed: ${msg}`);
+      setError(`Spotify login failed: ${msg}`);
+    }
   }, [activeProviderId]);
 
   const handleSelectDevice = useCallback(

@@ -11,8 +11,10 @@ export function useCurrentPlayer() {
   const timelines = useGameStore((s) => s.timelines);
 
   return useMemo(() => {
-    const isMyTurn = currentPlayerId === myPeerId;
-    const isHost = hostId === myPeerId;
+    // Peer id is assigned by the server after connect — while it's still null,
+    // never report host/turn (null === null would make everyone the host)
+    const isMyTurn = myPeerId != null && currentPlayerId === myPeerId;
+    const isHost = myPeerId != null && hostId === myPeerId;
     const myTimeline: Song[] = myPeerId ? timelines[myPeerId] ?? [] : [];
     const currentPlayer = players.find((p) => p.id === currentPlayerId);
     const me = players.find((p) => p.id === myPeerId);

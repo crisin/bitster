@@ -1,4 +1,3 @@
-import { joinRoom as trysteroJoin, selfId } from "trystero/nostr";
 import { validateAction } from "./protocol";
 import type { P2PAction } from "./protocol";
 import type { Room, Song, PlacementResult } from "@/game/types";
@@ -8,75 +7,103 @@ import { useP2PStore } from "./store";
 import { getProvider } from "@/streaming/registry";
 import { useStreamingStore } from "@/streaming/store";
 import { log as logger } from "@/utils/logger";
+import { MAX_RECONNECT_ATTEMPTS, RECONNECT_INTERVAL_MS } from "@/utils/constants";
 
-const APP_ID = "hitster-p2p-v1";
-const JOIN_TIMEOUT_MS = 15_000;
+const JOIN_TIMEOUT_MS = 12_000;
 const JOIN_RETRY_MS = 3_000;
 const MAX_JOIN_RETRIES = 3;
+const MAX_RECONNECT_DELAY_MS = 10_000;
 
 type Role = "host" | "peer";
 
-let trysteroRoom: ReturnType<typeof trysteroJoin> | null = null;
-let sendAction: ((data: P2PAction, targets?: string | string[]) => void) | null =
-  null;
+/** Envelope protocol between client and the relay server (see server.js). */
+type ServerMsg =
+  | { t: "created"; id: string; room: string }
+  | { t: "joined"; id: string; room: string; hostId: string }
+  | { t: "msg"; from: string; data: unknown }
+  | { t: "peer-joined"; id: string }
+  | { t: "peer-left"; id: string }
+  | { t: "host-down" }
+  | { t: "host-up" }
+  | { t: "room-closed" }
+  | { t: "err"; code: string };
+
+type ClientMsg =
+  | { t: "create"; room: string }
+  | { t: "join"; room: string }
+  | { t: "rejoin"; room: string; id: string }
+  | { t: "msg"; to: "all" | "host" | string; data: P2PAction }
+  | { t: "leave" };
+
+let socket: WebSocket | null = null;
 let role: Role | null = null;
-let hostRoom: Room | null = null;
+let roomCode = "";
 let myName = "";
-let joinSent = false;
+let myId: string | null = null;
+let hostPeerId: string | null = null;
+let hostRoom: Room | null = null;
+let receivedInitialState = false;
+let reconnectAttempts = 0;
 let joinTimeout: ReturnType<typeof setTimeout> | null = null;
-let joinRetryCount = 0;
+let joinRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingResult: PlacementResult | null = null;
 let pendingGuessResult: { titleCorrect: boolean; artistCorrect: boolean } | null = null;
 
-export function getMyPeerId(): string {
-  return selfId;
+function getRelayUrl(): string | null {
+  const env = process.env.EXPO_PUBLIC_RELAY_URL;
+  if (env) return env;
+  if (typeof window !== "undefined" && window.location?.host) {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${proto}//${window.location.host}/ws`;
+  }
+  return null;
 }
 
-export function createRoom(roomCode: string, playerName: string): void {
+export function createRoom(code: string, playerName: string): void {
   cleanup();
   role = "host";
+  roomCode = code;
   myName = playerName;
 
-  hostRoom = logic.createRoom(roomCode, selfId, playerName);
-
-  connectTransport(roomCode);
-
-  useP2PStore.getState().setMyPeerId(selfId);
-  useP2PStore.getState().setStatus("connected");
-  broadcastState();
-
-  logger.info("p2p", `Created room ${roomCode} as host`);
-}
-
-export function joinRoom(roomCode: string, playerName: string): void {
-  cleanup();
-  role = "peer";
-  myName = playerName;
-  joinSent = false;
-  joinRetryCount = 0;
-
-  connectTransport(roomCode);
-
-  useP2PStore.getState().setMyPeerId(selfId);
   useP2PStore.getState().setStatus("connecting");
   useP2PStore.getState().setLastError(null);
 
-  // Timeout — if no host responds within 15s, show error
-  joinTimeout = setTimeout(() => {
-    if (useP2PStore.getState().status === "connecting") {
-      useP2PStore.getState().setStatus("error");
-      useP2PStore.getState().setLastError(
-        "No host found. Check the room code and try again."
-      );
-      logger.warn("p2p", `Connection timeout for room ${roomCode}`);
-    }
-  }, JOIN_TIMEOUT_MS);
+  openSocket({ t: "create", room: code });
+  armJoinTimeout("Could not reach the game server.");
+  logger.info("p2p", `Creating room ${code} as host`);
+}
 
-  logger.info("p2p", `Joining room ${roomCode} as peer`);
+export function joinRoom(code: string, playerName: string): void {
+  cleanup();
+  role = "peer";
+  roomCode = code;
+  myName = playerName;
+
+  useP2PStore.getState().setStatus("connecting");
+  useP2PStore.getState().setLastError(null);
+
+  openSocket({ t: "join", room: code });
+  armJoinTimeout("Could not join the room. Check the code and try again.");
+  logger.info("p2p", `Joining room ${code} as peer`);
+}
+
+export function rejoinRoom(code: string, playerName: string): void {
+  logger.info("p2p", `Retrying connection for room ${code}`);
+  if (role === "host" && myId && roomCode === code) {
+    // Resume our own room instead of joining it as a guest
+    reconnectAttempts = 0;
+    useP2PStore.getState().setStatus("connecting");
+    useP2PStore.getState().setLastError(null);
+    openSocket({ t: "rejoin", room: code, id: myId });
+    armJoinTimeout("Could not reach the game server.");
+    return;
+  }
+  joinRoom(code, playerName);
 }
 
 export function dispatch(action: P2PAction): void {
-  if (!role) {
+  if (!role || !myId) {
     logger.warn("p2p", "dispatch called but not connected");
     return;
   }
@@ -84,18 +111,14 @@ export function dispatch(action: P2PAction): void {
   logger.debug("p2p", `dispatch → ${action.type} (role=${role})`);
 
   if (role === "host") {
-    processHostAction(action, selfId);
+    void processHostAction(action, myId);
   } else {
-    sendToAll(action);
+    sendEnvelope({ t: "msg", to: "host", data: action });
   }
 }
 
-export function rejoinRoom(roomCode: string, playerName: string): void {
-  logger.info("p2p", `Retrying join for room ${roomCode}`);
-  joinRoom(roomCode, playerName);
-}
-
 export function leave(): void {
+  sendEnvelope({ t: "leave" });
   cleanup();
   useP2PStore.getState().reset();
   useGameStore.getState().reset();
@@ -104,155 +127,338 @@ export function leave(): void {
 
 // -- Transport --
 
-function connectTransport(roomCode: string): void {
-  trysteroRoom = trysteroJoin({ appId: APP_ID }, roomCode);
+function openSocket(hello: ClientMsg): void {
+  const url = getRelayUrl();
+  if (!url) {
+    fail("Game server address is not configured (EXPO_PUBLIC_RELAY_URL).");
+    return;
+  }
 
-  const [send, receive] = trysteroRoom.makeAction("msg");
-  sendAction = send as typeof sendAction;
+  const prev = socket;
+  socket = null;
+  prev?.close();
 
-  // Cleanup on browser close / navigation
+  const s = new WebSocket(url);
+  socket = s;
+
   if (typeof window !== "undefined") {
     window.addEventListener("beforeunload", handleUnload);
     window.addEventListener("pagehide", handleUnload);
   }
 
-  receive((data: unknown, peerId: string) => {
-    const action = validateAction(data);
-    if (!action) {
-      logger.warn("p2p", `Rejected invalid message from ${peerId.slice(0, 8)}`);
+  s.onopen = () => {
+    if (s !== socket) return;
+    s.send(JSON.stringify(hello));
+  };
+
+  s.onmessage = (event: MessageEvent) => {
+    if (s !== socket) return;
+    let msg: ServerMsg;
+    try {
+      msg = JSON.parse(String(event.data)) as ServerMsg;
+    } catch {
       return;
     }
-    logger.debug("p2p", `← ${action.type} from ${peerId.slice(0, 8)}`);
+    if (!msg || typeof msg.t !== "string") return;
+    handleServerMsg(msg);
+  };
 
-    if (role === "host") {
-      processHostAction(action, peerId);
-    } else {
-      processPeerMessage(action);
-    }
-  });
+  s.onclose = () => {
+    if (s !== socket) return;
+    socket = null;
+    handleDisconnect();
+  };
 
-  trysteroRoom.onPeerJoin((peerId: string) => {
-    logger.info("p2p", `Peer connected: ${peerId.slice(0, 8)}`);
+  s.onerror = () => {
+    // onclose fires afterwards and handles recovery
+  };
+}
 
-    if (role === "host") {
-      useP2PStore.getState().addPeer({ id: peerId, name: "", connected: true });
-      // Immediately send current state so peer knows the room is alive
-      if (hostRoom) {
-        const state = logic.buildGameState(hostRoom);
-        sendToAll({ type: "game-state", payload: state }, peerId);
-      }
-    }
+function sendEnvelope(msg: ClientMsg): void {
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(msg));
+  }
+}
 
-    if (role === "peer") {
-      // Clear timeout — we found a peer
-      if (joinTimeout) {
-        clearTimeout(joinTimeout);
-        joinTimeout = null;
-      }
-
-      if (!joinSent) {
-        joinSent = true;
-        useP2PStore.getState().setStatus("connected");
-        sendToAll({ type: "join", payload: { name: myName } });
-      }
-
-      // Retry join if we haven't received game-state yet
-      joinRetryCount = 0;
-      scheduleJoinRetry();
-    }
-  });
-
-  trysteroRoom.onPeerLeave((peerId: string) => {
-    logger.info("p2p", `Peer disconnected: ${peerId.slice(0, 8)}`);
-    useP2PStore.getState().removePeer(peerId);
-
-    if (role === "host" && hostRoom) {
-      const wasCurrentPlayer = logic.getCurrentPlayer(hostRoom)?.id === peerId;
-      const wasBuzzer = hostRoom.buzzerId === peerId;
-
-      // If current player disconnects during hitster-window, undo their tentative placement
-      if (wasCurrentPlayer && hostRoom.phase === "hitster-window" && pendingResult) {
-        hostRoom = logic.undoPlacement(hostRoom, peerId, pendingResult.song.id);
-        pendingResult = null;
-      }
-
-      hostRoom = logic.removePlayer(hostRoom, peerId);
-
-      // Clear buzzer if the buzzer disconnected
-      if (wasBuzzer) {
-        hostRoom = { ...hostRoom, buzzerId: null };
-      }
-
-      // Not enough players to continue
-      if (hostRoom.players.length < 2 && hostRoom.phase !== "lobby") {
-        hostRoom = { ...hostRoom, phase: "finished" };
-        pendingResult = null;
-        broadcastState();
-        return;
-      }
-
-      // Auto-advance if the current player disconnected mid-turn
-      if (wasCurrentPlayer && (hostRoom.phase === "playing" || hostRoom.phase === "reveal" || hostRoom.phase === "hitster-window")) {
-        hostRoom = logic.advanceTurn(hostRoom);
-        pickAndPlayNextSong().then((picked) => {
-          if (!picked && hostRoom) {
-            hostRoom = { ...hostRoom, phase: "finished" };
-          }
-          broadcastState();
-        });
-        return;
-      }
-
+function handleServerMsg(msg: ServerMsg): void {
+  switch (msg.t) {
+    case "created": {
+      myId = msg.id;
+      reconnectAttempts = 0;
+      hostRoom = logic.createRoom(roomCode, msg.id, myName);
+      useP2PStore.getState().setMyPeerId(msg.id);
+      useP2PStore.getState().setReconnectAttempts(0);
+      clearJoinTimers();
+      useP2PStore.getState().setStatus("connected");
       broadcastState();
+      logger.info("p2p", `Room ${roomCode} created, my id ${msg.id.slice(0, 8)}`);
+      break;
     }
-  });
+
+    case "joined": {
+      myId = msg.id;
+      hostPeerId = msg.hostId;
+      reconnectAttempts = 0;
+      useP2PStore.getState().setMyPeerId(msg.id);
+      useP2PStore.getState().setReconnectAttempts(0);
+
+      if (role === "host") {
+        // Resumed our own room after a reconnect
+        clearJoinTimers();
+        useP2PStore.getState().setStatus("connected");
+        broadcastState();
+        logger.info("p2p", "Resumed room as host");
+      } else {
+        // Server confirmed the room exists — now ask the host to add us.
+        // Status flips to "connected" when the first game-state arrives.
+        receivedInitialState = false;
+        sendJoinAction();
+        scheduleJoinRetry(1);
+        logger.info("p2p", `In room ${msg.room}, waiting for host ${msg.hostId.slice(0, 8)}`);
+      }
+      break;
+    }
+
+    case "msg": {
+      const action = validateAction(msg.data);
+      if (!action) {
+        logger.warn("p2p", `Rejected invalid message from ${msg.from.slice(0, 8)}`);
+        return;
+      }
+      logger.debug("p2p", `← ${action.type} from ${msg.from.slice(0, 8)}`);
+
+      if (role === "host") {
+        void processHostAction(action, msg.from);
+      } else {
+        if (msg.from !== hostPeerId) {
+          logger.warn("p2p", `Ignoring ${action.type} from non-host ${msg.from.slice(0, 8)}`);
+          return;
+        }
+        processPeerMessage(action);
+      }
+      break;
+    }
+
+    case "peer-joined": {
+      if (role !== "host" || !hostRoom) return;
+      logger.info("p2p", `Peer connected: ${msg.id.slice(0, 8)}`);
+      useP2PStore.getState().addPeer({ id: msg.id, name: "", connected: true });
+      // Send current state right away so the peer sees the room is alive
+      sendEnvelope({
+        t: "msg",
+        to: msg.id,
+        data: { type: "game-state", payload: logic.buildGameState(hostRoom) },
+      });
+      break;
+    }
+
+    case "peer-left": {
+      if (role !== "host") return;
+      logger.info("p2p", `Peer disconnected: ${msg.id.slice(0, 8)}`);
+      useP2PStore.getState().removePeer(msg.id);
+      handlePeerLeft(msg.id);
+      break;
+    }
+
+    case "host-down": {
+      if (role !== "peer") return;
+      logger.warn("p2p", "Host connection lost, waiting for host to return");
+      useP2PStore.getState().setStatus("connecting");
+      break;
+    }
+
+    case "host-up": {
+      if (role !== "peer") return;
+      logger.info("p2p", "Host is back");
+      // Host re-broadcasts state on resume, which flips status to connected
+      break;
+    }
+
+    case "room-closed": {
+      fail("The host closed the room.");
+      break;
+    }
+
+    case "err": {
+      handleServerError(msg.code);
+      break;
+    }
+  }
 }
 
-function handleUnload(): void {
-  cleanup();
+function handleServerError(code: string): void {
+  switch (code) {
+    case "room-not-found":
+      fail(
+        myId
+          ? "The room no longer exists."
+          : "Room not found. Check the code — the host must have the lobby open.",
+      );
+      break;
+    case "room-exists":
+      fail("Room code already taken — go back and create a new room.");
+      break;
+    default:
+      fail("Connection error. Please try again.");
+      break;
+  }
+  logger.warn("p2p", `Server error: ${code}`);
 }
 
-function scheduleJoinRetry(): void {
-  if (role !== "peer" || !joinSent) return;
+function handleDisconnect(): void {
+  if (!role) return;
 
-  setTimeout(() => {
-    // If we still haven't received game state, resend join
-    const hasPlayers = useGameStore.getState().players.length > 0;
-    if (role === "peer" && joinSent && !hasPlayers && joinRetryCount < MAX_JOIN_RETRIES) {
-      joinRetryCount++;
-      logger.info("p2p", `Retrying join (attempt ${joinRetryCount}/${MAX_JOIN_RETRIES})`);
-      sendToAll({ type: "join", payload: { name: myName } });
-      scheduleJoinRetry();
-    }
+  if (!myId) {
+    // Never made it into a room — no point retrying automatically
+    fail("Could not reach the game server.");
+    return;
+  }
+
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    fail("Lost connection to the server.");
+    return;
+  }
+
+  reconnectAttempts++;
+  useP2PStore.getState().setReconnectAttempts(reconnectAttempts);
+  useP2PStore.getState().setStatus("connecting");
+  logger.warn(
+    "p2p",
+    `Connection lost, reconnecting (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`,
+  );
+
+  const delay = Math.min(RECONNECT_INTERVAL_MS * reconnectAttempts, MAX_RECONNECT_DELAY_MS);
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => {
+    if (!role || !myId) return;
+    openSocket({ t: "rejoin", room: roomCode, id: myId });
+  }, delay);
+}
+
+function sendJoinAction(): void {
+  sendEnvelope({ t: "msg", to: "host", data: { type: "join", payload: { name: myName } } });
+}
+
+function scheduleJoinRetry(attempt: number): void {
+  if (joinRetryTimer) clearTimeout(joinRetryTimer);
+  joinRetryTimer = setTimeout(() => {
+    if (role !== "peer" || receivedInitialState) return;
+    if (attempt > MAX_JOIN_RETRIES) return; // the join timeout handles the failure
+    logger.info("p2p", `Re-sending join (attempt ${attempt}/${MAX_JOIN_RETRIES})`);
+    sendJoinAction();
+    scheduleJoinRetry(attempt + 1);
   }, JOIN_RETRY_MS);
 }
 
-function cleanup(): void {
+function armJoinTimeout(message: string): void {
+  if (joinTimeout) clearTimeout(joinTimeout);
+  joinTimeout = setTimeout(() => {
+    if (useP2PStore.getState().status === "connecting") {
+      fail(message);
+      logger.warn("p2p", `Connection timeout for room ${roomCode}`);
+    }
+  }, JOIN_TIMEOUT_MS);
+}
+
+function fail(message: string): void {
+  clearJoinTimers();
+  useP2PStore.getState().setStatus("error");
+  useP2PStore.getState().setLastError(message);
+}
+
+function clearJoinTimers(): void {
   if (joinTimeout) {
     clearTimeout(joinTimeout);
     joinTimeout = null;
   }
+  if (joinRetryTimer) {
+    clearTimeout(joinRetryTimer);
+    joinRetryTimer = null;
+  }
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+}
+
+function handleUnload(): void {
+  sendEnvelope({ t: "leave" });
+  cleanup();
+}
+
+function cleanup(): void {
+  clearJoinTimers();
   if (typeof window !== "undefined") {
     window.removeEventListener("beforeunload", handleUnload);
     window.removeEventListener("pagehide", handleUnload);
   }
-  trysteroRoom?.leave();
-  trysteroRoom = null;
-  sendAction = null;
+  const s = socket;
+  socket = null;
+  s?.close();
   role = null;
-  hostRoom = null;
+  roomCode = "";
   myName = "";
-  joinSent = false;
-  joinRetryCount = 0;
+  myId = null;
+  hostPeerId = null;
+  hostRoom = null;
+  receivedInitialState = false;
+  reconnectAttempts = 0;
   pendingResult = null;
   pendingGuessResult = null;
 }
 
-function sendToAll(action: P2PAction, targets?: string | string[]): void {
-  sendAction?.(action, targets);
+function sendToAll(action: P2PAction, target?: string): void {
+  sendEnvelope({ t: "msg", to: target ?? "all", data: action });
 }
 
 // -- Host Logic --
+
+function handlePeerLeft(peerId: string): void {
+  if (!hostRoom) return;
+
+  const wasCurrentPlayer = logic.getCurrentPlayer(hostRoom)?.id === peerId;
+  const wasBuzzer = hostRoom.buzzerId === peerId;
+
+  // If current player disconnects during hitster-window, undo their tentative placement
+  if (wasCurrentPlayer && hostRoom.phase === "hitster-window" && pendingResult) {
+    hostRoom = logic.undoPlacement(hostRoom, peerId, pendingResult.song.id);
+    pendingResult = null;
+  }
+
+  hostRoom = logic.removePlayer(hostRoom, peerId);
+
+  // Clear buzzer if the buzzer disconnected
+  if (wasBuzzer) {
+    hostRoom = { ...hostRoom, buzzerId: null };
+  }
+
+  // Not enough players to continue
+  if (hostRoom.players.length < 2 && hostRoom.phase !== "lobby") {
+    hostRoom = { ...hostRoom, phase: "finished" };
+    pendingResult = null;
+    broadcastState();
+    return;
+  }
+
+  // Auto-advance if the current player disconnected mid-turn
+  if (
+    wasCurrentPlayer &&
+    (hostRoom.phase === "playing" ||
+      hostRoom.phase === "reveal" ||
+      hostRoom.phase === "hitster-window")
+  ) {
+    hostRoom = logic.advanceTurn(hostRoom);
+    pickAndPlayNextSong().then((picked) => {
+      if (!picked && hostRoom) {
+        hostRoom = { ...hostRoom, phase: "finished" };
+      }
+      broadcastState();
+    });
+    return;
+  }
+
+  broadcastState();
+}
 
 async function processHostAction(action: P2PAction, fromPeerId: string): Promise<void> {
   if (!hostRoom) return;
@@ -326,10 +532,6 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
           return;
         }
         const currentForGuess = logic.getCurrentPlayer(hostRoom);
-        logger.info("p2p",
-          `guess-song from ${fromPeerId.slice(0, 8)}, ` +
-          `currentPlayer=${currentForGuess?.id?.slice(0, 8) ?? "null"} (${currentForGuess?.name ?? "?"})`,
-        );
         if (fromPeerId !== currentForGuess?.id) {
           logger.warn("p2p",
             `guess-song rejected: sender ${fromPeerId.slice(0, 8)} is not current player ${currentForGuess?.id?.slice(0, 8) ?? "null"}`,
@@ -340,12 +542,6 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
           );
           return;
         }
-        const playerBefore = hostRoom.players.find((p) => p.id === fromPeerId);
-        logger.info("p2p",
-          `guess: "${action.payload.title}" / "${action.payload.artist}" ` +
-          `vs song: "${hostRoom.currentSong?.name}" / "${hostRoom.currentSong?.artist}" ` +
-          `(tokens before: ${playerBefore?.tokens ?? "?"})`,
-        );
         const guessResult = logic.guessSongInfo(
           hostRoom,
           fromPeerId,
@@ -353,10 +549,8 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
           action.payload.artist,
         );
         hostRoom = guessResult.room;
-        const playerAfter = hostRoom.players.find((p) => p.id === fromPeerId);
-        logger.info("p2p",
-          `guess result: title=${guessResult.titleCorrect}, artist=${guessResult.artistCorrect}, ` +
-          `tokens after: ${playerAfter?.tokens ?? "?"}`,
+        logger.debug("p2p",
+          `guess result: title=${guessResult.titleCorrect}, artist=${guessResult.artistCorrect}`,
         );
         // Store result — feedback shown after placing (hitster-window phase)
         pendingGuessResult = {
@@ -476,7 +670,7 @@ async function processHostAction(action: P2PAction, fromPeerId: string): Promise
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     logger.error("p2p", `Action error: ${message}`);
-    if (fromPeerId !== selfId) {
+    if (fromPeerId !== myId) {
       sendToAll({ type: "error", payload: { message } }, fromPeerId);
     }
   }
@@ -533,15 +727,14 @@ function broadcastState(lastResult?: PlacementResult): void {
 function processPeerMessage(action: P2PAction): void {
   switch (action.type) {
     case "game-state": {
-      const myPlayer = action.payload.players.find((p: { id: string }) => p.id === selfId);
-      logger.debug("p2p",
-        `game-state: phase=${action.payload.phase}, ` +
-        `myTokens=${myPlayer?.tokens ?? "?"}, ` +
-        `guessResult=${action.payload.guessResult ? `title=${action.payload.guessResult.titleCorrect},artist=${action.payload.guessResult.artistCorrect}` : "null"}`,
-      );
+      if (!receivedInitialState) {
+        receivedInitialState = true;
+        clearJoinTimers();
+      }
+      useP2PStore.getState().setStatus("connected");
       useGameStore.getState().applyGameState(action.payload);
       const peers = action.payload.players
-        .filter((p: { id: string }) => p.id !== selfId)
+        .filter((p: { id: string }) => p.id !== myId)
         .map((p: { id: string; name: string }) => ({ id: p.id, name: p.name, connected: true }));
       useP2PStore.getState().setPeers(peers);
       break;
@@ -568,7 +761,12 @@ function processPeerMessage(action: P2PAction): void {
     }
     case "error": {
       logger.error("p2p", `Host error: ${action.payload.message}`);
-      useP2PStore.getState().setLastError(action.payload.message);
+      if (!receivedInitialState) {
+        // Rejected before we ever got state (room full, game running) — fatal
+        fail(action.payload.message);
+      } else {
+        useP2PStore.getState().setLastError(action.payload.message);
+      }
       break;
     }
   }

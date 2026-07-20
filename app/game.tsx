@@ -74,6 +74,7 @@ export default function GameScreen() {
   const [selectedGap, setSelectedGap] = useState<number | null>(null);
   const [buzzGap, setBuzzGap] = useState<number | null>(null);
   const [guessSubmitted, setGuessSubmitted] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const isBuzzer = buzzerId === myPeerId;
   const buzzerName = buzzerId
     ? players.find((p) => p.id === buzzerId)?.name ?? null
@@ -102,6 +103,17 @@ export default function GameScreen() {
       setGuessSubmitted(false);
     }
   }, [phase]);
+
+  // In-game errors from the host ("Not your turn", ...) show as a brief toast;
+  // fatal errors keep using the banner below via connectionStatus === "error"
+  useEffect(() => {
+    if (connectionError && connectionStatus === "connected") {
+      setToast(connectionError);
+      useP2PStore.getState().setLastError(null);
+      const timer = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [connectionError, connectionStatus]);
 
   const handleGapSelect = useCallback((position: number) => {
     setSelectedGap(position);
@@ -169,7 +181,13 @@ export default function GameScreen() {
   const code = params.code ?? "";
 
   const handleRetry = useCallback(() => {
-    rejoinRoom(code, params.name ?? "");
+    // Without a name we can never complete the join handshake — start over
+    if (!params.name || !code) {
+      leave();
+      router.replace("/");
+      return;
+    }
+    rejoinRoom(code, params.name);
   }, [code, params.name]);
 
   return (
@@ -210,6 +228,13 @@ export default function GameScreen() {
       {connectionStatus === "connecting" && (
         <View style={styles.connectingBanner}>
           <Text style={styles.connectingText}>Connecting to room...</Text>
+        </View>
+      )}
+
+      {/* Transient in-game error toast */}
+      {toast && (
+        <View style={styles.toast} accessibilityRole="alert">
+          <Text style={styles.toastText}>{toast}</Text>
         </View>
       )}
 
@@ -690,6 +715,20 @@ const styles = StyleSheet.create({
     fontSize: FONT.size.base,
     color: COLORS.warning,
     fontWeight: FONT.weight.medium,
+  },
+  toast: {
+    paddingVertical: SPACE.sm,
+    paddingHorizontal: SPACE.xl,
+    backgroundColor: COLORS.warningLight,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.warning,
+    alignItems: "center",
+  },
+  toastText: {
+    fontSize: FONT.size.base,
+    color: COLORS.warning,
+    fontWeight: FONT.weight.medium,
+    textAlign: "center",
   },
   playlistBanner: {
     paddingVertical: SPACE.sm,
