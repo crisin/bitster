@@ -204,11 +204,11 @@ export default function GameScreen() {
 
   const code = params.code ?? "";
 
-  // With streaming connected, a game needs a checked playlist — starting
-  // without one only ends in playback errors. Without a provider the demo
-  // fallback still works, so the button stays enabled there.
-  const needsPlaylist =
-    streamingAuthStatus === "authenticated" && playlistName == null;
+  // A playlist link that was entered but didn't check out blocks the start —
+  // starting anyway would silently swap it for the demo list. An EMPTY link
+  // is fine: that's a deliberate demo game (runs without music).
+  const playlistBlocked = playlistUrl.trim() !== "" && playlistName == null;
+  const demoGame = playlistUrl.trim() === "" && playlistName == null;
 
   const handleRetry = useCallback(() => {
     // Without a name we can never complete the join handshake — start over
@@ -315,15 +315,21 @@ export default function GameScreen() {
       <BottomBar>
         {phase === "lobby" && isHost && (
           <>
-            {needsPlaylist && (
+            {playlistBlocked && (
               <Text style={styles.startHint}>
-                Add a playlist above to start the game
+                Couldn't use that playlist — fix the link, or clear it to play
+                the demo game
+              </Text>
+            )}
+            {demoGame && (
+              <Text style={styles.startHint}>
+                No playlist set — starts the built-in demo game (no music)
               </Text>
             )}
             <Button
               title="Start Game"
               onPress={handleStartGame}
-              disabled={players.length < 2 || needsPlaylist}
+              disabled={players.length < 2 || playlistBlocked}
               cooldownMs={2000}
               label="Start the game"
             />

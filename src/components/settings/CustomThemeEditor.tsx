@@ -21,6 +21,7 @@ const EFFECT_OPTIONS = [
   { key: "blur", label: "Frost" },
   { key: "pulse", label: "Pulse" },
   { key: "rainbow", label: "Rainbow" },
+  { key: "swirl", label: "Swirl" },
   { key: "flicker", label: "Flicker" },
   { key: "scanlines", label: "Scanlines" },
   { key: "vignette", label: "Vignette" },

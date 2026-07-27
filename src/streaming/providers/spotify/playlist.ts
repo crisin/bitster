@@ -32,6 +32,27 @@ function extractYear(releaseDate: string): number {
   return parseInt(releaseDate.substring(0, 4), 10);
 }
 
+/** Look a playlist up in the user's own library (first 50 — cosmetic only) */
+async function findOwnPlaylist(
+  playlistId: string,
+): Promise<{ name: string; imageUrl: string | null } | null> {
+  try {
+    const res = await fetchWithAuth(`${API}/me/playlists?limit=50`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const items = (data.items ?? []) as {
+      id?: string;
+      name?: string;
+      images?: SpotifyImage[];
+    }[];
+    const match = items.find((p) => p.id === playlistId);
+    if (!match?.name) return null;
+    return { name: match.name, imageUrl: match.images?.[0]?.url ?? null };
+  } catch {
+    return null;
+  }
+}
+
 export const spotifyLibrary: StreamingLibrary = {
   async getTrackAtIndex(playlistId: string, index: number): Promise<Track | null> {
     // market=from_token relinks region-locked tracks and fills is_playable —
@@ -93,17 +114,50 @@ export const spotifyLibrary: StreamingLibrary = {
     // is only present for playlists the user owns or collaborates on. Foreign
     // playlists return metadata without `items` — report 0 tracks, which the
     // callers already treat as "unusable" (their items can't be fetched anyway).
+    let name: string | null = null;
+    let imageUrl: string | null = null;
+    let total: number | null = null;
+
     const res = await fetchWithAuth(
       `${API}/playlists/${playlistId}?fields=id,name,items.total,images`,
     );
-    if (!res.ok) throw new Error(`Fetch playlist meta failed: ${res.status}`);
+    if (res.ok) {
+      const data = await res.json();
+      name = data.name ?? null;
+      imageUrl = data.images?.[0]?.url ?? null;
+      total = data.items?.total ?? null;
+    }
 
-    const data = await res.json();
+    if (total == null) {
+      // The metadata endpoint answers with a bare 403 for some dev-mode apps
+      // since the Feb 2026 changes. The items endpoint is what the game needs
+      // anyway — if it works, the playlist is playable, so probe it directly.
+      const itemsRes = await fetchWithAuth(
+        `${API}/playlists/${playlistId}/items?limit=1&fields=total`,
+      );
+      if (!itemsRes.ok) {
+        throw new Error(
+          `Fetch playlist meta failed: ${res.status}` +
+            (itemsRes.status !== res.status ? `/${itemsRes.status}` : ""),
+        );
+      }
+      const itemsData = await itemsRes.json();
+      total = typeof itemsData.total === "number" ? itemsData.total : 0;
+    }
+
+    if (name == null) {
+      // Name/cover are cosmetic — try to find them among the user's own
+      // playlists, and fall back to a generic label if that fails too.
+      const own = await findOwnPlaylist(playlistId);
+      name = own?.name ?? null;
+      imageUrl = imageUrl ?? own?.imageUrl ?? null;
+    }
+
     return {
-      id: data.id,
-      name: data.name,
-      trackCount: data.items?.total ?? 0,
-      imageUrl: data.images?.[0]?.url ?? null,
+      id: playlistId,
+      name: name ?? "Playlist",
+      trackCount: total ?? 0,
+      imageUrl,
     };
   },
 };

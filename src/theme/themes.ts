@@ -18,6 +18,8 @@ export interface ThemeEffects {
   rainbow: boolean;
   /** Pulsing accent-colored ambient light */
   pulse: boolean;
+  /** Rotating psychedelic color swirl (web only) */
+  swirl: boolean;
   /** Emojis floating up the screen, null = none */
   floaties: string[] | null;
 }
@@ -31,6 +33,8 @@ export interface Theme {
   effects: ThemeEffects;
   /** Status bar content color — "dark" for light backgrounds */
   statusBar: "light" | "dark";
+  /** Selecting this theme also switches to this font (user can re-change) */
+  pairedFontId?: string;
 }
 
 const NO_EFFECTS: ThemeEffects = {
@@ -41,10 +45,33 @@ const NO_EFFECTS: ThemeEffects = {
   vignette: false,
   rainbow: false,
   pulse: false,
+  swirl: false,
   floaties: null,
 };
 
 export const DEFAULT_THEME_ID = "classic";
+
+/** Shared by Trippy and its terminal-flavored sibling Tadi */
+const TRIPPY_COLORS: ThemeColors = {
+  ...COLORS,
+  bgPrimary: "#1c0433",
+  bgCard: "#2c0a4e",
+  bgElevated: "#380f61",
+  border: "#5b1e93",
+  borderFocused: "#ff8a00",
+  textPrimary: "#fdf1ff",
+  textSecondary: "#c48ae0",
+  accent: "#ff8a00",
+  accentLight: "rgba(255, 138, 0, 0.14)",
+  secondary: "#43127a",
+  success: "#5dff5d",
+  successLight: "rgba(93, 255, 93, 0.12)",
+  error: "#ff3d81",
+  errorLight: "rgba(255, 61, 129, 0.12)",
+  warning: "#ffe600",
+  warningLight: "rgba(255, 230, 0, 0.10)",
+  yearText: "#5df3ff",
+};
 
 export const THEMES: Theme[] = [
   {
@@ -238,33 +265,32 @@ export const THEMES: Theme[] = [
     name: "Trippy",
     emoji: "🌀",
     tagline: "Reality is a suggestion",
-    colors: {
-      ...COLORS,
-      bgPrimary: "#1c0433",
-      bgCard: "#2c0a4e",
-      bgElevated: "#380f61",
-      border: "#5b1e93",
-      borderFocused: "#ff8a00",
-      textPrimary: "#fdf1ff",
-      textSecondary: "#c48ae0",
-      accent: "#ff8a00",
-      accentLight: "rgba(255, 138, 0, 0.14)",
-      secondary: "#43127a",
-      success: "#5dff5d",
-      successLight: "rgba(93, 255, 93, 0.12)",
-      error: "#ff3d81",
-      errorLight: "rgba(255, 61, 129, 0.12)",
-      warning: "#ffe600",
-      warningLight: "rgba(255, 230, 0, 0.10)",
-      yearText: "#5df3ff",
-    },
+    colors: { ...TRIPPY_COLORS },
     effects: {
       ...NO_EFFECTS,
       glow: true,
       rainbow: true,
+      swirl: true,
       floaties: ["🌀", "🍄", "👁️", "🫠"],
     },
     statusBar: "light",
+  },
+  {
+    id: "tadi",
+    name: "Tadi",
+    emoji: "👽",
+    tagline: "Trippy, but it compiles",
+    colors: { ...TRIPPY_COLORS },
+    effects: {
+      ...NO_EFFECTS,
+      glow: true,
+      rainbow: true,
+      swirl: true,
+      pulse: true,
+      floaties: ["🌀", "🍄", "👽", "🫠", "💾"],
+    },
+    statusBar: "light",
+    pairedFontId: "jetbrains-mono",
   },
   {
     id: "sexy",

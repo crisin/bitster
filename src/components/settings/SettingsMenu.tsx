@@ -8,6 +8,7 @@ import { THEMES } from "@/theme/themes";
 import { CUSTOM_THEME_ID, buildCustomTheme } from "@/theme/customTheme";
 import { createThemedStyles, useTheme } from "@/theme/themedStyles";
 import { CustomThemeEditor } from "./CustomThemeEditor";
+import { EffectSettings } from "./EffectSettings";
 import { TextSettings } from "./TextSettings";
 import { FONT, RADIUS, SPACE, LABEL_STYLE } from "@/utils/constants";
 
@@ -95,6 +96,8 @@ export function SettingsMenu() {
                   </React.Fragment>
                 );
               })}
+
+              <EffectSettings />
 
               <Divider />
               <TextSettings />

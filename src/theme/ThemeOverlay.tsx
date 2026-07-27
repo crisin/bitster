@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import {
   Animated,
   Easing,
@@ -7,36 +7,49 @@ import {
   useWindowDimensions,
   type ViewStyle,
 } from "react-native";
+import { resolveEffectTempo, type EffectTempo } from "./effectTempo";
+import { useThemeStore } from "./store";
 import { useTheme } from "./themedStyles";
 
 const NATIVE_DRIVER = Platform.OS !== "web";
 
+/** The user's effect tempo (speed preset or BPM), reactive */
+function useEffectTempo(): EffectTempo {
+  const speedId = useThemeStore((s) => s.effectSpeedId);
+  const bpm = useThemeStore((s) => s.effectBpm);
+  return useMemo(() => resolveEffectTempo(speedId, bpm), [speedId, bpm]);
+}
+
 /** One emoji drifting up the screen in an endless loop */
-function Floatie({ emoji, index, width, height }: {
+function Floatie({ emoji, index, width, height, factor }: {
   emoji: string;
   index: number;
   width: number;
   height: number;
+  factor: number;
 }) {
   const drift = useRef(new Animated.Value(0)).current;
   // Deterministic per-index spread (same trick as the confetti)
   const x = ((index * 173) % 100) / 100;
-  const duration = 9000 + ((index * 811) % 6000);
+  const duration = (9000 + ((index * 811) % 6000)) / factor;
   const size = 18 + ((index * 97) % 14);
+  const spin = index % 3 !== 0; // two thirds of them tumble
+  const spinDir = index % 2 === 0 ? 1 : -1;
 
   useEffect(() => {
+    drift.setValue(0);
     const loop = Animated.loop(
       Animated.timing(drift, {
         toValue: 1,
         duration,
-        delay: index * 900,
+        delay: (index * 900) / factor,
         easing: Easing.linear,
         useNativeDriver: NATIVE_DRIVER,
       }),
     );
     loop.start();
     return () => loop.stop();
-  }, [drift, duration, index]);
+  }, [drift, duration, index, factor]);
 
   return (
     <Animated.Text
@@ -46,7 +59,7 @@ function Floatie({ emoji, index, width, height }: {
         fontSize: size,
         opacity: drift.interpolate({
           inputRange: [0, 0.1, 0.85, 1],
-          outputRange: [0, 0.5, 0.35, 0],
+          outputRange: [0, 0.55, 0.4, 0],
         }),
         transform: [
           {
@@ -58,7 +71,21 @@ function Floatie({ emoji, index, width, height }: {
           {
             translateX: drift.interpolate({
               inputRange: [0, 0.5, 1],
-              outputRange: [0, index % 2 === 0 ? 24 : -24, 0],
+              outputRange: [0, index % 2 === 0 ? 28 : -28, 0],
+            }),
+          },
+          {
+            rotate: drift.interpolate({
+              inputRange: [0, 1],
+              outputRange: spin
+                ? ["0deg", `${spinDir * 300}deg`]
+                : ["0deg", `${spinDir * 24}deg`],
+            }),
+          },
+          {
+            scale: drift.interpolate({
+              inputRange: [0, 0.5, 1],
+              outputRange: [0.85, 1.25, 0.85],
             }),
           },
         ],
@@ -69,22 +96,27 @@ function Floatie({ emoji, index, width, height }: {
   );
 }
 
-/** Pulsing ambient accent light (rave) */
-function Pulse({ color }: { color: string }) {
+/**
+ * Pulsing ambient accent light (rave). In BPM mode one pulse = one beat,
+ * so tapping the tempo in makes the whole screen breathe with the song.
+ */
+function Pulse({ color, tempo }: { color: string; tempo: EffectTempo }) {
   const pulse = useRef(new Animated.Value(0)).current;
+  const beatMs = tempo.bpm !== null ? 60000 / tempo.bpm : 840 / tempo.factor;
 
   useEffect(() => {
+    pulse.setValue(0);
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, {
           toValue: 1,
-          duration: 420,
+          duration: beatMs * 0.3,
           easing: Easing.out(Easing.quad),
           useNativeDriver: NATIVE_DRIVER,
         }),
         Animated.timing(pulse, {
           toValue: 0,
-          duration: 420,
+          duration: beatMs * 0.7,
           easing: Easing.in(Easing.quad),
           useNativeDriver: NATIVE_DRIVER,
         }),
@@ -92,7 +124,7 @@ function Pulse({ color }: { color: string }) {
     );
     loop.start();
     return () => loop.stop();
-  }, [pulse]);
+  }, [pulse, beatMs]);
 
   return (
     <Animated.View
@@ -116,15 +148,17 @@ const RAINBOW = [
   "rgba(255, 60, 60, 1)",
 ];
 
-/** Slow rainbow wash cycling over the whole screen (trippy) */
-function Rainbow() {
+/** Rainbow wash cycling over the whole screen (trippy) */
+function Rainbow({ factor }: { factor: number }) {
   const cycle = useRef(new Animated.Value(0)).current;
+  const duration = 9000 / factor;
 
   useEffect(() => {
+    cycle.setValue(0);
     const loop = Animated.loop(
       Animated.timing(cycle, {
         toValue: 1,
-        duration: 9000,
+        duration,
         easing: Easing.linear,
         // Color interpolation never runs on the native driver
         useNativeDriver: false,
@@ -132,7 +166,7 @@ function Rainbow() {
     );
     loop.start();
     return () => loop.stop();
-  }, [cycle]);
+  }, [cycle, duration]);
 
   return (
     <Animated.View
@@ -144,6 +178,68 @@ function Rainbow() {
             inputRange: RAINBOW.map((_, i) => i / (RAINBOW.length - 1)),
             outputRange: RAINBOW,
           }),
+        },
+      ]}
+    />
+  );
+}
+
+// Web-only psychedelic color wheel — conic gradients aren't expressible in RN
+const swirlGradientStyle =
+  Platform.OS === "web"
+    ? ({
+        backgroundImage:
+          "conic-gradient(from 0deg, rgba(255,60,60,0.9), rgba(255,200,0,0.9), rgba(60,255,120,0.9), rgba(60,180,255,0.9), rgba(200,60,255,0.9), rgba(255,60,60,0.9))",
+      } as unknown as ViewStyle)
+    : null;
+
+/** Slowly rotating color wheel behind everything (trippy, web only) */
+function Swirl({ width, height, factor }: {
+  width: number;
+  height: number;
+  factor: number;
+}) {
+  const turn = useRef(new Animated.Value(0)).current;
+  const duration = 24000 / factor;
+  // Big enough that the square's corners never show while rotating
+  const size = Math.sqrt(width * width + height * height) * 1.2;
+
+  useEffect(() => {
+    turn.setValue(0);
+    const loop = Animated.loop(
+      Animated.timing(turn, {
+        toValue: 1,
+        duration,
+        easing: Easing.linear,
+        useNativeDriver: NATIVE_DRIVER,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [turn, duration]);
+
+  if (!swirlGradientStyle) return null;
+
+  return (
+    <Animated.View
+      style={[
+        swirlGradientStyle,
+        {
+          position: "absolute",
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          left: (width - size) / 2,
+          top: (height - size) / 2,
+          opacity: 0.07,
+          transform: [
+            {
+              rotate: turn.interpolate({
+                inputRange: [0, 1],
+                outputRange: ["0deg", "360deg"],
+              }),
+            },
+          ],
         },
       ]}
     />
@@ -197,23 +293,39 @@ const vignetteStyle =
       } as unknown as ViewStyle)
     : null;
 
+/** Total floaties on screen — small emoji sets get doubled for density */
+function expandFloaties(floaties: string[]): string[] {
+  return floaties.length <= 5 ? [...floaties, ...floaties] : floaties;
+}
+
 /**
  * Full-screen, non-interactive effect layer. Mounted once in the root layout,
- * above the app content — which effects render is up to the active theme.
+ * above the app content — which effects render is up to the active theme, how
+ * fast they run is up to the user's effect-speed setting (incl. tap-tempo BPM).
  */
 export function ThemeOverlay() {
   const theme = useTheme();
+  const tempo = useEffectTempo();
   const { width, height } = useWindowDimensions();
   const fx = theme.effects;
 
   const hasAny =
-    fx.pulse || fx.rainbow || fx.flicker || fx.scanlines || fx.vignette || fx.floaties;
+    fx.pulse ||
+    fx.rainbow ||
+    fx.swirl ||
+    fx.flicker ||
+    fx.scanlines ||
+    fx.vignette ||
+    fx.floaties;
   if (!hasAny) return null;
 
   return (
     <Animated.View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-      {fx.rainbow && <Rainbow />}
-      {fx.pulse && <Pulse color={theme.colors.accent} />}
+      {fx.rainbow && <Rainbow factor={tempo.factor} />}
+      {fx.swirl && (
+        <Swirl width={width} height={height} factor={tempo.factor} />
+      )}
+      {fx.pulse && <Pulse color={theme.colors.accent} tempo={tempo} />}
       {fx.flicker && <Flicker />}
       {fx.scanlines && scanlineStyle && (
         <Animated.View style={[StyleSheet.absoluteFillObject, scanlineStyle, { opacity: 0.5 }]} />
@@ -221,15 +333,17 @@ export function ThemeOverlay() {
       {fx.vignette && vignetteStyle && (
         <Animated.View style={[StyleSheet.absoluteFillObject, vignetteStyle]} />
       )}
-      {fx.floaties?.map((emoji, i) => (
-        <Floatie
-          key={`${theme.id}-${i}`}
-          emoji={emoji}
-          index={i + 1}
-          width={width}
-          height={height}
-        />
-      ))}
+      {fx.floaties &&
+        expandFloaties(fx.floaties).map((emoji, i) => (
+          <Floatie
+            key={`${theme.id}-${i}`}
+            emoji={emoji}
+            index={i + 1}
+            width={width}
+            height={height}
+            factor={tempo.factor}
+          />
+        ))}
     </Animated.View>
   );
 }

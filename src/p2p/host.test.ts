@@ -68,7 +68,28 @@ afterEach(() => {
 });
 
 describe("HostSession — lobby", () => {
-  it("refuses to start without a playlist while a provider is connected", async () => {
+  it("refuses to start when a playlist link was entered but can't be resolved", async () => {
+    const session = makeSession();
+    await session.handleAction(
+      { type: "join", payload: { name: "Bob" } },
+      "peer-2",
+    );
+    useStreamingStore.getState().setAuthStatus("authenticated");
+
+    await session.handleAction(
+      {
+        type: "start-game",
+        payload: { playlistUrl: "https://open.spotify.com/playlist/broken" },
+      },
+      "host-1",
+    );
+
+    const error = sent.find((m) => m.action.type === "error");
+    expect(error?.target).toBe("host-1");
+    expect(lastBroadcastState().phase).toBe("lobby");
+  });
+
+  it("starts the silent demo game when no playlist link is entered", async () => {
     const session = makeSession();
     await session.handleAction(
       { type: "join", payload: { name: "Bob" } },
@@ -81,9 +102,7 @@ describe("HostSession — lobby", () => {
       "host-1",
     );
 
-    const error = sent.find((m) => m.action.type === "error");
-    expect(error?.target).toBe("host-1");
-    expect(lastBroadcastState().phase).toBe("lobby");
+    expect(lastBroadcastState().phase).toBe("playing");
   });
 
   it("still starts the demo game when no provider is connected", async () => {

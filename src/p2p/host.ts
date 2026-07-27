@@ -199,15 +199,15 @@ export class HostSession {
             : null;
           const meta =
             stored ?? (await this.resolvePlaylist(action.payload.playlistUrl));
-          // With a streaming provider connected, a game without a playlist
-          // would only produce playback errors (mock URIs aren't playable) —
-          // refuse and stay in the lobby. The demo fallback below stays
-          // available when no provider is connected (dev/testing).
-          if (
-            !meta &&
-            useStreamingStore.getState().authStatus === "authenticated"
-          ) {
-            this.sendError("Add a playlist before starting", fromPeerId);
+          // A playlist link that was entered but can't be resolved is refused —
+          // silently swapping it for the demo list would be confusing. With NO
+          // link entered, the demo fallback below is a deliberate choice
+          // (pass-and-play without music, dev/testing).
+          if (!meta && action.payload.playlistUrl.trim() !== "") {
+            this.sendError(
+              "Couldn't load that playlist — fix the link, or clear it to play the demo game",
+              fromPeerId,
+            );
             return;
           }
           if (meta) {
@@ -665,6 +665,10 @@ export class HostSession {
 
   private async playSongOnAllDevices(uri: string): Promise<void> {
     this.send({ type: "play-song", payload: { uri } });
+
+    // Demo/mock songs have no real track behind them — a play request would
+    // only earn a 400 from the provider. The demo game runs silently.
+    if (uri.startsWith("mock:")) return;
 
     const providerId = useStreamingStore.getState().activeProviderId;
     const provider = providerId ? getProvider(providerId) : null;

@@ -12,6 +12,12 @@ import {
   FONT_SCALES,
   getFontOption,
 } from "./typography";
+import {
+  clampBpm,
+  DEFAULT_EFFECT_BPM,
+  DEFAULT_EFFECT_SPEED_ID,
+  getEffectSpeed,
+} from "./effectTempo";
 
 const STORAGE_KEY = "uiSettings";
 /** Pre-customization storage key — migrated on first load */
@@ -21,10 +27,14 @@ interface ThemeStore {
   themeId: string;
   fontScaleId: string;
   fontId: string;
+  effectSpeedId: string;
+  effectBpm: number;
   custom: CustomThemeConfig;
   setTheme: (id: string) => void;
   setFontScale: (id: string) => void;
   setFont: (id: string) => void;
+  setEffectSpeed: (id: string) => void;
+  setEffectBpm: (bpm: number) => void;
   updateCustom: (patch: Partial<CustomThemeConfig>) => void;
   updateCustomEffects: (
     patch: Partial<CustomThemeConfig["effects"]>,
@@ -32,10 +42,18 @@ interface ThemeStore {
 }
 
 function persist(): void {
-  const { themeId, fontScaleId, fontId, custom } = useThemeStore.getState();
+  const { themeId, fontScaleId, fontId, effectSpeedId, effectBpm, custom } =
+    useThemeStore.getState();
   AsyncStorage.setItem(
     STORAGE_KEY,
-    JSON.stringify({ themeId, fontScaleId, fontId, custom }),
+    JSON.stringify({
+      themeId,
+      fontScaleId,
+      fontId,
+      effectSpeedId,
+      effectBpm,
+      custom,
+    }),
   ).catch(() => {
     /* persistence is best-effort */
   });
@@ -49,11 +67,20 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
   themeId: DEFAULT_THEME_ID,
   fontScaleId: DEFAULT_FONT_SCALE_ID,
   fontId: DEFAULT_FONT_ID,
+  effectSpeedId: DEFAULT_EFFECT_SPEED_ID,
+  effectBpm: DEFAULT_EFFECT_BPM,
   custom: DEFAULT_CUSTOM_CONFIG,
 
   setTheme: (id) => {
     if (!isValidThemeId(id)) return;
-    set({ themeId: id });
+    // A theme can bring its own font (e.g. Tadi → JetBrains Mono). The user
+    // can still switch fonts afterwards — this is a one-time convenience.
+    const paired = getTheme(id)?.pairedFontId;
+    if (paired && getFontOption(paired)) {
+      set({ themeId: id, fontId: paired });
+    } else {
+      set({ themeId: id });
+    }
     persist();
   },
   setFontScale: (id) => {
@@ -64,6 +91,15 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
   setFont: (id) => {
     if (!getFontOption(id)) return;
     set({ fontId: id });
+    persist();
+  },
+  setEffectSpeed: (id) => {
+    if (!getEffectSpeed(id)) return;
+    set({ effectSpeedId: id });
+    persist();
+  },
+  setEffectBpm: (bpm) => {
+    set({ effectBpm: clampBpm(bpm) });
     persist();
   },
   updateCustom: (patch) => {
@@ -88,6 +124,8 @@ export async function hydrateTheme(): Promise<void> {
           themeId: string;
           fontScaleId: string;
           fontId: string;
+          effectSpeedId: string;
+          effectBpm: number;
           custom: Partial<CustomThemeConfig>;
         }>;
         useThemeStore.setState({
@@ -102,6 +140,14 @@ export async function hydrateTheme(): Promise<void> {
             s.fontId && getFontOption(s.fontId)
               ? s.fontId
               : DEFAULT_FONT_ID,
+          effectSpeedId:
+            s.effectSpeedId && getEffectSpeed(s.effectSpeedId)
+              ? s.effectSpeedId
+              : DEFAULT_EFFECT_SPEED_ID,
+          effectBpm:
+            typeof s.effectBpm === "number"
+              ? clampBpm(s.effectBpm)
+              : DEFAULT_EFFECT_BPM,
           custom: {
             ...DEFAULT_CUSTOM_CONFIG,
             ...s.custom,

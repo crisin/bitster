@@ -14,6 +14,7 @@ export interface CustomThemeConfig {
     blur: boolean;
     pulse: boolean;
     rainbow: boolean;
+    swirl: boolean;
     flicker: boolean;
     scanlines: boolean;
     vignette: boolean;
@@ -32,6 +33,7 @@ export const DEFAULT_CUSTOM_CONFIG: CustomThemeConfig = {
     blur: false,
     pulse: false,
     rainbow: false,
+    swirl: false,
     flicker: false,
     scanlines: false,
     vignette: false,
@@ -99,6 +101,7 @@ export function buildCustomTheme(config: CustomThemeConfig): Theme {
     blur: config.effects.blur,
     pulse: config.effects.pulse,
     rainbow: config.effects.rainbow,
+    swirl: config.effects.swirl,
     flicker: config.effects.flicker,
     scanlines: config.effects.scanlines,
     vignette: config.effects.vignette,

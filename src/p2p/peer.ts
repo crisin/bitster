@@ -42,6 +42,8 @@ export function handleHostMessage(action: P2PAction, ctx: PeerContext): void {
     }
 
     case "play-song": {
+      // Demo/mock songs have no real track behind them — don't ask the provider
+      if (action.payload.uri.startsWith("mock:")) break;
       const providerId = useStreamingStore.getState().activeProviderId;
       const provider = providerId ? getProvider(providerId) : null;
       if (provider) {
