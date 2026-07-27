@@ -1,4 +1,9 @@
-export type Phase = "lobby" | "playing" | "hitster-window" | "reveal" | "finished";
+export type Phase =
+  | "lobby"
+  | "playing"
+  | "bitster-window"
+  | "reveal"
+  | "finished";
 
 export interface Song {
   id: string;
@@ -36,7 +41,11 @@ export const BUZZ_TIMER_OPTIONS = [15, 30, 45, 60] as const;
 export const DEFAULT_BUZZ_TIMER_SECONDS = 30;
 
 export const DEFAULT_RULES: GameRules = {
-  buzz: { enabled: true, penalty: "none", timerSeconds: DEFAULT_BUZZ_TIMER_SECONDS },
+  buzz: {
+    enabled: true,
+    penalty: "none",
+    timerSeconds: DEFAULT_BUZZ_TIMER_SECONDS,
+  },
 };
 
 export interface GameSettings {
@@ -64,7 +73,7 @@ export interface Room {
   buzzerId: string | null;
   /** Epoch ms until which the buzzer may lock in — null when no buzz is running */
   buzzDeadline: number | null;
-  /** Players who declared "no Hitster" for the current window */
+  /** Players who declared "no bitster" for the current window */
   passedIds: string[];
   playlistName: string | null;
   playlistImageUrl: string | null;

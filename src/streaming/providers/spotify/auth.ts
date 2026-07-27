@@ -1,9 +1,9 @@
+import { useStreamingStore } from "@/streaming/store";
+import type { StreamingAuth } from "@/streaming/types";
+import { log } from "@/utils/logger";
 import * as AuthSession from "expo-auth-session";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
-import type { StreamingAuth } from "@/streaming/types";
-import { useStreamingStore } from "@/streaming/store";
-import { log } from "@/utils/logger";
 
 const CLIENT_ID = "40546a7c7d9a49e38f8880bb38dc6743";
 const SCOPES = [
@@ -124,7 +124,11 @@ let tokenSyncInitialized = false;
  * though the other tab just saved perfectly valid tokens.
  */
 function initTokenSync(): void {
-  if (tokenSyncInitialized || Platform.OS !== "web" || typeof window === "undefined") {
+  if (
+    tokenSyncInitialized ||
+    Platform.OS !== "web" ||
+    typeof window === "undefined"
+  ) {
     return;
   }
   tokenSyncInitialized = true;
@@ -201,10 +205,16 @@ function getRedirectUri(): string {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     return `${origin}/auth/callback`;
   }
-  return AuthSession.makeRedirectUri({ scheme: "hitster", path: "auth/callback" });
+  return AuthSession.makeRedirectUri({
+    scheme: "bitster",
+    path: "auth/callback",
+  });
 }
 
-async function exchangeCodeForTokens(code: string, codeVerifier: string): Promise<void> {
+async function exchangeCodeForTokens(
+  code: string,
+  codeVerifier: string,
+): Promise<void> {
   const store = useStreamingStore.getState();
   store.setAuthStatus("loading");
 
@@ -266,7 +276,10 @@ export async function completePendingAuth(params: {
   if (params.state !== pending.state) {
     await clearPendingAuth();
     useStreamingStore.getState().setAuthStatus("unauthenticated");
-    log.warn("spotify", "State mismatch on auth callback — dropping login attempt");
+    log.warn(
+      "spotify",
+      "State mismatch on auth callback — dropping login attempt",
+    );
     throw new Error("Login could not be verified. Please try again.");
   }
 
@@ -298,8 +311,8 @@ export const spotifyAuth: StreamingAuth = {
       store.setAuthStatus("unauthenticated");
       throw new Error(
         "Spotify no longer accepts 'localhost' redirect URIs. Open the app via " +
-        `http://127.0.0.1:${window.location.port || "80"} instead (and register ` +
-        "that redirect URI in the Spotify Developer Dashboard).",
+          `http://127.0.0.1:${window.location.port || "80"} instead (and register ` +
+          "that redirect URI in the Spotify Developer Dashboard).",
       );
     }
 
@@ -329,7 +342,10 @@ export const spotifyAuth: StreamingAuth = {
       const result = await request.promptAsync(discovery);
 
       if (result.type === "success") {
-        await exchangeCodeForTokens(result.params.code, request.codeVerifier ?? "");
+        await exchangeCodeForTokens(
+          result.params.code,
+          request.codeVerifier ?? "",
+        );
       } else if (result.type === "cancel" || result.type === "dismiss") {
         // "dismiss" also fires when the app is backgrounded mid-login — the
         // pending session stays stored so the callback can still complete it.
@@ -340,7 +356,9 @@ export const spotifyAuth: StreamingAuth = {
       } else {
         const detail =
           result.type === "error"
-            ? result.error?.description ?? result.error?.message ?? "unknown error"
+            ? (result.error?.description ??
+              result.error?.message ??
+              "unknown error")
             : result.type;
         throw new Error(detail);
       }
@@ -432,7 +450,10 @@ async function doRefreshToken(): Promise<void> {
         throw err;
       }
       // Refresh token definitively dead — a full re-login is required
-      log.error("spotify", "Refresh token rejected (invalid_grant), logging out");
+      log.error(
+        "spotify",
+        "Refresh token rejected (invalid_grant), logging out",
+      );
       await clearTokens();
       useStreamingStore.getState().setAuthStatus("unauthenticated");
     } else {
@@ -453,7 +474,7 @@ export async function restoreSession(): Promise<boolean> {
     log.warn(
       "spotify",
       `Stored token scopes outdated (had: "${stored.scopeFingerprint ?? "unknown"}", ` +
-      `need: "${SCOPE_FINGERPRINT}"). Clearing tokens to force re-auth.`,
+        `need: "${SCOPE_FINGERPRINT}"). Clearing tokens to force re-auth.`,
     );
     await clearTokens();
     return false;
@@ -520,8 +541,14 @@ async function fetchWithAuth(
 
   if (response.status === 429) {
     // Rate limited — Spotify tells us how long to back off
-    const retryAfter = Math.min(Number(response.headers.get("Retry-After")) || 2, 15);
-    log.warn("spotify", `Rate limited (429) on ${url}, retrying in ${retryAfter}s`);
+    const retryAfter = Math.min(
+      Number(response.headers.get("Retry-After")) || 2,
+      15,
+    );
+    log.warn(
+      "spotify",
+      `Rate limited (429) on ${url}, retrying in ${retryAfter}s`,
+    );
     await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
     return fetch(url, {
       ...options,
@@ -536,7 +563,7 @@ async function fetchWithAuth(
     log.warn(
       "spotify",
       `403 Forbidden on ${url}. This usually means Spotify Premium is required, ` +
-      `or the token was issued with insufficient scopes. Re-authentication may fix this.`,
+        `or the token was issued with insufficient scopes. Re-authentication may fix this.`,
     );
   }
 

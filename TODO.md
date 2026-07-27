@@ -1,4 +1,4 @@
-# Hitster – TODO
+# bitster – TODO
 
 Stand: 20.07.2026 (nach Relay-Migration, Auth-Härtung, Playback-Robustheit und Refactoring — Details in REVIEW.md).
 
@@ -15,7 +15,7 @@ Stand: 20.07.2026 (nach Relay-Migration, Auth-Härtung, Playback-Robustheit und 
 - [ ] **Song-Preview/Timer** — nur 30–60s abspielen statt des ganzen Songs, mit Countdown.
 - [ ] **Error Boundary** um die App (Crash → freundlicher Screen statt weißer Seite).
 - [ ] **Rejoin nach App-Neustart** — Reconnect überlebt Socket-Drops und Screen-Lock (AppState-Listener), aber kein komplettes Neustarten der App (Session-Persistenz für Raumcode + Peer-ID).
-- [ ] **Buzz-Timer** — Hitster-Window läuft unbegrenzt; optionaler Auto-Reveal nach X Sekunden.
+- [ ] **Buzz-Timer** — bitster-Window läuft unbegrenzt; optionaler Auto-Reveal nach X Sekunden.
 
 ## Nice to Have
 
@@ -24,7 +24,7 @@ Stand: 20.07.2026 (nach Relay-Migration, Auth-Härtung, Playback-Robustheit und 
 - [ ] Statistiken (Trefferquote, Runden-History)
 - [ ] Mehrere Playlists kombinieren
 - [ ] Chat / Emoji-Reactions
-- [ ] Native Builds (iOS/Android) — WebSocket läuft nativ out of the box; braucht `EXPO_PUBLIC_RELAY_URL` aufs Deployment + `hitster://auth/callback` im Spotify Dashboard
+- [ ] Native Builds (iOS/Android) — WebSocket läuft nativ out of the box; braucht `EXPO_PUBLIC_RELAY_URL` aufs Deployment + `bitster://auth/callback` im Spotify Dashboard
 
 ## Erledigt (Auswahl, siehe REVIEW.md für alles)
 

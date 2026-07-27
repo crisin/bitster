@@ -1,23 +1,29 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
-import { View, Text, ScrollView, StyleSheet, Alert, Platform } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams, useNavigation, router } from "expo-router";
-import { useGameStore } from "@/game/store";
-import { useCurrentPlayer } from "@/hooks/useCurrentPlayer";
-import { useConnectionStatus } from "@/hooks/useConnectionStatus";
-import { dispatch, leave, rejoinRoom } from "@/p2p/connection";
-import { useP2PStore } from "@/p2p/store";
-import { StatusDot } from "@/components/ui/StatusDot";
-import { Button } from "@/components/ui/Button";
-import { BottomBar } from "@/components/ui/BottomBar";
+import { FinishedView } from "@/components/game/phases/FinishedView";
 import { LobbyView } from "@/components/game/phases/LobbyView";
 import { PlayingView } from "@/components/game/phases/PlayingView";
-import { HitsterWindowView } from "@/components/game/phases/HitsterWindowView";
 import { RevealView } from "@/components/game/phases/RevealView";
-import { FinishedView } from "@/components/game/phases/FinishedView";
+import { BottomBar } from "@/components/ui/BottomBar";
+import { Button } from "@/components/ui/Button";
+import { StatusDot } from "@/components/ui/StatusDot";
+import { useGameStore } from "@/game/store";
+import { useConnectionStatus } from "@/hooks/useConnectionStatus";
+import { useCurrentPlayer } from "@/hooks/useCurrentPlayer";
 import { haptics } from "@/hooks/useHaptics";
-import { FONT, RADIUS, SPACE, LAYOUT } from "@/utils/constants";
+import { dispatch, leave, rejoinRoom } from "@/p2p/connection";
+import { useP2PStore } from "@/p2p/store";
 import { createThemedStyles } from "@/theme/themedStyles";
+import { FONT, LAYOUT, RADIUS, SPACE } from "@/utils/constants";
+import { router, useLocalSearchParams, useNavigation } from "expo-router";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Alert,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function GameScreen() {
   const styles = useStyles();
@@ -34,8 +40,14 @@ export default function GameScreen() {
   const playlistName = useGameStore((s) => s.playlistName);
   const connectionStatus = useConnectionStatus();
   const connectionError = useP2PStore((s) => s.lastError);
-  const { isMyTurn, isHost, actsForCurrent, actingId, controlsBuzzer, buzzActingId } =
-    useCurrentPlayer();
+  const {
+    isMyTurn,
+    isHost,
+    actsForCurrent,
+    actingId,
+    controlsBuzzer,
+    buzzActingId,
+  } = useCurrentPlayer();
 
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [selectedGap, setSelectedGap] = useState<number | null>(null);
@@ -63,7 +75,9 @@ export default function GameScreen() {
         navigation.dispatch(e.data.action);
       };
       if (Platform.OS === "web") {
-        if (window.confirm("Leave the game? You'll be removed from the room.")) {
+        if (
+          window.confirm("Leave the game? You'll be removed from the room.")
+        ) {
           proceed();
         } else if (params.code) {
           // The browser already popped the URL — push the game URL back
@@ -128,7 +142,10 @@ export default function GameScreen() {
 
   const handleConfirmPlacement = useCallback(() => {
     if (selectedGap === null || actingId == null) return;
-    dispatch({ type: "place-song", payload: { position: selectedGap } }, { as: actingId });
+    dispatch(
+      { type: "place-song", payload: { position: selectedGap } },
+      { as: actingId },
+    );
     setSelectedGap(null);
     haptics.medium();
   }, [selectedGap, actingId]);
@@ -138,7 +155,10 @@ export default function GameScreen() {
       if (buzzActingId == null) return;
       setBuzzGap(position);
       // Provisional pick — the host locks it in if the buzz timer runs out
-      dispatch({ type: "buzz-select", payload: { position } }, { as: buzzActingId });
+      dispatch(
+        { type: "buzz-select", payload: { position } },
+        { as: buzzActingId },
+      );
       haptics.tap();
     },
     [buzzActingId],
@@ -146,7 +166,10 @@ export default function GameScreen() {
 
   const handleConfirmBuzzPlacement = useCallback(() => {
     if (buzzGap === null || buzzActingId == null) return;
-    dispatch({ type: "buzz-place", payload: { position: buzzGap } }, { as: buzzActingId });
+    dispatch(
+      { type: "buzz-place", payload: { position: buzzGap } },
+      { as: buzzActingId },
+    );
     setBuzzGap(null);
     haptics.medium();
   }, [buzzGap, buzzActingId]);
@@ -192,7 +215,7 @@ export default function GameScreen() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>HITSTER</Text>
+        <Text style={styles.headerTitle}>bitster</Text>
         <View style={styles.headerRight}>
           <Text style={styles.headerCode}>{code}</Text>
           <StatusDot status={connectionStatus} />
@@ -261,11 +284,14 @@ export default function GameScreen() {
         )}
 
         {phase === "playing" && (
-          <PlayingView selectedGap={selectedGap} onGapSelect={handleGapSelect} />
+          <PlayingView
+            selectedGap={selectedGap}
+            onGapSelect={handleGapSelect}
+          />
         )}
 
-        {phase === "hitster-window" && (
-          <HitsterWindowView
+        {phase === "bitster-window" && (
+          <bitsterWindowView
             buzzGap={buzzGap}
             onBuzzGapSelect={handleBuzzGapSelect}
           />
@@ -297,7 +323,7 @@ export default function GameScreen() {
           />
         )}
 
-        {phase === "hitster-window" && controlsBuzzer && buzzGap !== null && (
+        {phase === "bitster-window" && controlsBuzzer && buzzGap !== null && (
           <Button
             title="Place Here"
             onPress={handleConfirmBuzzPlacement}
@@ -306,16 +332,18 @@ export default function GameScreen() {
           />
         )}
 
-        {/* No reveal while a Hitster challenge is running — the buzzer's
+        {/* No reveal while a bitster challenge is running — the buzzer's
             countdown decides when the window closes */}
-        {phase === "hitster-window" && buzzerId == null && (isMyTurn || isHost) && (
-          <Button
-            title="Reveal →"
-            onPress={handleReveal}
-            cooldownMs={1500}
-            label="Reveal the song year"
-          />
-        )}
+        {phase === "bitster-window" &&
+          buzzerId == null &&
+          (isMyTurn || isHost) && (
+            <Button
+              title="Reveal →"
+              onPress={handleReveal}
+              cooldownMs={1500}
+              label="Reveal the song year"
+            />
+          )}
 
         {phase === "reveal" && (isMyTurn || isHost) && (
           <Button
@@ -349,112 +377,114 @@ export default function GameScreen() {
   );
 }
 
-const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: COLORS.bgPrimary,
-  },
-  header: {
-    height: LAYOUT.headerHeight,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: SPACE.xl,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  headerTitle: {
-    fontSize: FONT.size["2xl"],
-    fontWeight: FONT.weight.black,
-    color: COLORS.accent,
-    letterSpacing: FONT.tracking.widest,
-  },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACE.sm,
-  },
-  headerCode: {
-    fontSize: FONT.size.lg,
-    fontWeight: FONT.weight.bold,
-    letterSpacing: FONT.tracking.widest,
-    color: COLORS.textPrimary,
-    backgroundColor: COLORS.secondary,
-    paddingVertical: 2,
-    paddingHorizontal: SPACE.md,
-    borderRadius: RADIUS.sm,
-    overflow: "hidden",
-  },
-  errorBanner: {
-    padding: SPACE.lg,
-    backgroundColor: COLORS.errorLight,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.error,
-    alignItems: "center",
-    gap: SPACE.md,
-  },
-  errorBannerText: {
-    fontSize: FONT.size.base,
-    color: COLORS.error,
-    textAlign: "center",
-    fontWeight: FONT.weight.medium,
-  },
-  errorButtons: {
-    flexDirection: "row",
-    gap: SPACE.md,
-  },
-  connectingBanner: {
-    paddingVertical: SPACE.sm,
-    paddingHorizontal: SPACE.xl,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.warning,
-    backgroundColor: COLORS.warningLight,
-    alignItems: "center",
-  },
-  connectingText: {
-    fontSize: FONT.size.base,
-    color: COLORS.warning,
-    fontWeight: FONT.weight.medium,
-  },
-  toast: {
-    paddingVertical: SPACE.sm,
-    paddingHorizontal: SPACE.xl,
-    backgroundColor: COLORS.warningLight,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.warning,
-    alignItems: "center",
-  },
-  toastText: {
-    fontSize: FONT.size.base,
-    color: COLORS.warning,
-    fontWeight: FONT.weight.medium,
-    textAlign: "center",
-  },
-  playlistBanner: {
-    paddingVertical: SPACE.sm,
-    paddingHorizontal: SPACE.xl,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    backgroundColor: COLORS.bgCard,
-  },
-  playlistName: {
-    fontSize: FONT.size.sm,
-    color: COLORS.textSecondary,
-    textAlign: "center",
-    fontWeight: FONT.weight.medium,
-  },
-  content: {
-    flex: 1,
-  },
-  contentInner: {
-    padding: SPACE.xl,
-    paddingBottom: SPACE["4xl"],
-  },
-  finishedButtons: {
-    flexDirection: "row",
-    gap: SPACE.md,
-  },
-  flex1: {
-    flex: 1,
-  },
-}));
+const useStyles = createThemedStyles((COLORS) =>
+  StyleSheet.create({
+    safe: {
+      flex: 1,
+      backgroundColor: COLORS.bgPrimary,
+    },
+    header: {
+      height: LAYOUT.headerHeight,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: SPACE.xl,
+      borderBottomWidth: 1,
+      borderBottomColor: COLORS.border,
+    },
+    headerTitle: {
+      fontSize: FONT.size["2xl"],
+      fontWeight: FONT.weight.black,
+      color: COLORS.accent,
+      letterSpacing: FONT.tracking.widest,
+    },
+    headerRight: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: SPACE.sm,
+    },
+    headerCode: {
+      fontSize: FONT.size.lg,
+      fontWeight: FONT.weight.bold,
+      letterSpacing: FONT.tracking.widest,
+      color: COLORS.textPrimary,
+      backgroundColor: COLORS.secondary,
+      paddingVertical: 2,
+      paddingHorizontal: SPACE.md,
+      borderRadius: RADIUS.sm,
+      overflow: "hidden",
+    },
+    errorBanner: {
+      padding: SPACE.lg,
+      backgroundColor: COLORS.errorLight,
+      borderBottomWidth: 1,
+      borderBottomColor: COLORS.error,
+      alignItems: "center",
+      gap: SPACE.md,
+    },
+    errorBannerText: {
+      fontSize: FONT.size.base,
+      color: COLORS.error,
+      textAlign: "center",
+      fontWeight: FONT.weight.medium,
+    },
+    errorButtons: {
+      flexDirection: "row",
+      gap: SPACE.md,
+    },
+    connectingBanner: {
+      paddingVertical: SPACE.sm,
+      paddingHorizontal: SPACE.xl,
+      borderBottomWidth: 1,
+      borderBottomColor: COLORS.warning,
+      backgroundColor: COLORS.warningLight,
+      alignItems: "center",
+    },
+    connectingText: {
+      fontSize: FONT.size.base,
+      color: COLORS.warning,
+      fontWeight: FONT.weight.medium,
+    },
+    toast: {
+      paddingVertical: SPACE.sm,
+      paddingHorizontal: SPACE.xl,
+      backgroundColor: COLORS.warningLight,
+      borderBottomWidth: 1,
+      borderBottomColor: COLORS.warning,
+      alignItems: "center",
+    },
+    toastText: {
+      fontSize: FONT.size.base,
+      color: COLORS.warning,
+      fontWeight: FONT.weight.medium,
+      textAlign: "center",
+    },
+    playlistBanner: {
+      paddingVertical: SPACE.sm,
+      paddingHorizontal: SPACE.xl,
+      borderBottomWidth: 1,
+      borderBottomColor: COLORS.border,
+      backgroundColor: COLORS.bgCard,
+    },
+    playlistName: {
+      fontSize: FONT.size.sm,
+      color: COLORS.textSecondary,
+      textAlign: "center",
+      fontWeight: FONT.weight.medium,
+    },
+    content: {
+      flex: 1,
+    },
+    contentInner: {
+      padding: SPACE.xl,
+      paddingBottom: SPACE["4xl"],
+    },
+    finishedButtons: {
+      flexDirection: "row",
+      gap: SPACE.md,
+    },
+    flex1: {
+      flex: 1,
+    },
+  }),
+);

@@ -1,30 +1,30 @@
-import React, { useState, useCallback, useEffect } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { router } from "expo-router";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
 import { ConnectButton } from "@/components/streaming/ConnectButton";
 import { ConnectionCheck } from "@/components/streaming/ConnectionCheck";
-import { FONT, SPACE, LAYOUT } from "@/utils/constants";
-import { createThemedStyles } from "@/theme/themedStyles";
-import {
-  sanitizeRoomCodeInput,
-  isValidRoomCode,
-  hasAmbiguousChars,
-} from "@/utils/roomCode";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { generateRoomCode } from "@/game/logic";
 import { useGameStore } from "@/game/store";
-import { useStreamingStore } from "@/streaming/store";
-import { getProvider } from "@/streaming/registry";
 import * as p2p from "@/p2p/connection";
+import { getProvider } from "@/streaming/registry";
+import { useStreamingStore } from "@/streaming/store";
+import { createThemedStyles } from "@/theme/themedStyles";
+import { FONT, LAYOUT, SPACE } from "@/utils/constants";
+import {
+  hasAmbiguousChars,
+  isValidRoomCode,
+  sanitizeRoomCodeInput,
+} from "@/utils/roomCode";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { router } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type Mode = "idle" | "join";
 
@@ -125,7 +125,7 @@ export default function HomeScreen() {
       >
         <View style={styles.content}>
           <Text style={styles.logo} accessibilityRole="header">
-            HITSTER
+            bitster
           </Text>
           <Text style={styles.tagline}>The music guessing game</Text>
 
@@ -223,56 +223,58 @@ export default function HomeScreen() {
   );
 }
 
-const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: COLORS.bgPrimary,
-  },
-  container: {
-    flex: 1,
-    justifyContent: "center",
-  },
-  content: {
-    alignItems: "center",
-    paddingHorizontal: SPACE["2xl"],
-    maxWidth: LAYOUT.maxContentWidth,
-    width: "100%",
-    alignSelf: "center",
-  },
-  logo: {
-    fontSize: 48,
-    fontWeight: FONT.weight.black,
-    color: COLORS.accent,
-    letterSpacing: 4,
-    marginBottom: SPACE.sm,
-  },
-  tagline: {
-    color: COLORS.textSecondary,
-    marginBottom: SPACE["4xl"],
-    fontSize: FONT.size.lg,
-  },
-  form: {
-    width: "100%",
-    gap: SPACE.lg,
-  },
-  hint: {
-    color: COLORS.textSecondary,
-    fontSize: FONT.size.base,
-    textAlign: "center",
-  },
-  error: {
-    color: COLORS.error,
-    fontSize: FONT.size.base,
-    textAlign: "center",
-  },
-  buttonRow: {
-    flexDirection: "row",
-    gap: SPACE.md,
-  },
-  flex1: {
-    flex: 1,
-  },
-  joinSection: {
-    gap: SPACE.md,
-  },
-}));
+const useStyles = createThemedStyles((COLORS) =>
+  StyleSheet.create({
+    safe: {
+      flex: 1,
+      backgroundColor: COLORS.bgPrimary,
+    },
+    container: {
+      flex: 1,
+      justifyContent: "center",
+    },
+    content: {
+      alignItems: "center",
+      paddingHorizontal: SPACE["2xl"],
+      maxWidth: LAYOUT.maxContentWidth,
+      width: "100%",
+      alignSelf: "center",
+    },
+    logo: {
+      fontSize: 48,
+      fontWeight: FONT.weight.black,
+      color: COLORS.accent,
+      letterSpacing: 4,
+      marginBottom: SPACE.sm,
+    },
+    tagline: {
+      color: COLORS.textSecondary,
+      marginBottom: SPACE["4xl"],
+      fontSize: FONT.size.lg,
+    },
+    form: {
+      width: "100%",
+      gap: SPACE.lg,
+    },
+    hint: {
+      color: COLORS.textSecondary,
+      fontSize: FONT.size.base,
+      textAlign: "center",
+    },
+    error: {
+      color: COLORS.error,
+      fontSize: FONT.size.base,
+      textAlign: "center",
+    },
+    buttonRow: {
+      flexDirection: "row",
+      gap: SPACE.md,
+    },
+    flex1: {
+      flex: 1,
+    },
+    joinSection: {
+      gap: SPACE.md,
+    },
+  }),
+);

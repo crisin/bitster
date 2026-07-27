@@ -1,14 +1,8 @@
-import React, { useCallback } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  Share,
-  Platform,
-} from "react-native";
 import { Pressable } from "@/components/ui/Pressable";
-import { FONT, RADIUS, SPACE, LABEL_STYLE, TOUCH } from "@/utils/constants";
 import { createThemedStyles } from "@/theme/themedStyles";
+import { FONT, LABEL_STYLE, RADIUS, SPACE, TOUCH } from "@/utils/constants";
+import React, { useCallback } from "react";
+import { Platform, Share, StyleSheet, Text, View } from "react-native";
 
 interface RoomCodeProps {
   code: string;
@@ -25,7 +19,7 @@ export function RoomCode({ code }: RoomCodeProps) {
   const handleShare = useCallback(async () => {
     try {
       await Share.share({
-        message: `Play Hitster with me! Room code: ${code}`,
+        message: `Play bitster with me! Room code: ${code}`,
       });
     } catch {
       // user cancelled share
@@ -65,43 +59,45 @@ export function RoomCode({ code }: RoomCodeProps) {
   );
 }
 
-const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
-  container: {
-    alignItems: "center",
-    gap: SPACE.sm,
-  },
-  label: {
-    ...LABEL_STYLE,
-    color: COLORS.textSecondary,
-  },
-  codeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACE.md,
-  },
-  code: {
-    fontSize: FONT.size["5xl"],
-    fontWeight: FONT.weight.extrabold,
-    color: COLORS.textPrimary,
-    letterSpacing: 6,
-    fontVariant: ["tabular-nums"],
-    backgroundColor: COLORS.secondary,
-    paddingVertical: SPACE.sm,
-    paddingHorizontal: SPACE.xl,
-    borderRadius: RADIUS.md,
-    overflow: "hidden",
-  },
-  actionBtn: {
-    width: TOUCH.minWidth,
-    height: TOUCH.minHeight,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.bgCard,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  actionIcon: {
-    fontSize: FONT.size.xl,
-  },
-}));
+const useStyles = createThemedStyles((COLORS) =>
+  StyleSheet.create({
+    container: {
+      alignItems: "center",
+      gap: SPACE.sm,
+    },
+    label: {
+      ...LABEL_STYLE,
+      color: COLORS.textSecondary,
+    },
+    codeRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: SPACE.md,
+    },
+    code: {
+      fontSize: FONT.size["5xl"],
+      fontWeight: FONT.weight.extrabold,
+      color: COLORS.textPrimary,
+      letterSpacing: 6,
+      fontVariant: ["tabular-nums"],
+      backgroundColor: COLORS.secondary,
+      paddingVertical: SPACE.sm,
+      paddingHorizontal: SPACE.xl,
+      borderRadius: RADIUS.md,
+      overflow: "hidden",
+    },
+    actionBtn: {
+      width: TOUCH.minWidth,
+      height: TOUCH.minHeight,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: RADIUS.md,
+      backgroundColor: COLORS.bgCard,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    actionIcon: {
+      fontSize: FONT.size.xl,
+    },
+  }),
+);

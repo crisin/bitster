@@ -1,10 +1,10 @@
-import React from "react";
-import { View, Text, StyleSheet } from "react-native";
 import { Chip } from "@/components/ui/Chip";
 import { useGameStore } from "@/game/store";
 import { BUZZ_TIMER_OPTIONS } from "@/game/types";
 import { dispatch } from "@/p2p/connection";
-import { SPACE, LABEL_STYLE } from "@/utils/constants";
+import { LABEL_STYLE, SPACE } from "@/utils/constants";
+import React from "react";
+import { StyleSheet, Text, View } from "react-native";
 
 const WIN_SCORE_OPTIONS = [5, 10, 15, 20];
 
@@ -41,7 +41,7 @@ export function GameSettings() {
         ))}
       </View>
 
-      <Text style={styles.label}>Hitster timer</Text>
+      <Text style={styles.label}>bitster timer</Text>
       <View style={styles.row}>
         {BUZZ_TIMER_OPTIONS.map((n) => (
           <Chip

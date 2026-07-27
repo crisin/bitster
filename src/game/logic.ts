@@ -1,4 +1,10 @@
-import type { Song, Player, Room, PlacementResult, GameSettings } from "./types";
+import type {
+  GameSettings,
+  PlacementResult,
+  Player,
+  Room,
+  Song,
+} from "./types";
 import { DEFAULT_SETTINGS } from "./types";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -16,7 +22,7 @@ export function createRoom(
   code: string,
   hostId: string,
   hostName: string,
-  settings?: Partial<GameSettings>
+  settings?: Partial<GameSettings>,
 ): Room {
   return {
     code,
@@ -41,7 +47,11 @@ export function createRoom(
 
 const STARTING_TOKENS = 2;
 
-export function createPlayer(id: string, name: string, isLocal = false): Player {
+export function createPlayer(
+  id: string,
+  name: string,
+  isLocal = false,
+): Player {
   return {
     id,
     name,
@@ -53,15 +63,18 @@ export function createPlayer(id: string, name: string, isLocal = false): Player 
   };
 }
 
-export function addPlayer(room: Room, id: string, name: string, isLocal = false): Room {
+export function addPlayer(
+  room: Room,
+  id: string,
+  name: string,
+  isLocal = false,
+): Room {
   // Same peer ID reconnecting — update name only
   const existingById = room.players.find((p) => p.id === id);
   if (existingById) {
     return {
       ...room,
-      players: room.players.map((p) =>
-        p.id === id ? { ...p, name } : p
-      ),
+      players: room.players.map((p) => (p.id === id ? { ...p, name } : p)),
     };
   }
 
@@ -111,7 +124,7 @@ export function removePlayer(room: Room, playerId: string): Room {
 
 export function pickRandomSong(room: Room): { room: Room; song: Song } | null {
   const available = room.playlist.filter(
-    (s) => !room.playedSongs.some((ps) => ps.id === s.id)
+    (s) => !room.playedSongs.some((ps) => ps.id === s.id),
   );
   if (available.length === 0) return null;
 
@@ -153,11 +166,7 @@ export function pickRandomIndex(
   return index;
 }
 
-export function setSongFromIndex(
-  room: Room,
-  song: Song,
-  index: number,
-): Room {
+export function setSongFromIndex(room: Room, song: Song, index: number): Room {
   return {
     ...room,
     currentSong: song,
@@ -169,7 +178,7 @@ export function setSongFromIndex(
 export function checkPlacement(
   timeline: Song[],
   song: Song,
-  position: number
+  position: number,
 ): boolean {
   if (timeline.length === 0) return true;
 
@@ -185,12 +194,13 @@ export function checkPlacement(
 export function placeSong(
   room: Room,
   playerId: string,
-  position: number
+  position: number,
 ): { room: Room; result: PlacementResult } {
   const player = room.players.find((p) => p.id === playerId);
   if (!player) throw new Error("Player not found");
   if (!room.currentSong) throw new Error("No current song");
-  if (position < 0 || position > player.timeline.length) throw new Error("Invalid position");
+  if (position < 0 || position > player.timeline.length)
+    throw new Error("Invalid position");
 
   const song = room.currentSong;
   const correct = checkPlacement(player.timeline, song, position);
@@ -209,14 +219,14 @@ export function placeSong(
           timeline: updatedTimeline,
           score: updatedTimeline.length,
         }
-      : p
+      : p,
   );
 
   return {
     room: {
       ...room,
       players: updatedPlayers,
-      phase: "hitster-window",
+      phase: "bitster-window",
       passedIds: [],
       buzzDeadline: null,
     },
@@ -225,7 +235,11 @@ export function placeSong(
 }
 
 /** Remove a tentatively placed song from a player's timeline and track it as failed. */
-export function undoPlacement(room: Room, playerId: string, songId: string): Room {
+export function undoPlacement(
+  room: Room,
+  playerId: string,
+  songId: string,
+): Room {
   const updatedPlayers = room.players.map((p) => {
     if (p.id !== playerId) return p;
     const failed = p.timeline.find((s) => s.id === songId);
@@ -254,9 +268,7 @@ export function advanceTurn(room: Room): Room {
 }
 
 export function checkWinCondition(room: Room): Player | null {
-  return (
-    room.players.find((p) => p.score >= room.settings.winScore) ?? null
-  );
+  return room.players.find((p) => p.score >= room.settings.winScore) ?? null;
 }
 
 export function getCurrentPlayer(room: Room): Player | null {
@@ -296,10 +308,7 @@ export function startGame(
   };
 }
 
-export function handleBuzz(
-  room: Room,
-  buzzerId: string,
-): Room {
+export function handleBuzz(room: Room, buzzerId: string): Room {
   if (!room.settings.rules.buzz.enabled) return room;
   if (room.buzzerId) return room;
   const currentPlayer = getCurrentPlayer(room);
@@ -317,9 +326,9 @@ export function handleBuzz(
   return { ...room, players: updatedPlayers, buzzerId };
 }
 
-/** A non-active player declares "no Hitster" for this window — binding. */
+/** A non-active player declares "no bitster" for this window — binding. */
 export function recordPass(room: Room, playerId: string): Room {
-  if (room.phase !== "hitster-window") return room;
+  if (room.phase !== "bitster-window") return room;
   if (getCurrentPlayer(room)?.id === playerId) return room;
   if (room.buzzerId === playerId) return room;
   if (room.passedIds.includes(playerId)) return room;
@@ -367,7 +376,8 @@ export function resolveBuzz(
   if (!buzzer) throw new Error("Buzzer player not found");
   const target = getCurrentPlayer(room);
   if (!target) throw new Error("No active player");
-  if (position < 0 || position > target.timeline.length) throw new Error("Invalid position");
+  if (position < 0 || position > target.timeline.length)
+    throw new Error("Invalid position");
 
   const song = room.currentSong;
   const correct = checkPlacement(target.timeline, song, position);
@@ -484,7 +494,11 @@ function checkTitleMatch(guess: string, actual: string): boolean {
   // Try with stripped suffixes (handles remixes, feat. tags, edition labels)
   const gStripped = normalize(stripTitleSuffix(guess));
   const aStripped = normalize(stripTitleSuffix(actual));
-  if (gStripped.length > 0 && aStripped.length > 0 && fuzzyEquals(gStripped, aStripped))
+  if (
+    gStripped.length > 0 &&
+    aStripped.length > 0 &&
+    fuzzyEquals(gStripped, aStripped)
+  )
     return true;
   return false;
 }
@@ -501,13 +515,24 @@ function checkArtistMatch(guess: string, actual: string): boolean {
   }
 
   // Any guess part matches any actual part (typo-tolerant)
-  if (guessParts.some((g) => actualParts.some((a) => fuzzyEquals(g, a)))) return true;
+  if (guessParts.some((g) => actualParts.some((a) => fuzzyEquals(g, a))))
+    return true;
 
   // Containment: actual artist found within a guess part (handles "eminemrihanna" containing "eminem")
-  if (guessParts.some((g) => actualParts.some((a) => a.length >= 3 && g.includes(a)))) return true;
+  if (
+    guessParts.some((g) =>
+      actualParts.some((a) => a.length >= 3 && g.includes(a)),
+    )
+  )
+    return true;
 
   // Reverse containment: guess part found within an actual artist name
-  if (guessParts.some((g) => g.length >= 3 && actualParts.some((a) => a.includes(g)))) return true;
+  if (
+    guessParts.some(
+      (g) => g.length >= 3 && actualParts.some((a) => a.includes(g)),
+    )
+  )
+    return true;
 
   return false;
 }
@@ -524,7 +549,7 @@ export function guessSongInfo(
   const artistCorrect = checkArtistMatch(guessArtist, room.currentSong.artist);
 
   // Token only awarded when BOTH title and artist are correct
-  const tokensEarned = (titleCorrect && artistCorrect) ? 1 : 0;
+  const tokensEarned = titleCorrect && artistCorrect ? 1 : 0;
 
   if (tokensEarned === 0) {
     return { room, titleCorrect, artistCorrect };
@@ -534,13 +559,14 @@ export function guessSongInfo(
     p.id === playerId ? { ...p, tokens: p.tokens + tokensEarned } : p,
   );
 
-  return { room: { ...room, players: updatedPlayers }, titleCorrect, artistCorrect };
+  return {
+    room: { ...room, players: updatedPlayers },
+    titleCorrect,
+    artistCorrect,
+  };
 }
 
-export function skipSong(
-  room: Room,
-  playerId: string,
-): Room {
+export function skipSong(room: Room, playerId: string): Room {
   const player = room.players.find((p) => p.id === playerId);
   if (!player) throw new Error("Player not found");
   if (player.tokens <= 0) throw new Error("No tokens to spend");
@@ -559,8 +585,8 @@ export function buildGameState(room: Room): import("./types").GameState {
   // not reach the peers: it IS the answer (title/artist for the guess, year for
   // the placement). It appears in playedSongs and timelines only from reveal on.
   const secretSongId =
-    room.phase === "playing" || room.phase === "hitster-window"
-      ? room.currentSong?.id ?? null
+    room.phase === "playing" || room.phase === "bitster-window"
+      ? (room.currentSong?.id ?? null)
       : null;
 
   const timelines: Record<string, Song[]> = {};

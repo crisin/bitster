@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // host.ts → logger → expo/react-native modules that don't parse in node
 vi.mock("expo-file-system", () => ({
@@ -12,11 +12,11 @@ vi.mock("react-native", () => ({
   Platform: { OS: "ios" },
 }));
 
+import { useGameStore } from "@/game/store";
+import { useStreamingStore } from "@/streaming/store";
 import { HostSession } from "./host";
 import type { P2PAction } from "./protocol";
-import { useGameStore } from "@/game/store";
 import { useP2PStore } from "./store";
-import { useStreamingStore } from "@/streaming/store";
 
 interface SentMessage {
   action: P2PAction;
@@ -40,12 +40,16 @@ function lastBroadcastState() {
     (m) => m.action.type === "game-state" && m.target === undefined,
   );
   const last = broadcasts[broadcasts.length - 1];
-  if (!last || last.action.type !== "game-state") throw new Error("no broadcast");
+  if (!last || last.action.type !== "game-state")
+    throw new Error("no broadcast");
   return last.action.payload;
 }
 
 async function startDemoGame(session: HostSession): Promise<void> {
-  await session.handleAction({ type: "join", payload: { name: "Bob" } }, "peer-2");
+  await session.handleAction(
+    { type: "join", payload: { name: "Bob" } },
+    "peer-2",
+  );
   // No streaming provider registered in tests → falls back to the demo playlist
   await session.handleAction(
     { type: "start-game", payload: { playlistUrl: "" } },
@@ -66,7 +70,10 @@ afterEach(() => {
 describe("HostSession — lobby", () => {
   it("adds a joining peer and broadcasts the state", async () => {
     const session = makeSession();
-    await session.handleAction({ type: "join", payload: { name: "Bob" } }, "peer-2");
+    await session.handleAction(
+      { type: "join", payload: { name: "Bob" } },
+      "peer-2",
+    );
 
     const state = lastBroadcastState();
     expect(state.players.map((p) => p.name)).toEqual(["Alice", "Bob"]);
@@ -79,8 +86,14 @@ describe("HostSession — lobby", () => {
       { type: "update-settings", payload: { maxPlayers: 2 } },
       "host-1",
     );
-    await session.handleAction({ type: "join", payload: { name: "Bob" } }, "peer-2");
-    await session.handleAction({ type: "join", payload: { name: "Carol" } }, "peer-3");
+    await session.handleAction(
+      { type: "join", payload: { name: "Bob" } },
+      "peer-2",
+    );
+    await session.handleAction(
+      { type: "join", payload: { name: "Carol" } },
+      "peer-3",
+    );
 
     const error = sent.find((m) => m.action.type === "error");
     expect(error?.target).toBe("peer-3");
@@ -91,7 +104,10 @@ describe("HostSession — lobby", () => {
 
   it("ignores update-settings from a non-host", async () => {
     const session = makeSession();
-    await session.handleAction({ type: "join", payload: { name: "Bob" } }, "peer-2");
+    await session.handleAction(
+      { type: "join", payload: { name: "Bob" } },
+      "peer-2",
+    );
     await session.handleAction(
       { type: "update-settings", payload: { winScore: 1 } },
       "peer-2",
@@ -106,7 +122,9 @@ describe("HostSession — lobby", () => {
     expect(useP2PStore.getState().peers.map((p) => p.id)).toContain("ghost-1");
 
     vi.advanceTimersByTime(11_000);
-    expect(useP2PStore.getState().peers.map((p) => p.id)).not.toContain("ghost-1");
+    expect(useP2PStore.getState().peers.map((p) => p.id)).not.toContain(
+      "ghost-1",
+    );
     session.destroy();
   });
 });
@@ -114,7 +132,10 @@ describe("HostSession — lobby", () => {
 describe("HostSession — local players (pass-and-play)", () => {
   it("adds and removes local players, host only", async () => {
     const session = makeSession();
-    await session.handleAction({ type: "join", payload: { name: "Bob" } }, "peer-2");
+    await session.handleAction(
+      { type: "join", payload: { name: "Bob" } },
+      "peer-2",
+    );
 
     // Peers may not manage local players
     await session.handleAction(
@@ -141,7 +162,10 @@ describe("HostSession — local players (pass-and-play)", () => {
 
   it("refuses to remove an online player via remove-local-player", async () => {
     const session = makeSession();
-    await session.handleAction({ type: "join", payload: { name: "Bob" } }, "peer-2");
+    await session.handleAction(
+      { type: "join", payload: { name: "Bob" } },
+      "peer-2",
+    );
     await session.handleAction(
       { type: "remove-local-player", payload: { playerId: "peer-2" } },
       "host-1",
@@ -155,18 +179,26 @@ describe("HostSession — local players (pass-and-play)", () => {
       { type: "add-local-player", payload: { name: "Karl" } },
       "host-1",
     );
-    const karlId = lastBroadcastState().players.find((p) => p.name === "Karl")!.id;
+    const karlId = lastBroadcastState().players.find(
+      (p) => p.name === "Karl",
+    )!.id;
     await startDemoGame(session);
 
     // Round 1: host plays through
-    await session.handleAction({ type: "place-song", payload: { position: 0 } }, "host-1");
+    await session.handleAction(
+      { type: "place-song", payload: { position: 0 } },
+      "host-1",
+    );
     await session.handleAction({ type: "reveal-song" }, "host-1");
     await session.handleAction({ type: "next-round" }, "host-1");
 
     // Round 2: the local player is on turn — actions arrive AS the local id
     expect(lastBroadcastState().currentPlayerId).toBe(karlId);
-    await session.handleAction({ type: "place-song", payload: { position: 0 } }, karlId);
-    expect(lastBroadcastState().phase).toBe("hitster-window");
+    await session.handleAction(
+      { type: "place-song", payload: { position: 0 } },
+      karlId,
+    );
+    expect(lastBroadcastState().phase).toBe("bitster-window");
     await session.handleAction({ type: "reveal-song" }, "host-1");
     const reveal = lastBroadcastState();
     expect(reveal.phase).toBe("reveal");
@@ -198,9 +230,12 @@ describe("HostSession — game flow", () => {
     const current = lastBroadcastState().currentPlayerId;
     expect(current).toBe("host-1");
 
-    await session.handleAction({ type: "place-song", payload: { position: 0 } }, "host-1");
+    await session.handleAction(
+      { type: "place-song", payload: { position: 0 } },
+      "host-1",
+    );
     const windowState = lastBroadcastState();
-    expect(windowState.phase).toBe("hitster-window");
+    expect(windowState.phase).toBe("bitster-window");
     expect(windowState.lastResult).toBeNull();
 
     await session.handleAction({ type: "reveal-song" }, "host-1");
@@ -216,7 +251,10 @@ describe("HostSession — game flow", () => {
     const session = makeSession();
     await startDemoGame(session);
 
-    await session.handleAction({ type: "place-song", payload: { position: 0 } }, "peer-2");
+    await session.handleAction(
+      { type: "place-song", payload: { position: 0 } },
+      "peer-2",
+    );
     const error = sent.find((m) => m.action.type === "error");
     expect(error?.target).toBe("peer-2");
     expect(lastBroadcastState().phase).toBe("playing");
@@ -226,7 +264,10 @@ describe("HostSession — game flow", () => {
     const session = makeSession();
     await startDemoGame(session);
 
-    await session.handleAction({ type: "place-song", payload: { position: 0 } }, "host-1");
+    await session.handleAction(
+      { type: "place-song", payload: { position: 0 } },
+      "host-1",
+    );
     await session.handleAction({ type: "reveal-song" }, "host-1");
     await session.handleAction({ type: "next-round" }, "host-1");
 
@@ -239,8 +280,13 @@ describe("HostSession — game flow", () => {
     const session = makeSession();
     await startDemoGame(session);
 
-    await session.handleAction({ type: "join", payload: { name: "Late" } }, "peer-9");
-    const error = sent.find((m) => m.action.type === "error" && m.target === "peer-9");
+    await session.handleAction(
+      { type: "join", payload: { name: "Late" } },
+      "peer-9",
+    );
+    const error = sent.find(
+      (m) => m.action.type === "error" && m.target === "peer-9",
+    );
     expect(
       error?.action.type === "error" ? error.action.payload.message : "",
     ).toMatch(/in progress/);
@@ -254,18 +300,21 @@ describe("HostSession — game flow", () => {
     expect(lastBroadcastState().phase).toBe("finished");
   });
 
-  it("blocks reveal-song while a Hitster challenge is running", async () => {
+  it("blocks reveal-song while a bitster challenge is running", async () => {
     const session = makeSession();
     await startDemoGame(session);
-    await session.handleAction({ type: "place-song", payload: { position: 0 } }, "host-1");
-    await session.handleAction({ type: "hitster-buzz" }, "peer-2");
+    await session.handleAction(
+      { type: "place-song", payload: { position: 0 } },
+      "host-1",
+    );
+    await session.handleAction({ type: "bitster-buzz" }, "peer-2");
 
     const buzzState = lastBroadcastState();
     expect(buzzState.buzzerId).toBe("peer-2");
     expect(buzzState.buzzDeadline).not.toBeNull();
 
     await session.handleAction({ type: "reveal-song" }, "host-1");
-    expect(lastBroadcastState().phase).toBe("hitster-window");
+    expect(lastBroadcastState().phase).toBe("bitster-window");
     session.destroy();
   });
 
@@ -273,8 +322,11 @@ describe("HostSession — game flow", () => {
     vi.useFakeTimers();
     const session = makeSession();
     await startDemoGame(session);
-    await session.handleAction({ type: "place-song", payload: { position: 0 } }, "host-1");
-    await session.handleAction({ type: "hitster-buzz" }, "peer-2");
+    await session.handleAction(
+      { type: "place-song", payload: { position: 0 } },
+      "host-1",
+    );
+    await session.handleAction({ type: "bitster-buzz" }, "peer-2");
 
     vi.advanceTimersByTime(31_000);
     const state = lastBroadcastState();
@@ -288,9 +340,15 @@ describe("HostSession — game flow", () => {
   it("resolves the challenge immediately on buzz-place", async () => {
     const session = makeSession();
     await startDemoGame(session);
-    await session.handleAction({ type: "place-song", payload: { position: 0 } }, "host-1");
-    await session.handleAction({ type: "hitster-buzz" }, "peer-2");
-    await session.handleAction({ type: "buzz-place", payload: { position: 0 } }, "peer-2");
+    await session.handleAction(
+      { type: "place-song", payload: { position: 0 } },
+      "host-1",
+    );
+    await session.handleAction({ type: "bitster-buzz" }, "peer-2");
+    await session.handleAction(
+      { type: "buzz-place", payload: { position: 0 } },
+      "peer-2",
+    );
 
     const state = lastBroadcastState();
     expect(state.phase).toBe("reveal");
@@ -301,8 +359,11 @@ describe("HostSession — game flow", () => {
   it("auto-reveals once every challenger passed", async () => {
     const session = makeSession();
     await startDemoGame(session);
-    await session.handleAction({ type: "place-song", payload: { position: 0 } }, "host-1");
-    await session.handleAction({ type: "hitster-pass" }, "peer-2");
+    await session.handleAction(
+      { type: "place-song", payload: { position: 0 } },
+      "host-1",
+    );
+    await session.handleAction({ type: "bitster-pass" }, "peer-2");
 
     const state = lastBroadcastState();
     expect(state.phase).toBe("reveal");
@@ -317,7 +378,9 @@ describe("HostSession — game flow", () => {
     await session.handleAction({ type: "rematch" }, "host-1");
     const state = lastBroadcastState();
     expect(state.phase).toBe("lobby");
-    expect(state.players.every((p) => p.score === 0 && p.tokens === 2)).toBe(true);
+    expect(state.players.every((p) => p.score === 0 && p.tokens === 2)).toBe(
+      true,
+    );
     expect(state.playedSongs).toHaveLength(0);
   });
 });

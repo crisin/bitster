@@ -28,12 +28,12 @@ Die gemeldeten Verbindungsprobleme sind **keine Mysterien** — beide haben mehr
 3. **Token-Refresh-Race (`auth.ts:241-286`):** Kein Mutex — zwei parallele Calls refreshen beide mit demselben Refresh Token. Spotify rotiert Refresh Tokens, der zweite Refresh bekommt `invalid_grant`, und der Catch-Block (`auth.ts:196-201`) **löscht daraufhin alle Tokens** → scheinbar zufällige Logouts.
 4. **Tokens werden bei JEDEM Refresh-Fehler gelöscht (`auth.ts:196-201`):** Auch bei transienten Netzwerkfehlern (schlechtes WLAN, Carrier-NAT) fliegt der gültige Refresh Token weg → erneuter Voll-Login nötig.
 5. **Fehler unsichtbar:** `provider.auth.login()` wird ohne await/catch aufgerufen (`app/index.tsx:91`, `DeviceSelector.tsx:57`), `result.error` wird verworfen (`auth.ts:153`). Der Button springt kommentarlos zurück auf "Connect Spotify".
-6. **Zwei divergierende Callback-Routen:** Nativ `hitster://callback` → `app/callback.tsx`, Web `/auth/callback` → `app/auth/callback.tsx`. Beide URIs müssen exakt im Spotify Dashboard registriert sein; fehlt eine, scheitert genau eine Plattform. In Expo Go funktioniert Auth grundsätzlich nie (dynamische `exp://`-URI).
+6. **Zwei divergierende Callback-Routen:** Nativ `bitster://callback` → `app/callback.tsx`, Web `/auth/callback` → `app/auth/callback.tsx`. Beide URIs müssen exakt im Spotify Dashboard registriert sein; fehlt eine, scheitert genau eine Plattform. In Expo Go funktioniert Auth grundsätzlich nie (dynamische `exp://`-URI).
 
 ## Warum Lobby-Joins fehlschlagen
 
 1. **Kein TURN-Server (`src/p2p/connection.ts:108`):** `joinRoom` bekommt keine `rtcConfig`/ICE-Server. ~30 % der Mobilfunk-NATs brauchen TURN (steht sogar in CLAUDE.md) — Signaling klappt, ICE verbindet nie, Peer hängt bei "Connecting..." und bekommt irreführend "No host found".
-2. **Falsches Signaling-Backend:** Code nutzt `trystero/nostr` mit **öffentlichen Default-Relays** statt des geplanten Firebase-Signalings (alle Docs sagen Firebase). Öffentliche Relays sind rate-limited/instabil; Host und Peer können auf disjunkten Relay-Subsets landen und sich nie finden. Zudem teilen sich alle Installationen den globalen Namespace `hitster-p2p-v1` (Kollisionen möglich, kein `password`).
+2. **Falsches Signaling-Backend:** Code nutzt `trystero/nostr` mit **öffentlichen Default-Relays** statt des geplanten Firebase-Signalings (alle Docs sagen Firebase). Öffentliche Relays sind rate-limited/instabil; Host und Peer können auf disjunkten Relay-Subsets landen und sich nie finden. Zudem teilen sich alle Installationen den globalen Namespace `bitster-p2p-v1` (Kollisionen möglich, kein `password`).
 3. **Kaputter Join-Handshake (`connection.ts:146-157`):** Der Peer wertet die **erste beliebige Peer-Verbindung** als "beim Host gejoint", setzt Status `connected` und cancelt den Timeout — auch wenn es nur ein anderer Gast ist. Zwei Gäste ohne erreichbaren Host zeigen beide "connected" mit leerer Lobby, für immer, ohne Fehler.
 4. **Join-Ablehnungen unsichtbar (`connection.ts:476-482`, `app/game.tsx:187`):** "Room is full" etc. landet in `lastError`, aber das Banner rendert nur bei Status `error` — der bleibt `connected`. Voller Raum = stiller Hänger.
 5. **Host merkt Signaling-Fehler nicht (`connection.ts:44-47`):** `createRoom` setzt synchron `connected`, bevor irgendeine Verbindung existiert. Host zeigt fröhlich den Raumcode, niemand kann joinen.
@@ -75,7 +75,7 @@ Die gemeldeten Verbindungsprobleme sind **keine Mysterien** — beide haben mehr
    Doppel-Tap-Guard; Mid-Game-Joins werden abgelehnt (Reconnects bleiben erlaubt).
 5. ⬜ **Spotify Dashboard (manuell, kein Code):** Mitspieler-Accounts unter
    "User Management" allowlisten; beide Redirect-URIs exakt registriert halten
-   (`hitster://callback` nativ, `https://<domain>/auth/callback` web).
+   (`bitster://callback` nativ, `https://<domain>/auth/callback` web).
 
 ### Phase 2 — Auth-Härtung ✅ erledigt (20.07.2026)
 
@@ -87,7 +87,7 @@ Die gemeldeten Verbindungsprobleme sind **keine Mysterien** — beide haben mehr
    noch bei `invalid_grant` gelöscht, Netzwerkfehler behalten sie; 60 s
    Expiry-Buffer in `getAccessToken`/`restoreSession`.
 8. ✅ Eine Callback-Route für beide Plattformen (`app/auth/callback.tsx`,
-   nativ jetzt `hitster://auth/callback` — Dashboard-Eintrag nötig, sobald
+   nativ jetzt `bitster://auth/callback` — Dashboard-Eintrag nötig, sobald
    native Builds verteilt werden); Callback-Screen mit Timeout, Fehlerzustand
    und Home-Button; Popup-Erkennung verhindert doppelten Code-Exchange;
    Expo Go wird erkannt und mit klarer Meldung abgelehnt.

@@ -1,8 +1,8 @@
-# Hitster – P2P Music Guessing Game
+# bitster – P2P Music Guessing Game
 
 ## Was ist das?
 
-Hitster ist ein Multiplayer-Partyspiel: Songs werden abgespielt, Spieler ordnen sie chronologisch in ihre Timeline ein. Wer zuerst 10 Songs richtig einordnet, gewinnt. Ein Streaming-Dienst liefert die Musik (aktuell Spotify, weitere geplant), die App ist nur Steuerung + Spiellogik.
+bitster ist ein Multiplayer-Partyspiel: Songs werden abgespielt, Spieler ordnen sie chronologisch in ihre Timeline ein. Wer zuerst 10 Songs richtig einordnet, gewinnt. Ein Streaming-Dienst liefert die Musik (aktuell Spotify, weitere geplant), die App ist nur Steuerung + Spiellogik.
 
 ## Architektur: Host-Authority über WebSocket-Relay
 
@@ -26,12 +26,14 @@ funktionieren in jedem Netz, in dem WSS funktioniert.
 ## Tech Stack
 
 ### Aktuell (wird migriert)
+
 - Client: React 18 + Vite + React Router
 - Server: Express + Socket.IO + spotify-web-api-node
 - Auth: Server-side Spotify OAuth
 - Playback: Spotify Web Playback SDK
 
 ### Ziel-Stack
+
 - **App:** React Native (Expo) — iOS, Android, Web
 - **Multiplayer:** WebSocket-Relay auf dem Railway-Server (`server.js` + `ws`), Host-Peer als Game Authority
 - **Auth:** Provider-spezifisch, client-only (Spotify PKCE, etc.)
@@ -118,41 +120,41 @@ Die App spricht nur mit dem Interface, nie direkt mit Spotify/Apple/etc.
 ```typescript
 // src/streaming/types.ts
 interface StreamingProvider {
-  id: string                           // 'spotify' | 'apple-music' | ...
-  name: string                         // 'Spotify'
-  color: string                        // Brand Color für UI
-  auth: StreamingAuth
-  player: StreamingPlayer
-  library: StreamingLibrary
+  id: string; // 'spotify' | 'apple-music' | ...
+  name: string; // 'Spotify'
+  color: string; // Brand Color für UI
+  auth: StreamingAuth;
+  player: StreamingPlayer;
+  library: StreamingLibrary;
 }
 
 interface StreamingAuth {
-  login(): Promise<void>
-  logout(): Promise<void>
-  isAuthenticated(): boolean
-  refreshToken(): Promise<void>
+  login(): Promise<void>;
+  logout(): Promise<void>;
+  isAuthenticated(): boolean;
+  refreshToken(): Promise<void>;
 }
 
 interface StreamingPlayer {
-  play(trackUri: string): Promise<void>
-  pause(): Promise<void>
-  getDevices(): Promise<StreamingDevice[]>
-  setDevice(deviceId: string): Promise<void>
+  play(trackUri: string): Promise<void>;
+  pause(): Promise<void>;
+  getDevices(): Promise<StreamingDevice[]>;
+  setDevice(deviceId: string): Promise<void>;
 }
 
 interface StreamingLibrary {
-  getPlaylistTracks(playlistId: string): Promise<Track[]>
-  parsePlaylistUrl(url: string): string | null
-  getPlaylistMeta(playlistId: string): Promise<PlaylistMeta>
+  getPlaylistTracks(playlistId: string): Promise<Track[]>;
+  parsePlaylistUrl(url: string): string | null;
+  getPlaylistMeta(playlistId: string): Promise<PlaylistMeta>;
 }
 
 // Provider-agnostischer Track — das benutzt die Game Logic
 interface Track {
-  id: string              // Provider-spezifische ID
-  uri: string             // Provider-spezifische URI
-  name: string
-  artist: string
-  year: number
+  id: string; // Provider-spezifische ID
+  uri: string; // Provider-spezifische URI
+  name: string;
+  artist: string;
+  year: number;
 }
 ```
 
@@ -160,11 +162,11 @@ interface Track {
 
 Drei Stores statt einem monolithischen:
 
-| Store | Verantwortung | Zugriff |
-|-------|--------------|---------|
-| `game/store.ts` | Phase, Scores, Timelines, CurrentSong, Settings | Überall |
-| `streaming/store.ts` | Aktiver Provider, Auth State, Token, Gerät | Streaming UI, Host |
-| `p2p/store.ts` | Connection Status, Peer List, eigene Peer ID | Connection UI, Host/Peer |
+| Store                | Verantwortung                                   | Zugriff                  |
+| -------------------- | ----------------------------------------------- | ------------------------ |
+| `game/store.ts`      | Phase, Scores, Timelines, CurrentSong, Settings | Überall                  |
+| `streaming/store.ts` | Aktiver Provider, Auth State, Token, Gerät      | Streaming UI, Host       |
+| `p2p/store.ts`       | Connection Status, Peer List, eigene Peer ID    | Connection UI, Host/Peer |
 
 Stores sind unabhängig — kein Store importiert einen anderen.
 Orchestrierung läuft über `host.ts` / `peer.ts` die alle drei Stores lesen/schreiben.
@@ -208,7 +210,7 @@ Relay-Server (server.js, /ws):
 
 Host-Peer (p2p/connection.ts, role="host"):
   - Hält kompletten GameState (hostRoom)
-  - Validiert Aktionen (place-song, hitster-buzz, ...)
+  - Validiert Aktionen (place-song, bitster-buzz, ...)
   - Broadcastet State-Updates an alle Peers
   - Koordiniert Playback via StreamingProvider Interface
 
@@ -252,16 +254,16 @@ npx tsc --noEmit                  # Type Check
 
 ## Wichtige Abhängigkeiten
 
-| Package | Zweck |
-|---------|-------|
-| expo | App Framework |
-| expo-router | File-based Navigation |
-| expo-secure-store | Sichere Token-Speicherung |
-| expo-auth-session | Streaming Provider OAuth |
-| ws | WebSocket-Server für den Relay (nur server.js) |
-| zustand | State Management |
-| nativewind | Tailwind CSS für RN |
-| @expo/vector-icons | Icons |
+| Package            | Zweck                                          |
+| ------------------ | ---------------------------------------------- |
+| expo               | App Framework                                  |
+| expo-router        | File-based Navigation                          |
+| expo-secure-store  | Sichere Token-Speicherung                      |
+| expo-auth-session  | Streaming Provider OAuth                       |
+| ws                 | WebSocket-Server für den Relay (nur server.js) |
+| zustand            | State Management                               |
+| nativewind         | Tailwind CSS für RN                            |
+| @expo/vector-icons | Icons                                          |
 
 ## Architektur-Regeln
 
@@ -278,7 +280,7 @@ npx tsc --noEmit                  # Type Check
 ## Nicht vergessen
 
 - Jeder Streaming-Provider braucht registrierte Redirect URIs im jeweiligen Developer Dashboard
-- Deep Links für Auth Callback: `hitster://auth/callback` (native) / `https://domain/auth/callback` (web) — eine Route (`app/auth/callback.tsx`) für beide
+- Deep Links für Auth Callback: `bitster://auth/callback` (native) / `https://domain/auth/callback` (web) — eine Route (`app/auth/callback.tsx`) für beide
 - **Spotify Development Mode:** max. 25 Nutzer, jeder Spieler-Account muss im Spotify
   Developer Dashboard unter "User Management" eingetragen sein — sonst 403 nach dem Login!
   Es zählt die exakte Mail des Spotify-Accounts (bei Duo/Family bzw. Google/Facebook-Signup
@@ -289,6 +291,6 @@ npx tsc --noEmit                  # Type Check
   entsprechende Fehlermeldung).
 - Nativ braucht der Client `EXPO_PUBLIC_RELAY_URL` (Web nimmt automatisch den eigenen Origin)
 - Das Dockerfile kopiert `node_modules/ws` explizit ins Runtime-Image (kein npm ci dort)
-- iOS: Background Audio läuft über die jeweilige Streaming-App, nicht über die Hitster-App
+- iOS: Background Audio läuft über die jeweilige Streaming-App, nicht über die bitster-App
 - Rate Limits: Streaming API Calls bündeln, nicht bei jedem State-Update
 - Neuen Provider hinzufügen: `StreamingProvider` implementieren, in `registry.ts` registrieren, `ProviderPicker` zeigt ihn automatisch

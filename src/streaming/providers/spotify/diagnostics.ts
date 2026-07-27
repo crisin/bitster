@@ -1,12 +1,12 @@
+import { useStreamingStore } from "@/streaming/store";
 import type {
   DiagnosticCheck,
   StreamingAccount,
   StreamingDiagnostics,
 } from "@/streaming/types";
-import { useStreamingStore } from "@/streaming/store";
+import { log } from "@/utils/logger";
 import { fetchWithAuth, getTokenInfo, spotifyAuth } from "./auth";
 import { friendly403, isNotRegistered403 } from "./errors";
-import { log } from "@/utils/logger";
 
 const API = "https://api.spotify.com/v1";
 
@@ -58,7 +58,8 @@ export const spotifyDiagnostics: StreamingDiagnostics = {
         key: "login",
         label: "Login",
         status: "fail",
-        detail: "No Spotify login stored on this device. Connect Spotify first.",
+        detail:
+          "No Spotify login stored on this device. Connect Spotify first.",
       });
       return checks;
     }
@@ -71,7 +72,9 @@ export const spotifyDiagnostics: StreamingDiagnostics = {
         (minutesLeft > 0
           ? `Access token valid for ${minutesLeft} min`
           : "Access token expired (will auto-refresh)") +
-        (info.hasRefreshToken ? "" : " — NO refresh token, session will die soon"),
+        (info.hasRefreshToken
+          ? ""
+          : " — NO refresh token, session will die soon"),
     });
     if (!info.scopesCurrent) {
       checks.push({
@@ -79,7 +82,7 @@ export const spotifyDiagnostics: StreamingDiagnostics = {
         label: "Permissions",
         status: "warn",
         detail:
-          "Login was made with outdated permissions — use \"Reconnect Spotify\" to fix.",
+          'Login was made with outdated permissions — use "Reconnect Spotify" to fix.',
       });
     }
 
@@ -112,7 +115,9 @@ export const spotifyDiagnostics: StreamingDiagnostics = {
         useStreamingStore.getState().setAccount(account);
         const who =
           `${account.name}` +
-          (account.email ? ` (${account.email})` : " (email hidden — reconnect for details)") +
+          (account.email
+            ? ` (${account.email})`
+            : " (email hidden — reconnect for details)") +
           (account.country ? `, ${account.country}` : "");
         checks.push({
           key: "account",
@@ -143,7 +148,7 @@ export const spotifyDiagnostics: StreamingDiagnostics = {
             label: "Premium",
             status: "warn",
             detail:
-              "Couldn't read the plan (missing permission) — use \"Reconnect Spotify\" and check again.",
+              'Couldn\'t read the plan (missing permission) — use "Reconnect Spotify" and check again.',
           });
         }
       } else {
@@ -154,7 +159,7 @@ export const spotifyDiagnostics: StreamingDiagnostics = {
           status: "fail",
           detail:
             res.status === 403 && isNotRegistered403(body)
-              ? "This account is NOT allow-listed for Hitster. The host must add " +
+              ? "This account is NOT allow-listed for bitster. The host must add " +
                 "the exact email of THIS Spotify account in the Spotify Developer " +
                 "Dashboard (User Management). Watch out with Duo/Family or " +
                 "Google/Facebook sign-ups: the account email can differ from the " +

@@ -87,7 +87,11 @@ const server = http.createServer((req, res) => {
 // Server → client: created | joined | msg | peer-joined | peer-left
 //                  | host-down | host-up | room-closed | err
 
-const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 512 * 1024 });
+const wss = new WebSocketServer({
+  server,
+  path: "/ws",
+  maxPayload: 512 * 1024,
+});
 
 /** roomCode -> { hostId, members: Map<memberId, ws>, graceTimer } */
 const rooms = new Map();
@@ -165,9 +169,15 @@ function handleMessage(ws, raw) {
       const id = newId();
       meta.roomCode = msg.room;
       meta.memberId = id;
-      rooms.set(msg.room, { hostId: id, members: new Map([[id, ws]]), graceTimer: null });
+      rooms.set(msg.room, {
+        hostId: id,
+        members: new Map([[id, ws]]),
+        graceTimer: null,
+      });
       send(ws, { t: "created", id, room: msg.room });
-      console.log(`[relay] room ${msg.room} created (${rooms.size} rooms open)`);
+      console.log(
+        `[relay] room ${msg.room} created (${rooms.size} rooms open)`,
+      );
       break;
     }
 
@@ -194,7 +204,12 @@ function handleMessage(ws, raw) {
       meta.roomCode = msg.room;
       meta.memberId = msg.id;
       room.members.set(msg.id, ws);
-      send(ws, { t: "joined", id: msg.id, room: msg.room, hostId: room.hostId });
+      send(ws, {
+        t: "joined",
+        id: msg.id,
+        room: msg.room,
+        hostId: room.hostId,
+      });
       if (msg.id === room.hostId) {
         clearTimeout(room.graceTimer);
         room.graceTimer = null;
@@ -251,5 +266,5 @@ setInterval(() => {
 }, HEARTBEAT_MS);
 
 server.listen(PORT, () => {
-  console.log(`Hitster serving on port ${PORT} (ws relay on /ws)`);
+  console.log(`bitster serving on port ${PORT} (ws relay on /ws)`);
 });

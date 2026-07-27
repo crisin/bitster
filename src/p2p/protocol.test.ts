@@ -1,7 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { validateAction, validateGameState } from "./protocol";
-import { createRoom, addPlayer, buildGameState } from "@/game/logic";
+import { addPlayer, buildGameState, createRoom } from "@/game/logic";
 import type { GameState } from "@/game/types";
+import { describe, expect, it } from "vitest";
+import { validateAction, validateGameState } from "./protocol";
 
 function makeValidState(): GameState {
   let room = createRoom("TEST01", "host-1", "Alice");
@@ -21,7 +21,9 @@ describe("validateAction", () => {
 
   it("rejects unknown action types", () => {
     expect(validateAction({ type: "hack-the-game", payload: {} })).toBeNull();
-    expect(validateAction({ type: "kick-player", payload: { playerId: "x" } })).toBeNull();
+    expect(
+      validateAction({ type: "kick-player", payload: { playerId: "x" } }),
+    ).toBeNull();
   });
 
   it("rejects non-object data", () => {
@@ -31,39 +33,67 @@ describe("validateAction", () => {
   });
 
   it("rejects place-song with negative or non-integer position", () => {
-    expect(validateAction({ type: "place-song", payload: { position: -1 } })).toBeNull();
-    expect(validateAction({ type: "place-song", payload: { position: 1.5 } })).toBeNull();
-    expect(validateAction({ type: "place-song", payload: { position: 2 } })).not.toBeNull();
+    expect(
+      validateAction({ type: "place-song", payload: { position: -1 } }),
+    ).toBeNull();
+    expect(
+      validateAction({ type: "place-song", payload: { position: 1.5 } }),
+    ).toBeNull();
+    expect(
+      validateAction({ type: "place-song", payload: { position: 2 } }),
+    ).not.toBeNull();
   });
 
   it("accepts a valid game-state payload", () => {
-    const action = validateAction({ type: "game-state", payload: makeValidState() });
+    const action = validateAction({
+      type: "game-state",
+      payload: makeValidState(),
+    });
     expect(action?.type).toBe("game-state");
   });
 
   it("validates the buzz actions", () => {
-    expect(validateAction({ type: "hitster-pass" })).toEqual({ type: "hitster-pass" });
-    expect(validateAction({ type: "buzz-select", payload: { position: 2 } })).toEqual({
+    expect(validateAction({ type: "bitster-pass" })).toEqual({
+      type: "bitster-pass",
+    });
+    expect(
+      validateAction({ type: "buzz-select", payload: { position: 2 } }),
+    ).toEqual({
       type: "buzz-select",
       payload: { position: 2 },
     });
-    expect(validateAction({ type: "buzz-select", payload: { position: -1 } })).toBeNull();
+    expect(
+      validateAction({ type: "buzz-select", payload: { position: -1 } }),
+    ).toBeNull();
   });
 
   it("validates the local-player actions", () => {
     expect(
       validateAction({ type: "add-local-player", payload: { name: "Karl" } }),
     ).toEqual({ type: "add-local-player", payload: { name: "Karl" } });
-    expect(validateAction({ type: "add-local-player", payload: { name: "" } })).toBeNull();
     expect(
-      validateAction({ type: "remove-local-player", payload: { playerId: "local-1" } }),
-    ).toEqual({ type: "remove-local-player", payload: { playerId: "local-1" } });
-    expect(validateAction({ type: "remove-local-player", payload: {} })).toBeNull();
+      validateAction({ type: "add-local-player", payload: { name: "" } }),
+    ).toBeNull();
+    expect(
+      validateAction({
+        type: "remove-local-player",
+        payload: { playerId: "local-1" },
+      }),
+    ).toEqual({
+      type: "remove-local-player",
+      payload: { playerId: "local-1" },
+    });
+    expect(
+      validateAction({ type: "remove-local-player", payload: {} }),
+    ).toBeNull();
   });
 
   it("validates set-playlist", () => {
     expect(
-      validateAction({ type: "set-playlist", payload: { playlistUrl: "https://x" } }),
+      validateAction({
+        type: "set-playlist",
+        payload: { playlistUrl: "https://x" },
+      }),
     ).toEqual({ type: "set-playlist", payload: { playlistUrl: "https://x" } });
     expect(validateAction({ type: "set-playlist", payload: {} })).toBeNull();
   });
@@ -75,7 +105,9 @@ describe("validateAction", () => {
     });
     expect(action).toEqual({
       type: "update-settings",
-      payload: { rules: { buzz: { enabled: true, penalty: "none", timerSeconds: 30 } } },
+      payload: {
+        rules: { buzz: { enabled: true, penalty: "none", timerSeconds: 30 } },
+      },
     });
   });
 
@@ -84,7 +116,10 @@ describe("validateAction", () => {
       validateAction({ type: "update-settings", payload: { winScore: 5 } }),
     ).toEqual({ type: "update-settings", payload: { winScore: 5 } });
     expect(
-      validateAction({ type: "update-settings", payload: { winScore: "lots" } }),
+      validateAction({
+        type: "update-settings",
+        payload: { winScore: "lots" },
+      }),
     ).toBeNull();
     expect(
       validateAction({
@@ -120,7 +155,9 @@ describe("validateGameState", () => {
   it("rejects malformed players", () => {
     const state = {
       ...makeValidState(),
-      players: [{ id: "p1", name: "Eve", score: "9999", timelineLength: 0, tokens: 2 }],
+      players: [
+        { id: "p1", name: "Eve", score: "9999", timelineLength: 0, tokens: 2 },
+      ],
     };
     expect(validateGameState(state)).toBeNull();
   });
@@ -136,7 +173,13 @@ describe("validateGameState", () => {
   it("accepts masked years (year 0) in timelines", () => {
     const state = makeValidState();
     state.timelines["host-1"] = [
-      { id: "s1", uri: "spotify:track:1", name: "Song", artist: "Artist", year: 0 },
+      {
+        id: "s1",
+        uri: "spotify:track:1",
+        name: "Song",
+        artist: "Artist",
+        year: 0,
+      },
     ];
     expect(validateGameState(state)).not.toBeNull();
   });

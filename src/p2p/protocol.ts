@@ -1,10 +1,10 @@
 import type {
-  GameState,
-  GameSettings,
   GameRules,
+  GameSettings,
+  GameState,
   Phase,
-  Song,
   PlacementResult,
+  Song,
 } from "@/game/types";
 
 export type P2PAction =
@@ -14,8 +14,8 @@ export type P2PAction =
   | { type: "game-state"; payload: GameState }
   | { type: "start-game"; payload: { playlistUrl: string } }
   | { type: "place-song"; payload: { position: number } }
-  | { type: "hitster-buzz" }
-  | { type: "hitster-pass" }
+  | { type: "bitster-buzz" }
+  | { type: "bitster-pass" }
   | { type: "buzz-select"; payload: { position: number } }
   | { type: "buzz-place"; payload: { position: number } }
   | { type: "set-playlist"; payload: { playlistUrl: string } }
@@ -33,7 +33,7 @@ export type P2PActionType = P2PAction["type"];
 const PHASES: readonly Phase[] = [
   "lobby",
   "playing",
-  "hitster-window",
+  "bitster-window",
   "reveal",
   "finished",
 ];
@@ -118,7 +118,8 @@ function parsePlayers(v: unknown): GameState["players"] | null {
     ) {
       return null;
     }
-    if (item.isLocal !== undefined && typeof item.isLocal !== "boolean") return null;
+    if (item.isLocal !== undefined && typeof item.isLocal !== "boolean")
+      return null;
     players.push({
       id: item.id,
       name: item.name,
@@ -137,7 +138,10 @@ function parseRules(v: unknown): GameRules | null {
   if (typeof enabled !== "boolean") return null;
   if (penalty !== "none" && penalty !== "lose-point") return null;
   // Tolerate older hosts that don't send a timer yet
-  if (timerSeconds !== undefined && (!isFiniteInt(timerSeconds) || timerSeconds <= 0)) {
+  if (
+    timerSeconds !== undefined &&
+    (!isFiniteInt(timerSeconds) || timerSeconds <= 0)
+  ) {
     return null;
   }
   return {
@@ -151,7 +155,8 @@ function parseRules(v: unknown): GameRules | null {
 
 function parseSettings(v: unknown): GameSettings | null {
   if (!isObject(v)) return null;
-  if (!isNonNegativeInt(v.winScore) || !isNonNegativeInt(v.maxPlayers)) return null;
+  if (!isNonNegativeInt(v.winScore) || !isNonNegativeInt(v.maxPlayers))
+    return null;
   const rules = parseRules(v.rules);
   if (!rules) return null;
   return { winScore: v.winScore, maxPlayers: v.maxPlayers, rules };
@@ -188,7 +193,8 @@ function parsePlayedSongs(v: unknown): GameState["playedSongs"] | null {
   const out: GameState["playedSongs"] = [];
   for (const item of v) {
     if (!isObject(item)) return null;
-    if (typeof item.name !== "string" || typeof item.artist !== "string") return null;
+    if (typeof item.name !== "string" || typeof item.artist !== "string")
+      return null;
     if (!isNonNegativeInt(item.year)) return null;
     out.push({ name: item.name, artist: item.artist, year: item.year });
   }
@@ -311,11 +317,11 @@ export function validateAction(data: unknown): P2PAction | null {
       if (!isObject(p) || !isNonNegativeInt(p.position)) return null;
       return { type: "place-song", payload: { position: p.position } };
 
-    case "hitster-buzz":
-      return { type: "hitster-buzz" };
+    case "bitster-buzz":
+      return { type: "bitster-buzz" };
 
-    case "hitster-pass":
-      return { type: "hitster-pass" };
+    case "bitster-pass":
+      return { type: "bitster-pass" };
 
     case "buzz-select":
       if (!isObject(p) || !isNonNegativeInt(p.position)) return null;
@@ -330,8 +336,16 @@ export function validateAction(data: unknown): P2PAction | null {
       return { type: "set-playlist", payload: { playlistUrl: p.playlistUrl } };
 
     case "guess-song":
-      if (!isObject(p) || typeof p.title !== "string" || typeof p.artist !== "string") return null;
-      return { type: "guess-song", payload: { title: p.title, artist: p.artist } };
+      if (
+        !isObject(p) ||
+        typeof p.title !== "string" ||
+        typeof p.artist !== "string"
+      )
+        return null;
+      return {
+        type: "guess-song",
+        payload: { title: p.title, artist: p.artist },
+      };
 
     case "skip-song":
       return { type: "skip-song" };

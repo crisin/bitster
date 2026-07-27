@@ -41,10 +41,14 @@ function push(level: LogLevel, tag: string, message: string, data?: unknown) {
 
   // Also output to browser console for real-time debugging
   const formatted = formatEntry(entry);
-  const consoleFn = level === "error" ? originalConsole.error
-    : level === "warn" ? originalConsole.warn
-    : level === "debug" ? originalConsole.debug
-    : originalConsole.log;
+  const consoleFn =
+    level === "error"
+      ? originalConsole.error
+      : level === "warn"
+        ? originalConsole.warn
+        : level === "debug"
+          ? originalConsole.debug
+          : originalConsole.log;
   consoleFn(formatted);
 }
 
@@ -83,7 +87,7 @@ export const log = {
 
   exportToFile: async (): Promise<void> => {
     const content = buffer.map(formatEntry).join("\n");
-    const filename = `hitster-log-${Date.now()}.log`;
+    const filename = `bitster-log-${Date.now()}.log`;
 
     if (Platform.OS === "web") {
       const blob = new Blob([content], { type: "text/plain" });

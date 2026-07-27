@@ -1,15 +1,15 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
-import * as Clipboard from "expo-clipboard";
-import { Pressable } from "@/components/ui/Pressable";
 import { Button } from "@/components/ui/Button";
-import { useStreamingStore } from "@/streaming/store";
+import { Pressable } from "@/components/ui/Pressable";
 import { getProvider } from "@/streaming/registry";
+import { useStreamingStore } from "@/streaming/store";
 import type { DiagnosticCheck } from "@/streaming/types";
-import { log } from "@/utils/logger";
-import { FONT, RADIUS, SPACE } from "@/utils/constants";
 import { createThemedStyles, useThemeColors } from "@/theme/themedStyles";
 import type { ThemeColors } from "@/theme/themes";
+import { FONT, RADIUS, SPACE } from "@/utils/constants";
+import { log } from "@/utils/logger";
+import * as Clipboard from "expo-clipboard";
+import React, { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 const STATUS_ICON: Record<DiagnosticCheck["status"], string> = {
   ok: "✓",
@@ -68,7 +68,7 @@ export function ConnectionCheck() {
   const handleCopy = useCallback(async () => {
     if (!checks) return;
     const lines = [
-      `Hitster Spotify check (${new Date().toISOString()})`,
+      `bitster Spotify check (${new Date().toISOString()})`,
       ...checks.map((c) => `${STATUS_ICON[c.status]} ${c.label}: ${c.detail}`),
     ];
     await Clipboard.setStringAsync(lines.join("\n"));
@@ -98,7 +98,9 @@ export function ConnectionCheck() {
         label="Open Spotify connection check"
         style={styles.toggle}
       >
-        <Text style={styles.toggleText}>Spotify not working? Run a check ▸</Text>
+        <Text style={styles.toggleText}>
+          Spotify not working? Run a check ▸
+        </Text>
       </Pressable>
     );
   }
@@ -140,7 +142,9 @@ export function ConnectionCheck() {
             {STATUS_ICON[c.status]}
           </Text>
           <View style={styles.checkBody}>
-            <Text style={[styles.checkLabel, { color: STATUS_COLOR[c.status] }]}>
+            <Text
+              style={[styles.checkLabel, { color: STATUS_COLOR[c.status] }]}
+            >
               {c.label}
             </Text>
             <Text style={styles.checkDetail}>{c.detail}</Text>
@@ -183,95 +187,97 @@ export function ConnectionCheck() {
   );
 }
 
-const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
-  toggle: {
-    minHeight: 36,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  toggleText: {
-    fontSize: FONT.size.sm,
-    color: COLORS.textSecondary,
-    opacity: 0.8,
-  },
-  panel: {
-    width: "100%",
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.bgCard,
-    padding: SPACE.lg,
-    gap: SPACE.md,
-  },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  title: {
-    fontSize: FONT.size.base,
-    fontWeight: FONT.weight.bold,
-    color: COLORS.textPrimary,
-    textTransform: "uppercase",
-    letterSpacing: FONT.tracking.wider,
-  },
-  closeBtn: {
-    minHeight: 36,
-    minWidth: 36,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  closeText: {
-    fontSize: FONT.size.lg,
-    color: COLORS.textSecondary,
-  },
-  accountLine: {
-    fontSize: FONT.size.sm,
-    color: COLORS.textSecondary,
-  },
-  accountName: {
-    color: COLORS.textPrimary,
-    fontWeight: FONT.weight.semibold,
-  },
-  runningRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACE.sm,
-  },
-  runningText: {
-    fontSize: FONT.size.sm,
-    color: COLORS.textSecondary,
-  },
-  checkRow: {
-    flexDirection: "row",
-    gap: SPACE.sm,
-    alignItems: "flex-start",
-  },
-  checkIcon: {
-    fontSize: FONT.size.base,
-    fontWeight: FONT.weight.bold,
-    width: 18,
-    textAlign: "center",
-  },
-  checkBody: {
-    flex: 1,
-    gap: 1,
-  },
-  checkLabel: {
-    fontSize: FONT.size.sm,
-    fontWeight: FONT.weight.semibold,
-  },
-  checkDetail: {
-    fontSize: FONT.size.sm,
-    color: COLORS.textPrimary,
-    opacity: 0.85,
-    lineHeight: 18,
-  },
-  buttonRow: {
-    flexDirection: "row",
-    gap: SPACE.sm,
-  },
-  flex1: {
-    flex: 1,
-  },
-}));
+const useStyles = createThemedStyles((COLORS) =>
+  StyleSheet.create({
+    toggle: {
+      minHeight: 36,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    toggleText: {
+      fontSize: FONT.size.sm,
+      color: COLORS.textSecondary,
+      opacity: 0.8,
+    },
+    panel: {
+      width: "100%",
+      borderRadius: RADIUS.md,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.bgCard,
+      padding: SPACE.lg,
+      gap: SPACE.md,
+    },
+    headerRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    title: {
+      fontSize: FONT.size.base,
+      fontWeight: FONT.weight.bold,
+      color: COLORS.textPrimary,
+      textTransform: "uppercase",
+      letterSpacing: FONT.tracking.wider,
+    },
+    closeBtn: {
+      minHeight: 36,
+      minWidth: 36,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    closeText: {
+      fontSize: FONT.size.lg,
+      color: COLORS.textSecondary,
+    },
+    accountLine: {
+      fontSize: FONT.size.sm,
+      color: COLORS.textSecondary,
+    },
+    accountName: {
+      color: COLORS.textPrimary,
+      fontWeight: FONT.weight.semibold,
+    },
+    runningRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: SPACE.sm,
+    },
+    runningText: {
+      fontSize: FONT.size.sm,
+      color: COLORS.textSecondary,
+    },
+    checkRow: {
+      flexDirection: "row",
+      gap: SPACE.sm,
+      alignItems: "flex-start",
+    },
+    checkIcon: {
+      fontSize: FONT.size.base,
+      fontWeight: FONT.weight.bold,
+      width: 18,
+      textAlign: "center",
+    },
+    checkBody: {
+      flex: 1,
+      gap: 1,
+    },
+    checkLabel: {
+      fontSize: FONT.size.sm,
+      fontWeight: FONT.weight.semibold,
+    },
+    checkDetail: {
+      fontSize: FONT.size.sm,
+      color: COLORS.textPrimary,
+      opacity: 0.85,
+      lineHeight: 18,
+    },
+    buttonRow: {
+      flexDirection: "row",
+      gap: SPACE.sm,
+    },
+    flex1: {
+      flex: 1,
+    },
+  }),
+);

@@ -1,4 +1,4 @@
-# Hitster
+# bitster
 
 **The music timeline party game — now on your phone.**
 
@@ -16,7 +16,7 @@ First to (+/-)10 songs wins. Simple as that.
 3. A song plays on _everyone's_ phone at the same time
 4. The active player drags it into their timeline — before or after their other songs, sorted by year
 5. Nailed it? The card stays. Fumbled? Gone forever.
-6. But wait — if you're _not_ the active player and you think you know the answer, you can smash the **HITSTER** button, steal the round, and place it yourself
+6. But wait — if you're _not_ the active player and you think you know the answer, you can smash the **bitster** button, steal the round, and place it yourself
 
 Repeat until someone hits 10. Then rematch, obviously.
 
@@ -24,7 +24,7 @@ Repeat until someone hits 10. Then rematch, obviously.
 
 ## No server, no problem
 
-Hitster runs **peer-to-peer**. There's no server sitting in a data center somewhere. Instead:
+bitster runs **peer-to-peer**. There's no server sitting in a data center somewhere. Instead:
 
 - One player is the **host** — their phone runs the game logic and keeps score
 - Everyone else connects directly to the host over the internet

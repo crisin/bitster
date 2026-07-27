@@ -1,17 +1,17 @@
-import React, { useEffect } from "react";
-import { Stack } from "expo-router";
-import { StatusBar } from "expo-status-bar";
-import { useFonts, BebasNeue_400Regular } from "@expo-google-fonts/bebas-neue";
-import { interceptConsole, log } from "@/utils/logger";
-import { DevLogButton } from "@/components/ui/DevLogButton";
 import { SettingsMenu } from "@/components/settings/SettingsMenu";
-import { initSpotify } from "@/streaming/providers/spotify";
-import { hydrateTheme } from "@/theme/store";
-import { ThemeOverlay } from "@/theme/ThemeOverlay";
-import { useTheme } from "@/theme/themedStyles";
+import { DevLogButton } from "@/components/ui/DevLogButton";
 import { useGameStore } from "@/game/store";
 import { useP2PStore } from "@/p2p/store";
+import { initSpotify } from "@/streaming/providers/spotify";
 import { useStreamingStore } from "@/streaming/store";
+import { hydrateTheme } from "@/theme/store";
+import { useTheme } from "@/theme/themedStyles";
+import { ThemeOverlay } from "@/theme/ThemeOverlay";
+import { interceptConsole, log } from "@/utils/logger";
+import { BebasNeue_400Regular, useFonts } from "@expo-google-fonts/bebas-neue";
+import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import React, { useEffect } from "react";
 
 export default function RootLayout() {
   // Non-blocking: the UI renders with the fallback font until loaded
@@ -22,17 +22,17 @@ export default function RootLayout() {
     interceptConsole();
     initSpotify();
     void hydrateTheme();
-    log.info("App", "Hitster started");
+    log.info("App", "bitster started");
     if (__DEV__) {
       // Debug bridge: poke the stores from the browser console / e2e checks
-      (globalThis as Record<string, unknown>).__hitsterStores = {
+      (globalThis as Record<string, unknown>).__bitsterStores = {
         game: useGameStore,
         p2p: useP2PStore,
         streaming: useStreamingStore,
       };
     }
     return () => {
-      log.info("App", "Hitster unmounted");
+      log.info("App", "bitster unmounted");
     };
   }, []);
 

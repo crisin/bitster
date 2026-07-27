@@ -1,11 +1,11 @@
-import type { P2PAction } from "./protocol";
-import type { Room, Song, PlacementResult } from "@/game/types";
 import * as logic from "@/game/logic";
 import { useGameStore } from "@/game/store";
-import { useP2PStore } from "./store";
+import type { PlacementResult, Room, Song } from "@/game/types";
 import { getProvider } from "@/streaming/registry";
 import { useStreamingStore } from "@/streaming/store";
 import { log as logger } from "@/utils/logger";
+import type { P2PAction } from "./protocol";
+import { useP2PStore } from "./store";
 
 /** Injected by the transport layer — sends to one peer or (default) everyone */
 export type SendFn = (action: P2PAction, target?: string) => void;
@@ -65,7 +65,10 @@ export class HostSession {
       setTimeout(() => {
         const peer = useP2PStore.getState().peers.find((p) => p.id === peerId);
         if (peer && peer.name === "") {
-          logger.warn("p2p", `Pruning peer ${peerId.slice(0, 8)} — never joined`);
+          logger.warn(
+            "p2p",
+            `Pruning peer ${peerId.slice(0, 8)} — never joined`,
+          );
           useP2PStore.getState().removePeer(peerId);
         }
         this.placeholderTimers.delete(peerId);
@@ -79,9 +82,17 @@ export class HostSession {
     const wasCurrentPlayer = logic.getCurrentPlayer(this.room)?.id === peerId;
     const wasBuzzer = this.room.buzzerId === peerId;
 
-    // If current player disconnects during hitster-window, undo their tentative placement
-    if (wasCurrentPlayer && this.room.phase === "hitster-window" && this.pendingResult) {
-      this.room = logic.undoPlacement(this.room, peerId, this.pendingResult.song.id);
+    // If current player disconnects during bitster-window, undo their tentative placement
+    if (
+      wasCurrentPlayer &&
+      this.room.phase === "bitster-window" &&
+      this.pendingResult
+    ) {
+      this.room = logic.undoPlacement(
+        this.room,
+        peerId,
+        this.pendingResult.song.id,
+      );
       this.pendingResult = null;
     }
 
@@ -105,7 +116,7 @@ export class HostSession {
       wasCurrentPlayer &&
       (this.room.phase === "playing" ||
         this.room.phase === "reveal" ||
-        this.room.phase === "hitster-window")
+        this.room.phase === "bitster-window")
     ) {
       this.room = logic.advanceTurn(this.room);
       void this.pickAndPlayNextSong().then((picked) => {
@@ -118,7 +129,10 @@ export class HostSession {
     }
 
     // The departure may have satisfied the "everyone passed" condition
-    if (this.room.phase === "hitster-window" && logic.allChallengersPassed(this.room)) {
+    if (
+      this.room.phase === "bitster-window" &&
+      logic.allChallengersPassed(this.room)
+    ) {
       this.doRevealSong(null);
       return;
     }
@@ -131,7 +145,11 @@ export class HostSession {
       switch (action.type) {
         case "join": {
           this.clearPlaceholderTimer(fromPeerId);
-          this.room = logic.addPlayer(this.room, fromPeerId, action.payload.name);
+          this.room = logic.addPlayer(
+            this.room,
+            fromPeerId,
+            action.payload.name,
+          );
           useP2PStore
             .getState()
             .updatePeer(fromPeerId, { name: action.payload.name });
@@ -144,7 +162,12 @@ export class HostSession {
           // may manage them (online peers play on their own connection).
           if (fromPeerId !== this.room.hostId) return;
           const localId = `local-${Math.random().toString(36).slice(2, 10)}`;
-          this.room = logic.addPlayer(this.room, localId, action.payload.name, true);
+          this.room = logic.addPlayer(
+            this.room,
+            localId,
+            action.payload.name,
+            true,
+          );
           this.broadcastState();
           break;
         }
@@ -174,16 +197,25 @@ export class HostSession {
                 imageUrl: this.room.playlistImageUrl,
               }
             : null;
-          const meta = stored ?? (await this.resolvePlaylist(action.payload.playlistUrl));
+          const meta =
+            stored ?? (await this.resolvePlaylist(action.payload.playlistUrl));
           if (meta) {
             // Lazy loading — only fetch meta, songs loaded on demand
             this.room = logic.startGame(
-              this.room, [], meta.name, meta.playlistId, meta.trackCount,
+              this.room,
+              [],
+              meta.name,
+              meta.playlistId,
+              meta.trackCount,
             );
             this.room = { ...this.room, playlistImageUrl: meta.imageUrl };
           } else {
             // No provider or URL — fallback to mock
-            this.room = logic.startGame(this.room, getMockPlaylist(), "Demo Playlist");
+            this.room = logic.startGame(
+              this.room,
+              getMockPlaylist(),
+              "Demo Playlist",
+            );
             this.room = { ...this.room, playlistImageUrl: null };
           }
           const picked = await this.pickAndPlayNextSong();
@@ -211,7 +243,7 @@ export class HostSession {
             action.payload.position,
           );
           this.room = updated;
-          // Store result for reveal — don't broadcast yet (year hidden during hitster-window)
+          // Store result for reveal — don't broadcast yet (year hidden during bitster-window)
           this.pendingResult = result;
           this.broadcastState();
           break;
@@ -220,7 +252,10 @@ export class HostSession {
         case "guess-song": {
           // Active player guesses BEFORE placing (during playing phase)
           if (this.room.phase !== "playing") {
-            logger.warn("p2p", `guess-song rejected: phase is "${this.room.phase}"`);
+            logger.warn(
+              "p2p",
+              `guess-song rejected: phase is "${this.room.phase}"`,
+            );
             return;
           }
           const currentForGuess = logic.getCurrentPlayer(this.room);
@@ -235,10 +270,11 @@ export class HostSession {
             action.payload.artist,
           );
           this.room = guessResult.room;
-          logger.debug("p2p",
+          logger.debug(
+            "p2p",
             `guess result: title=${guessResult.titleCorrect}, artist=${guessResult.artistCorrect}`,
           );
-          // Store result — feedback shown after placing (hitster-window phase)
+          // Store result — feedback shown after placing (bitster-window phase)
           this.pendingGuessResult = {
             titleCorrect: guessResult.titleCorrect,
             artistCorrect: guessResult.artistCorrect,
@@ -265,7 +301,11 @@ export class HostSession {
         case "next-round": {
           if (this.room.phase !== "reveal") return;
           const currentForNext = logic.getCurrentPlayer(this.room);
-          if (fromPeerId !== currentForNext?.id && fromPeerId !== this.room.hostId) return;
+          if (
+            fromPeerId !== currentForNext?.id &&
+            fromPeerId !== this.room.hostId
+          )
+            return;
           this.pendingGuessResult = null;
           const winner = logic.checkWinCondition(this.room);
           if (winner) {
@@ -282,17 +322,23 @@ export class HostSession {
           break;
         }
 
-        case "hitster-buzz": {
-          // Other players can Hitster during hitster-window (before year is revealed)
-          if (this.room.phase !== "hitster-window") return;
+        case "bitster-buzz": {
+          // Other players can bitster during bitster-window (before year is revealed)
+          if (this.room.phase !== "bitster-window") return;
           const buzzed = logic.handleBuzz(this.room, fromPeerId);
-          if (buzzed.buzzerId === fromPeerId && this.room.buzzerId !== fromPeerId) {
+          if (
+            buzzed.buzzerId === fromPeerId &&
+            this.room.buzzerId !== fromPeerId
+          ) {
             // Buzz accepted — start the lock-in countdown
             const timerMs = buzzed.settings.rules.buzz.timerSeconds * 1000;
             this.room = { ...buzzed, buzzDeadline: Date.now() + timerMs };
             this.pendingBuzzPosition = null;
             this.clearBuzzTimer();
-            this.buzzTimer = setTimeout(() => this.handleBuzzTimeout(), timerMs);
+            this.buzzTimer = setTimeout(
+              () => this.handleBuzzTimeout(),
+              timerMs,
+            );
           } else {
             this.room = buzzed;
           }
@@ -300,8 +346,8 @@ export class HostSession {
           break;
         }
 
-        case "hitster-pass": {
-          if (this.room.phase !== "hitster-window") return;
+        case "bitster-pass": {
+          if (this.room.phase !== "bitster-window") return;
           const passed = logic.recordPass(this.room, fromPeerId);
           if (passed === this.room) return;
           this.room = passed;
@@ -316,14 +362,14 @@ export class HostSession {
 
         case "buzz-select": {
           // Buzzer picked a gap (not yet confirmed) — locked in on timeout
-          if (this.room.phase !== "hitster-window") return;
+          if (this.room.phase !== "bitster-window") return;
           if (this.room.buzzerId !== fromPeerId) return;
           this.pendingBuzzPosition = action.payload.position;
           break;
         }
 
         case "buzz-place": {
-          if (this.room.phase !== "hitster-window") return;
+          if (this.room.phase !== "bitster-window") return;
           if (this.room.buzzerId !== fromPeerId) {
             this.sendError("You don't have the buzz", fromPeerId);
             return;
@@ -334,13 +380,17 @@ export class HostSession {
         }
 
         case "reveal-song": {
-          if (this.room.phase !== "hitster-window") return;
+          if (this.room.phase !== "bitster-window") return;
           if (this.room.buzzerId) {
-            this.sendError("A Hitster challenge is running", fromPeerId);
+            this.sendError("A bitster challenge is running", fromPeerId);
             return;
           }
           const currentForReveal = logic.getCurrentPlayer(this.room);
-          if (fromPeerId !== currentForReveal?.id && fromPeerId !== this.room.hostId) return;
+          if (
+            fromPeerId !== currentForReveal?.id &&
+            fromPeerId !== this.room.hostId
+          )
+            return;
           this.doRevealSong(null);
           break;
         }
@@ -420,10 +470,10 @@ export class HostSession {
   broadcastState(lastResult?: PlacementResult): void {
     const state = logic.buildGameState(this.room);
     if (lastResult) state.lastResult = lastResult;
-    // Include guess result during hitster-window and reveal phases
+    // Include guess result during bitster-window and reveal phases
     if (
       this.pendingGuessResult &&
-      (this.room.phase === "hitster-window" || this.room.phase === "reveal")
+      (this.room.phase === "bitster-window" || this.room.phase === "reveal")
     ) {
       state.guessResult = this.pendingGuessResult;
     }
@@ -445,7 +495,7 @@ export class HostSession {
   }
 
   /**
-   * Resolves the hitster-window: checks active player's placement,
+   * Resolves the bitster-window: checks active player's placement,
    * handles buzz resolution, transitions to reveal phase.
    */
   private doRevealSong(buzzPosition: number | null): void {
@@ -483,7 +533,12 @@ export class HostSession {
     }
 
     // Transition to reveal
-    this.room = { ...this.room, phase: "reveal", buzzerId: null, buzzDeadline: null };
+    this.room = {
+      ...this.room,
+      phase: "reveal",
+      buzzerId: null,
+      buzzDeadline: null,
+    };
     this.broadcastState(this.pendingResult);
     this.pendingResult = null;
   }
@@ -491,7 +546,7 @@ export class HostSession {
   /** The buzzer's countdown ran out — lock in their provisional pick or forfeit */
   private handleBuzzTimeout(): void {
     this.buzzTimer = null;
-    if (this.room.phase !== "hitster-window" || !this.room.buzzerId) return;
+    if (this.room.phase !== "bitster-window" || !this.room.buzzerId) return;
     logger.info(
       "p2p",
       `Buzz timer expired — ${this.pendingBuzzPosition !== null ? "locking in provisional pick" : "forfeiting"}`,
@@ -508,9 +563,7 @@ export class HostSession {
 
   // -- Streaming Integration --
 
-  private async resolvePlaylist(
-    playlistUrl: string,
-  ): Promise<{
+  private async resolvePlaylist(playlistUrl: string): Promise<{
     playlistId: string;
     name: string;
     trackCount: number;
@@ -527,7 +580,10 @@ export class HostSession {
     try {
       const meta = await provider.library.getPlaylistMeta(playlistId);
       if (meta.trackCount === 0) return null;
-      logger.info("p2p", `Playlist "${meta.name}" — ${meta.trackCount} tracks (lazy loading)`);
+      logger.info(
+        "p2p",
+        `Playlist "${meta.name}" — ${meta.trackCount} tracks (lazy loading)`,
+      );
       return {
         playlistId,
         name: meta.name,
@@ -564,7 +620,10 @@ export class HostSession {
         if (index === null) return false;
 
         try {
-          const track = await provider.library.getTrackAtIndex(playlistId, index);
+          const track = await provider.library.getTrackAtIndex(
+            playlistId,
+            index,
+          );
           if (track) {
             this.room = logic.setSongFromIndex(this.room, track, index);
             song = track;
@@ -606,7 +665,9 @@ export class HostSession {
         logger.error("p2p", `Host playback failed: ${err}`);
         useStreamingStore
           .getState()
-          .setPlaybackError(err instanceof Error ? err.message : "Playback failed");
+          .setPlaybackError(
+            err instanceof Error ? err.message : "Playback failed",
+          );
       }
     }
   }
@@ -616,17 +677,89 @@ export class HostSession {
 
 function getMockPlaylist(): Song[] {
   return [
-    { id: "1", uri: "mock:1", name: "Bohemian Rhapsody", artist: "Queen", year: 1975 },
-    { id: "2", uri: "mock:2", name: "Billie Jean", artist: "Michael Jackson", year: 1982 },
-    { id: "3", uri: "mock:3", name: "Smells Like Teen Spirit", artist: "Nirvana", year: 1991 },
-    { id: "4", uri: "mock:4", name: "Lose Yourself", artist: "Eminem", year: 2002 },
-    { id: "5", uri: "mock:5", name: "Rolling in the Deep", artist: "Adele", year: 2010 },
-    { id: "6", uri: "mock:6", name: "Shape of You", artist: "Ed Sheeran", year: 2017 },
-    { id: "7", uri: "mock:7", name: "Blinding Lights", artist: "The Weeknd", year: 2019 },
-    { id: "8", uri: "mock:8", name: "Hotel California", artist: "Eagles", year: 1977 },
-    { id: "9", uri: "mock:9", name: "Sweet Child O' Mine", artist: "Guns N' Roses", year: 1987 },
-    { id: "10", uri: "mock:10", name: "Wonderwall", artist: "Oasis", year: 1995 },
-    { id: "11", uri: "mock:11", name: "Hey Ya!", artist: "OutKast", year: 2003 },
-    { id: "12", uri: "mock:12", name: "Uptown Funk", artist: "Bruno Mars", year: 2014 },
+    {
+      id: "1",
+      uri: "mock:1",
+      name: "Bohemian Rhapsody",
+      artist: "Queen",
+      year: 1975,
+    },
+    {
+      id: "2",
+      uri: "mock:2",
+      name: "Billie Jean",
+      artist: "Michael Jackson",
+      year: 1982,
+    },
+    {
+      id: "3",
+      uri: "mock:3",
+      name: "Smells Like Teen Spirit",
+      artist: "Nirvana",
+      year: 1991,
+    },
+    {
+      id: "4",
+      uri: "mock:4",
+      name: "Lose Yourself",
+      artist: "Eminem",
+      year: 2002,
+    },
+    {
+      id: "5",
+      uri: "mock:5",
+      name: "Rolling in the Deep",
+      artist: "Adele",
+      year: 2010,
+    },
+    {
+      id: "6",
+      uri: "mock:6",
+      name: "Shape of You",
+      artist: "Ed Sheeran",
+      year: 2017,
+    },
+    {
+      id: "7",
+      uri: "mock:7",
+      name: "Blinding Lights",
+      artist: "The Weeknd",
+      year: 2019,
+    },
+    {
+      id: "8",
+      uri: "mock:8",
+      name: "Hotel California",
+      artist: "Eagles",
+      year: 1977,
+    },
+    {
+      id: "9",
+      uri: "mock:9",
+      name: "Sweet Child O' Mine",
+      artist: "Guns N' Roses",
+      year: 1987,
+    },
+    {
+      id: "10",
+      uri: "mock:10",
+      name: "Wonderwall",
+      artist: "Oasis",
+      year: 1995,
+    },
+    {
+      id: "11",
+      uri: "mock:11",
+      name: "Hey Ya!",
+      artist: "OutKast",
+      year: 2003,
+    },
+    {
+      id: "12",
+      uri: "mock:12",
+      name: "Uptown Funk",
+      artist: "Bruno Mars",
+      year: 2014,
+    },
   ];
 }

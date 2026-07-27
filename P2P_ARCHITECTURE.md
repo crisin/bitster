@@ -1,4 +1,4 @@
-# Hitster – Multiplayer-Architektur (WebSocket-Relay)
+# bitster – Multiplayer-Architektur (WebSocket-Relay)
 
 > **Hinweis:** Dieses Dokument beschrieb ursprünglich eine serverlose
 > WebRTC/Trystero-Architektur. Die wurde im Juli 2026 bewusst verworfen —
@@ -42,13 +42,13 @@ Latenz und Serverlast sind vernachlässigbar.
 
 Client → Server:
 
-| Message | Zweck |
-|---|---|
-| `{t:"create", room}` | Raum anlegen (6-stelliger Code), Antwort `created {id}` |
-| `{t:"join", room}` | Raum beitreten, Antwort `joined {id, hostId}` oder `err` |
-| `{t:"rejoin", room, id}` | Mitgliedschaft nach Verbindungsabbruch fortsetzen |
-| `{t:"msg", to, data}` | Relay: `to` = `"host"` \| `"all"` \| `<peerId>` |
-| `{t:"leave"}` | Raum verlassen |
+| Message                  | Zweck                                                    |
+| ------------------------ | -------------------------------------------------------- |
+| `{t:"create", room}`     | Raum anlegen (6-stelliger Code), Antwort `created {id}`  |
+| `{t:"join", room}`       | Raum beitreten, Antwort `joined {id, hostId}` oder `err` |
+| `{t:"rejoin", room, id}` | Mitgliedschaft nach Verbindungsabbruch fortsetzen        |
+| `{t:"msg", to, data}`    | Relay: `to` = `"host"` \| `"all"` \| `<peerId>`          |
+| `{t:"leave"}`            | Raum verlassen                                           |
 
 Server → Client: `created`, `joined`, `msg {from, data}`, `peer-joined`,
 `peer-left`, `host-down`, `host-up`, `room-closed`, `err {code}`.
@@ -66,13 +66,13 @@ Eigenschaften:
 
 ## Client-Aufbau (`src/p2p/`)
 
-| Datei | Verantwortung |
-|---|---|
+| Datei           | Verantwortung                                                                                                                                                                                           |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `connection.ts` | Transport: Socket-Lifecycle, Join-Timeouts/-Retries, Auto-Reconnect mit Backoff, AppState-Resume-Rejoin, Server-Envelope. Öffentliche API: `createRoom`, `joinRoom`, `rejoinRoom`, `dispatch`, `leave`. |
-| `host.ts` | `HostSession`-Klasse: Room-State, Action-Verarbeitung, Reveal-Logik, Playback-Orchestrierung, State-Broadcast. Send-Funktion wird injiziert → ohne Transport testbar (`host.test.ts`). |
-| `peer.ts` | Verarbeitung der Host-Nachrichten (`game-state`, `play-song`, `error`); Callbacks statt Imports → keine Zyklen. |
-| `protocol.ts` | Typisierte Actions (discriminated unions) + strukturelle Validierung. `game-state` wird vollständig geprüft (`validateGameState`), nichts wird blind gecastet. |
-| `store.ts` | Zustand: Connection-Status, Peer-Liste, eigene Peer-ID. |
+| `host.ts`       | `HostSession`-Klasse: Room-State, Action-Verarbeitung, Reveal-Logik, Playback-Orchestrierung, State-Broadcast. Send-Funktion wird injiziert → ohne Transport testbar (`host.test.ts`).                  |
+| `peer.ts`       | Verarbeitung der Host-Nachrichten (`game-state`, `play-song`, `error`); Callbacks statt Imports → keine Zyklen.                                                                                         |
+| `protocol.ts`   | Typisierte Actions (discriminated unions) + strukturelle Validierung. `game-state` wird vollständig geprüft (`validateGameState`), nichts wird blind gecastet.                                          |
+| `store.ts`      | Zustand: Connection-Status, Peer-Liste, eigene Peer-ID.                                                                                                                                                 |
 
 ## Join-Handshake
 
@@ -85,7 +85,7 @@ Eigenschaften:
 
 ## Anti-Cheat im Broadcast
 
-`logic.buildGameState` maskiert während `playing`/`hitster-window` den aktuellen
+`logic.buildGameState` maskiert während `playing`/`bitster-window` den aktuellen
 Song: er fehlt in `playedSongs`, und die tentativ platzierte Karte trägt
 `year: 0`. Titel/Artist/Jahr erreichen die Peers erst mit dem Reveal — auch per
 DevTools ist die Antwort vorher nicht auslesbar.

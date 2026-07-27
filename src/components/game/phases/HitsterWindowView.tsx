@@ -1,21 +1,27 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, type TextStyle, type StyleProp } from "react-native";
-import { useGameStore } from "@/game/store";
-import { useStreamingStore } from "@/streaming/store";
-import { useCurrentPlayer } from "@/hooks/useCurrentPlayer";
-import { dispatch } from "@/p2p/connection";
-import { haptics } from "@/hooks/useHaptics";
-import { Button } from "@/components/ui/Button";
-import { Timeline } from "@/components/game/Timeline";
-import { NowPlaying } from "@/components/game/NowPlaying";
+import { AllPlayerTimelines } from "@/components/game/AllPlayerTimelines";
 import { BuzzerButton } from "@/components/game/BuzzerButton";
+import { NowPlaying } from "@/components/game/NowPlaying";
 import { PlayedSongs } from "@/components/game/PlayedSongs";
 import { Stage } from "@/components/game/Stage";
-import { AllPlayerTimelines } from "@/components/game/AllPlayerTimelines";
-import { DISPLAY_FONT, FONT, RADIUS, SPACE } from "@/utils/constants";
+import { Timeline } from "@/components/game/Timeline";
+import { Button } from "@/components/ui/Button";
+import { useGameStore } from "@/game/store";
+import { useCurrentPlayer } from "@/hooks/useCurrentPlayer";
+import { haptics } from "@/hooks/useHaptics";
+import { dispatch } from "@/p2p/connection";
+import { useStreamingStore } from "@/streaming/store";
 import { createThemedStyles } from "@/theme/themedStyles";
+import { DISPLAY_FONT, FONT, RADIUS, SPACE } from "@/utils/constants";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  StyleSheet,
+  Text,
+  View,
+  type StyleProp,
+  type TextStyle,
+} from "react-native";
 
-interface HitsterWindowViewProps {
+interface bitsterWindowViewProps {
   buzzGap: number | null;
   onBuzzGapSelect: (position: number) => void;
 }
@@ -52,14 +58,19 @@ function BuzzCountdown({ deadline }: { deadline: number | null }) {
       accessibilityRole="timer"
       accessibilityLabel={`${remaining} seconds left to place`}
     >
-      <Text style={[styles.countdownText, urgent && styles.countdownTextUrgent]}>
+      <Text
+        style={[styles.countdownText, urgent && styles.countdownTextUrgent]}
+      >
         {remaining}s
       </Text>
     </View>
   );
 }
 
-export function HitsterWindowView({ buzzGap, onBuzzGapSelect }: HitsterWindowViewProps) {
+export function bitsterWindowView({
+  buzzGap,
+  onBuzzGapSelect,
+}: bitsterWindowViewProps) {
   const styles = useStyles();
   const players = useGameStore((s) => s.players);
   const buzzerId = useGameStore((s) => s.buzzerId);
@@ -86,41 +97,44 @@ export function HitsterWindowView({ buzzGap, onBuzzGapSelect }: HitsterWindowVie
   const myTokens = me?.tokens ?? 0;
   const hasPassed = myPeerId != null && passedIds.includes(myPeerId);
   const buzzerName = buzzerId
-    ? players.find((p) => p.id === buzzerId)?.name ?? null
+    ? (players.find((p) => p.id === buzzerId)?.name ?? null)
     : null;
   const buzzEnabled = settings.rules?.buzz?.enabled ?? true;
 
   const handleBuzz = useCallback(() => {
-    dispatch({ type: "hitster-buzz" });
+    dispatch({ type: "bitster-buzz" });
     haptics.medium();
   }, []);
 
   const handlePass = useCallback(() => {
-    dispatch({ type: "hitster-pass" });
+    dispatch({ type: "bitster-pass" });
     haptics.tap();
   }, []);
 
   // Pass-and-play: the host device buzzes/passes on behalf of its local players
   const handleLocalBuzz = useCallback((playerId: string) => {
-    dispatch({ type: "hitster-buzz" }, { as: playerId });
+    dispatch({ type: "bitster-buzz" }, { as: playerId });
     haptics.medium();
   }, []);
 
   const handleLocalPass = useCallback((playerId: string) => {
-    dispatch({ type: "hitster-pass" }, { as: playerId });
+    dispatch({ type: "bitster-pass" }, { as: playerId });
     haptics.tap();
   }, []);
 
   const localChallengers = isHost
     ? players.filter(
-        (p) => p.isLocal && p.id !== currentPlayerId && !passedIds.includes(p.id),
+        (p) =>
+          p.isLocal && p.id !== currentPlayerId && !passedIds.includes(p.id),
       )
     : [];
 
   const activeTimeline = timelines[currentPlayerId ?? ""] ?? [];
   // The buzzer corrects the ACTIVE player's timeline — gaps are between the
   // other cards, so the disputed mystery card is taken out for placement
-  const challengeTimeline = activeTimeline.filter((s) => s.id !== currentSongId);
+  const challengeTimeline = activeTimeline.filter(
+    (s) => s.id !== currentSongId,
+  );
   const stageTitle = isMyTurn
     ? "Placed! Survive the challenge…"
     : `${currentPlayer?.name ?? "???"} placed the card`;
@@ -142,7 +156,9 @@ export function HitsterWindowView({ buzzGap, onBuzzGapSelect }: HitsterWindowVie
             {guessResult.titleCorrect ? "✓ Title" : "✗ Title"}
             {"  "}
             {guessResult.artistCorrect ? "✓ Artist" : "✗ Artist"}
-            {guessResult.titleCorrect && guessResult.artistCorrect ? "  +1★" : ""}
+            {guessResult.titleCorrect && guessResult.artistCorrect
+              ? "  +1★"
+              : ""}
           </Text>
         </View>
       )}
@@ -163,10 +179,14 @@ export function HitsterWindowView({ buzzGap, onBuzzGapSelect }: HitsterWindowVie
       {!isMyTurn && !isBuzzer && !hasPassed && buzzEnabled && !buzzerId && (
         <View style={styles.buzzSection}>
           <Text style={styles.buzzHint}>Think it's in the wrong spot?</Text>
-          <BuzzerButton onPress={handleBuzz} disabled={myTokens <= 0} buzzerName={null} />
+          <BuzzerButton
+            onPress={handleBuzz}
+            disabled={myTokens <= 0}
+            buzzerName={null}
+          />
           {myTokens > 0 && (
             <Button
-              title="No Hitster ✋"
+              title="No bitster ✋"
               onPress={handlePass}
               variant="ghost"
               compact
@@ -187,12 +207,12 @@ export function HitsterWindowView({ buzzGap, onBuzzGapSelect }: HitsterWindowVie
                 {p.name}
               </Text>
               <Button
-                title="HITSTER! 1★"
+                title="bitster! 1★"
                 onPress={() => handleLocalBuzz(p.id)}
                 variant="warning"
                 compact
                 disabled={p.tokens <= 0}
-                label={`${p.name} buzzes Hitster, costs one star`}
+                label={`${p.name} buzzes bitster, costs one star`}
               />
               <Button
                 title="✋ pass"
@@ -209,7 +229,9 @@ export function HitsterWindowView({ buzzGap, onBuzzGapSelect }: HitsterWindowVie
 
       {/* I passed — waiting for the rest */}
       {!isMyTurn && hasPassed && !buzzerId && (
-        <Text style={styles.passedHint}>✋ No Hitster — waiting for the others…</Text>
+        <Text style={styles.passedHint}>
+          ✋ No bitster — waiting for the others…
+        </Text>
       )}
 
       {/* Someone else buzzed (and this device doesn't control them) */}
@@ -225,12 +247,21 @@ export function HitsterWindowView({ buzzGap, onBuzzGapSelect }: HitsterWindowVie
 
       {/* This device holds the buzz (me, or a local player on the host device) */}
       {controlsBuzzer && (
-        <Stage title={isBuzzer ? "Your counter-move" : `${buzzerName ?? "???"}'s counter-move`} hot>
+        <Stage
+          title={
+            isBuzzer
+              ? "Your counter-move"
+              : `${buzzerName ?? "???"}'s counter-move`
+          }
+          hot
+        >
           <BuzzCountdown deadline={buzzDeadline} />
           <Text style={styles.buzzPlaceHint}>
             Tap the gap in {currentPlayer ? `${currentPlayer.name}'s` : "the"}{" "}
             timeline where the song REALLY belongs.{" "}
-            {isBuzzer ? "If you're right, the card is yours!" : "Right = the card goes to them!"}
+            {isBuzzer
+              ? "If you're right, the card is yours!"
+              : "Right = the card goes to them!"}
           </Text>
           <Timeline
             cards={challengeTimeline}
@@ -280,10 +311,10 @@ function ChallengerStatus({
         let status: string;
         let statusStyle: StyleProp<TextStyle> = styles.statusThinking;
         if (p.id === buzzerId) {
-          status = "⚡ HITSTER!";
+          status = "⚡ bitster!";
           statusStyle = styles.statusBuzzed;
         } else if (passedIds.includes(p.id)) {
-          status = "✋ no Hitster";
+          status = "✋ no bitster";
           statusStyle = styles.statusPassed;
         } else if (p.tokens <= 0) {
           status = "no ★ left";
@@ -309,130 +340,132 @@ function ChallengerStatus({
   );
 }
 
-const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
-  container: {
-    alignItems: "center",
-    gap: SPACE.xl,
-    width: "100%",
-  },
-  guessResultBanner: {
-    paddingVertical: SPACE.sm,
-    paddingHorizontal: SPACE.lg,
-    borderRadius: RADIUS.md,
-    width: "100%",
-    alignItems: "center",
-  },
-  guessResultSuccess: {
-    backgroundColor: COLORS.successLight,
-    borderWidth: 1,
-    borderColor: COLORS.success,
-  },
-  guessResultPartial: {
-    backgroundColor: COLORS.warningLight,
-    borderWidth: 1,
-    borderColor: COLORS.warning,
-  },
-  guessResultText: {
-    fontSize: FONT.size.md,
-    fontWeight: FONT.weight.semibold,
-    color: COLORS.textPrimary,
-  },
-  buzzSection: {
-    alignItems: "center",
-    gap: SPACE.sm,
-  },
-  localBuzzSection: {
-    width: "100%",
-    alignItems: "center",
-    gap: SPACE.sm,
-  },
-  localBuzzRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACE.sm,
-    width: "100%",
-    maxWidth: 420,
-  },
-  localBuzzName: {
-    flex: 1,
-    fontSize: FONT.size.base,
-    fontWeight: FONT.weight.semibold,
-    color: COLORS.textPrimary,
-  },
-  buzzHint: {
-    fontSize: FONT.size.sm,
-    color: COLORS.textSecondary,
-  },
-  passedHint: {
-    fontSize: FONT.size.base,
-    color: COLORS.textSecondary,
-    fontStyle: "italic",
-  },
-  buzzPlaceHint: {
-    fontSize: FONT.size.sm,
-    color: COLORS.textSecondary,
-    textAlign: "center",
-    paddingHorizontal: SPACE.lg,
-  },
-  countdown: {
-    alignSelf: "center",
-    paddingVertical: SPACE.xs,
-    paddingHorizontal: SPACE.lg,
-    borderRadius: RADIUS.full,
-    borderWidth: 2,
-    borderColor: COLORS.warning,
-    backgroundColor: COLORS.warningLight,
-  },
-  countdownUrgent: {
-    borderColor: COLORS.error,
-    backgroundColor: COLORS.errorLight,
-  },
-  countdownText: {
-    fontFamily: DISPLAY_FONT,
-    fontSize: FONT.size["3xl"],
-    color: COLORS.warning,
-    letterSpacing: 1,
-  },
-  countdownTextUrgent: {
-    color: COLORS.error,
-  },
-  statusRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    gap: SPACE.sm,
-    width: "100%",
-  },
-  statusChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACE.sm,
-    paddingVertical: SPACE.xs,
-    paddingHorizontal: SPACE.md,
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.bgCard,
-    maxWidth: 220,
-  },
-  statusName: {
-    fontSize: FONT.size.sm,
-    fontWeight: FONT.weight.semibold,
-    color: COLORS.textPrimary,
-    flexShrink: 1,
-  },
-  statusText: {
-    fontSize: FONT.size.sm,
-  },
-  statusThinking: {
-    color: COLORS.textSecondary,
-  },
-  statusPassed: {
-    color: COLORS.textSecondary,
-    opacity: 0.8,
-  },
-  statusBuzzed: {
-    color: COLORS.warning,
-    fontWeight: FONT.weight.bold,
-  },
-}));
+const useStyles = createThemedStyles((COLORS) =>
+  StyleSheet.create({
+    container: {
+      alignItems: "center",
+      gap: SPACE.xl,
+      width: "100%",
+    },
+    guessResultBanner: {
+      paddingVertical: SPACE.sm,
+      paddingHorizontal: SPACE.lg,
+      borderRadius: RADIUS.md,
+      width: "100%",
+      alignItems: "center",
+    },
+    guessResultSuccess: {
+      backgroundColor: COLORS.successLight,
+      borderWidth: 1,
+      borderColor: COLORS.success,
+    },
+    guessResultPartial: {
+      backgroundColor: COLORS.warningLight,
+      borderWidth: 1,
+      borderColor: COLORS.warning,
+    },
+    guessResultText: {
+      fontSize: FONT.size.md,
+      fontWeight: FONT.weight.semibold,
+      color: COLORS.textPrimary,
+    },
+    buzzSection: {
+      alignItems: "center",
+      gap: SPACE.sm,
+    },
+    localBuzzSection: {
+      width: "100%",
+      alignItems: "center",
+      gap: SPACE.sm,
+    },
+    localBuzzRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: SPACE.sm,
+      width: "100%",
+      maxWidth: 420,
+    },
+    localBuzzName: {
+      flex: 1,
+      fontSize: FONT.size.base,
+      fontWeight: FONT.weight.semibold,
+      color: COLORS.textPrimary,
+    },
+    buzzHint: {
+      fontSize: FONT.size.sm,
+      color: COLORS.textSecondary,
+    },
+    passedHint: {
+      fontSize: FONT.size.base,
+      color: COLORS.textSecondary,
+      fontStyle: "italic",
+    },
+    buzzPlaceHint: {
+      fontSize: FONT.size.sm,
+      color: COLORS.textSecondary,
+      textAlign: "center",
+      paddingHorizontal: SPACE.lg,
+    },
+    countdown: {
+      alignSelf: "center",
+      paddingVertical: SPACE.xs,
+      paddingHorizontal: SPACE.lg,
+      borderRadius: RADIUS.full,
+      borderWidth: 2,
+      borderColor: COLORS.warning,
+      backgroundColor: COLORS.warningLight,
+    },
+    countdownUrgent: {
+      borderColor: COLORS.error,
+      backgroundColor: COLORS.errorLight,
+    },
+    countdownText: {
+      fontFamily: DISPLAY_FONT,
+      fontSize: FONT.size["3xl"],
+      color: COLORS.warning,
+      letterSpacing: 1,
+    },
+    countdownTextUrgent: {
+      color: COLORS.error,
+    },
+    statusRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "center",
+      gap: SPACE.sm,
+      width: "100%",
+    },
+    statusChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: SPACE.sm,
+      paddingVertical: SPACE.xs,
+      paddingHorizontal: SPACE.md,
+      borderRadius: RADIUS.full,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.bgCard,
+      maxWidth: 220,
+    },
+    statusName: {
+      fontSize: FONT.size.sm,
+      fontWeight: FONT.weight.semibold,
+      color: COLORS.textPrimary,
+      flexShrink: 1,
+    },
+    statusText: {
+      fontSize: FONT.size.sm,
+    },
+    statusThinking: {
+      color: COLORS.textSecondary,
+    },
+    statusPassed: {
+      color: COLORS.textSecondary,
+      opacity: 0.8,
+    },
+    statusBuzzed: {
+      color: COLORS.warning,
+      fontWeight: FONT.weight.bold,
+    },
+  }),
+);
