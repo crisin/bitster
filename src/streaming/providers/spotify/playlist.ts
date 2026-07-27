@@ -9,8 +9,12 @@ interface SpotifyImage {
   width: number | null;
 }
 
-interface SpotifyTrack {
-  track: {
+// Feb 2026 Web API migration: /playlists/{id}/tracks became /playlists/{id}/items,
+// each entry wraps the track as `item` (was `track`) and carries `is_local` itself.
+// The old endpoint answers with a bare 403 since March 9, 2026.
+interface SpotifyPlaylistItem {
+  is_local?: boolean;
+  item: {
     id: string;
     uri: string;
     name: string;
@@ -34,18 +38,19 @@ export const spotifyLibrary: StreamingLibrary = {
     // without it Spotify happily returns tracks the account cannot play
     // ("Spotify can't play this file"), which then stall the round.
     const fields =
-      "items(track(id,uri,name,is_playable,is_local,artists(name),album(release_date,images)))";
+      "items(is_local,item(id,uri,name,is_playable,is_local,artists(name),album(release_date,images)))";
     const res = await fetchWithAuth(
-      `${API}/playlists/${playlistId}/tracks?fields=${fields}&market=from_token&offset=${index}&limit=1`,
+      `${API}/playlists/${playlistId}/items?fields=${fields}&market=from_token&offset=${index}&limit=1`,
     );
     if (!res.ok) throw new Error(`Fetch track at index ${index} failed: ${res.status}`);
 
     const data = await res.json();
-    const items = data.items as SpotifyTrack[];
-    if (items.length === 0 || !items[0].track || !items[0].track.id) return null;
+    const items = data.items as SpotifyPlaylistItem[];
+    if (items.length === 0 || !items[0].item || !items[0].item.id) return null;
 
-    const t = items[0].track;
-    if (t.is_local === true || t.is_playable === false) return null;
+    const t = items[0].item;
+    if (items[0].is_local === true || t.is_local === true || t.is_playable === false)
+      return null;
     const year = extractYear(t.album.release_date);
     if (isNaN(year)) return null;
 
@@ -84,8 +89,12 @@ export const spotifyLibrary: StreamingLibrary = {
   },
 
   async getPlaylistMeta(playlistId: string): Promise<PlaylistMeta> {
+    // Feb 2026 migration: the playlist's `tracks` field is now `items`, and it
+    // is only present for playlists the user owns or collaborates on. Foreign
+    // playlists return metadata without `items` — report 0 tracks, which the
+    // callers already treat as "unusable" (their items can't be fetched anyway).
     const res = await fetchWithAuth(
-      `${API}/playlists/${playlistId}?fields=id,name,tracks.total,images`,
+      `${API}/playlists/${playlistId}?fields=id,name,items.total,images`,
     );
     if (!res.ok) throw new Error(`Fetch playlist meta failed: ${res.status}`);
 
@@ -93,7 +102,7 @@ export const spotifyLibrary: StreamingLibrary = {
     return {
       id: data.id,
       name: data.name,
-      trackCount: data.tracks.total,
+      trackCount: data.items?.total ?? 0,
       imageUrl: data.images?.[0]?.url ?? null,
     };
   },

@@ -21,7 +21,7 @@ import {
   type TextStyle,
 } from "react-native";
 
-interface bitsterWindowViewProps {
+interface BitsterWindowViewProps {
   buzzGap: number | null;
   onBuzzGapSelect: (position: number) => void;
 }
@@ -67,10 +67,10 @@ function BuzzCountdown({ deadline }: { deadline: number | null }) {
   );
 }
 
-export function bitsterWindowView({
+export function BitsterWindowView({
   buzzGap,
   onBuzzGapSelect,
-}: bitsterWindowViewProps) {
+}: BitsterWindowViewProps) {
   const styles = useStyles();
   const players = useGameStore((s) => s.players);
   const buzzerId = useGameStore((s) => s.buzzerId);

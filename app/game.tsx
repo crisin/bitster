@@ -1,3 +1,4 @@
+import { BitsterWindowView } from "@/components/game/phases/BitsterWindowView";
 import { FinishedView } from "@/components/game/phases/FinishedView";
 import { LobbyView } from "@/components/game/phases/LobbyView";
 import { PlayingView } from "@/components/game/phases/PlayingView";
@@ -11,6 +12,7 @@ import { useCurrentPlayer } from "@/hooks/useCurrentPlayer";
 import { haptics } from "@/hooks/useHaptics";
 import { dispatch, leave, rejoinRoom } from "@/p2p/connection";
 import { useP2PStore } from "@/p2p/store";
+import { useStreamingStore } from "@/streaming/store";
 import { createThemedStyles } from "@/theme/themedStyles";
 import { FONT, LAYOUT, RADIUS, SPACE } from "@/utils/constants";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
@@ -38,6 +40,7 @@ export default function GameScreen() {
   const lastResult = useGameStore((s) => s.lastResult);
   const buzzerId = useGameStore((s) => s.buzzerId);
   const playlistName = useGameStore((s) => s.playlistName);
+  const streamingAuthStatus = useStreamingStore((s) => s.authStatus);
   const connectionStatus = useConnectionStatus();
   const connectionError = useP2PStore((s) => s.lastError);
   const {
@@ -201,6 +204,12 @@ export default function GameScreen() {
 
   const code = params.code ?? "";
 
+  // With streaming connected, a game needs a checked playlist — starting
+  // without one only ends in playback errors. Without a provider the demo
+  // fallback still works, so the button stays enabled there.
+  const needsPlaylist =
+    streamingAuthStatus === "authenticated" && playlistName == null;
+
   const handleRetry = useCallback(() => {
     // Without a name we can never complete the join handshake — start over
     if (!params.name || !code) {
@@ -291,7 +300,7 @@ export default function GameScreen() {
         )}
 
         {phase === "bitster-window" && (
-          <bitsterWindowView
+          <BitsterWindowView
             buzzGap={buzzGap}
             onBuzzGapSelect={handleBuzzGapSelect}
           />
@@ -305,13 +314,20 @@ export default function GameScreen() {
       {/* Bottom Bar */}
       <BottomBar>
         {phase === "lobby" && isHost && (
-          <Button
-            title="Start Game"
-            onPress={handleStartGame}
-            disabled={players.length < 2}
-            cooldownMs={2000}
-            label="Start the game"
-          />
+          <>
+            {needsPlaylist && (
+              <Text style={styles.startHint}>
+                Add a playlist above to start the game
+              </Text>
+            )}
+            <Button
+              title="Start Game"
+              onPress={handleStartGame}
+              disabled={players.length < 2 || needsPlaylist}
+              cooldownMs={2000}
+              label="Start the game"
+            />
+          </>
         )}
 
         {phase === "playing" && actsForCurrent && selectedGap !== null && (
@@ -482,6 +498,12 @@ const useStyles = createThemedStyles((COLORS) =>
     finishedButtons: {
       flexDirection: "row",
       gap: SPACE.md,
+    },
+    startHint: {
+      fontSize: FONT.size.sm,
+      color: COLORS.textSecondary,
+      textAlign: "center",
+      marginBottom: SPACE.sm,
     },
     flex1: {
       flex: 1,

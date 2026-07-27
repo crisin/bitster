@@ -285,6 +285,14 @@ npx tsc --noEmit                  # Type Check
   Developer Dashboard unter "User Management" eingetragen sein — sonst 403 nach dem Login!
   Es zählt die exakte Mail des Spotify-Accounts (bei Duo/Family bzw. Google/Facebook-Signup
   oft nicht die erwartete) — der "Spotify check" in der App zeigt den verbundenen Account.
+- **Spotify Web-API-Migration (Feb/März 2026):** Für Development-Mode-Apps wurden Endpoints
+  umbenannt/beschnitten; alte Endpoints antworten seit 09.03.2026 mit **403 und leerem Body**.
+  Relevant für uns: `GET /playlists/{id}/tracks` → `GET /playlists/{id}/items` (Entry-Feld
+  heißt `item` statt `track`), Playlist-Feld `tracks` → `items`, und `items` gibt es nur noch
+  für eigene/kollaborative Playlists (fremde liefern nur Metadaten). `GET /me` kann trotz
+  gültigem Token nackt 403en, während Player-Endpoints funktionieren — Diagnose darf daran
+  nicht abbrechen. Außerdem braucht der App-Owner-Account laut Spotify aktives Premium.
+  Migration Guide: developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide
 - **Spotify Redirect-URIs (seit Nov 2025):** nur HTTPS oder Loopback-IP erlaubt, `localhost`
   wird abgelehnt. Web-Dev deshalb über `http://127.0.0.1:5173` öffnen und
   `http://127.0.0.1:5173/auth/callback` im Dashboard registrieren (Login wirft sonst eine

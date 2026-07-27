@@ -68,6 +68,31 @@ afterEach(() => {
 });
 
 describe("HostSession — lobby", () => {
+  it("refuses to start without a playlist while a provider is connected", async () => {
+    const session = makeSession();
+    await session.handleAction(
+      { type: "join", payload: { name: "Bob" } },
+      "peer-2",
+    );
+    useStreamingStore.getState().setAuthStatus("authenticated");
+
+    await session.handleAction(
+      { type: "start-game", payload: { playlistUrl: "" } },
+      "host-1",
+    );
+
+    const error = sent.find((m) => m.action.type === "error");
+    expect(error?.target).toBe("host-1");
+    expect(lastBroadcastState().phase).toBe("lobby");
+  });
+
+  it("still starts the demo game when no provider is connected", async () => {
+    const session = makeSession();
+    await startDemoGame(session);
+    expect(lastBroadcastState().phase).toBe("playing");
+  });
+
+
   it("adds a joining peer and broadcasts the state", async () => {
     const session = makeSession();
     await session.handleAction(

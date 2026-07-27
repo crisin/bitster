@@ -22,6 +22,16 @@ export function friendly403(body: string): string {
       "Run the Spotify check to see which account is connected."
     );
   }
+  if (body.trim() === "") {
+    // Since the Feb 2026 Web API changes, Spotify blocks restricted endpoints
+    // for development-mode apps with a bare 403 and NO error body.
+    return (
+      "Spotify refused the request without details (bare 403). Since Spotify's " +
+      "Feb 2026 API changes this usually means the endpoint is restricted for " +
+      "this development-mode app, or the account is not allow-listed in the " +
+      "Developer Dashboard. Run the Spotify check for details."
+    );
+  }
   return (
     "Spotify Premium is required for playback. If this account has Premium, " +
     "run the Spotify check below to see which account is actually connected."

@@ -153,10 +153,14 @@ export const spotifyDiagnostics: StreamingDiagnostics = {
         }
       } else {
         const body = await res.text().catch(() => "");
+        const bare403 = res.status === 403 && body.trim() === "";
         checks.push({
           key: "account",
           label: "Account",
-          status: "fail",
+          // A bare 403 no longer proves anything is broken: since Spotify's
+          // Feb 2026 dev-mode changes /me can be blocked while playback and
+          // playlists still work — keep checking instead of bailing out.
+          status: bare403 ? "warn" : "fail",
           detail:
             res.status === 403 && isNotRegistered403(body)
               ? "This account is NOT allow-listed for bitster. The host must add " +
@@ -164,9 +168,14 @@ export const spotifyDiagnostics: StreamingDiagnostics = {
                 "Dashboard (User Management). Watch out with Duo/Family or " +
                 "Google/Facebook sign-ups: the account email can differ from the " +
                 "one you expect — check it at spotify.com under Account."
-              : `Profile request failed (${res.status}): ${body.slice(0, 200)}`,
+              : bare403
+                ? "Spotify blocked the profile request without details (bare 403). " +
+                  "Since Spotify's Feb 2026 API changes this can hit development-" +
+                  "mode apps even though playback still works — the checks below " +
+                  "matter more. If those fail too, make sure this account is " +
+                  "allow-listed in the Developer Dashboard (User Management)."
+                : `Profile request failed (${res.status}): ${body.slice(0, 200)}`,
         });
-        return checks;
       }
     } catch (err) {
       checks.push({
@@ -175,7 +184,6 @@ export const spotifyDiagnostics: StreamingDiagnostics = {
         status: "fail",
         detail: `Profile request failed: ${err instanceof Error ? err.message : String(err)}`,
       });
-      return checks;
     }
 
     // 4. Playback devices

@@ -7,6 +7,7 @@ import { useStreamingStore } from "@/streaming/store";
 import { hydrateTheme } from "@/theme/store";
 import { useTheme } from "@/theme/themedStyles";
 import { ThemeOverlay } from "@/theme/ThemeOverlay";
+import { FONT_ASSETS } from "@/theme/typography";
 import { interceptConsole, log } from "@/utils/logger";
 import { BebasNeue_400Regular, useFonts } from "@expo-google-fonts/bebas-neue";
 import { Stack } from "expo-router";
@@ -15,7 +16,7 @@ import React, { useEffect } from "react";
 
 export default function RootLayout() {
   // Non-blocking: the UI renders with the fallback font until loaded
-  useFonts({ BebasNeue_400Regular });
+  useFonts({ BebasNeue_400Regular, ...FONT_ASSETS });
   const theme = useTheme();
 
   useEffect(() => {

@@ -199,6 +199,17 @@ export class HostSession {
             : null;
           const meta =
             stored ?? (await this.resolvePlaylist(action.payload.playlistUrl));
+          // With a streaming provider connected, a game without a playlist
+          // would only produce playback errors (mock URIs aren't playable) —
+          // refuse and stay in the lobby. The demo fallback below stays
+          // available when no provider is connected (dev/testing).
+          if (
+            !meta &&
+            useStreamingStore.getState().authStatus === "authenticated"
+          ) {
+            this.sendError("Add a playlist before starting", fromPeerId);
+            return;
+          }
           if (meta) {
             // Lazy loading — only fetch meta, songs loaded on demand
             this.room = logic.startGame(

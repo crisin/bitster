@@ -2,6 +2,7 @@ import { ConnectButton } from "@/components/streaming/ConnectButton";
 import { ConnectionCheck } from "@/components/streaming/ConnectionCheck";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Pressable } from "@/components/ui/Pressable";
 import { generateRoomCode } from "@/game/logic";
 import { useGameStore } from "@/game/store";
 import * as p2p from "@/p2p/connection";
@@ -217,6 +218,14 @@ export default function HomeScreen() {
               </>
             )}
           </View>
+
+          <Pressable
+            onPress={() => router.push("/about")}
+            label="Open info and licenses"
+            style={styles.aboutBtn}
+          >
+            <Text style={styles.aboutLink}>Info & Licenses</Text>
+          </Pressable>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -275,6 +284,17 @@ const useStyles = createThemedStyles((COLORS) =>
     },
     joinSection: {
       gap: SPACE.md,
+    },
+    aboutBtn: {
+      minHeight: 36,
+      justifyContent: "center",
+      marginTop: SPACE["2xl"],
+    },
+    aboutLink: {
+      fontSize: FONT.size.sm,
+      color: COLORS.textSecondary,
+      opacity: 0.7,
+      textAlign: "center",
     },
   }),
 );
