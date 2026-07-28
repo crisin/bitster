@@ -1,7 +1,7 @@
-import { Pressable } from "@/components/ui/Pressable";
 import { Divider } from "@/components/ui/Divider";
+import { Pressable } from "@/components/ui/Pressable";
 import { createThemedStyles } from "@/theme/themedStyles";
-import { FONT, LAYOUT, RADIUS, SPACE, LABEL_STYLE } from "@/utils/constants";
+import { FONT, LABEL_STYLE, LAYOUT, RADIUS, SPACE } from "@/utils/constants";
 import { router } from "expo-router";
 import React from "react";
 import { Linking, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -17,6 +17,9 @@ const FONT_CREDITS = [
 ];
 
 const OFL_URL = "https://openfontlicense.org";
+const SNDCLD_URL = "https://soundcloud.com/crisin";
+const LRCSHLPR_URL = "https://frontend-production-e906.up.railway.app/";
+const GITHUB_URL = "https://github.com/crisin/bitster";
 
 /**
  * Info / legal page: credits, license attributions and the
@@ -29,7 +32,9 @@ export default function AboutScreen() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
+          onPress={() =>
+            router.canGoBack() ? router.back() : router.replace("/")
+          }
           label="Go back"
           style={styles.backBtn}
         >
@@ -47,14 +52,38 @@ export default function AboutScreen() {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Created by</Text>
           <Text style={styles.body}>crisin / krille</Text>
+
+          <Pressable
+            onPress={() => void Linking.openURL(GITHUB_URL)}
+            label="Open ma uwu GitHub repository"
+            style={styles.linkBtn}
+          >
+            <Text style={styles.link}>GitHub ↗</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => void Linking.openURL(LRCSHLPR_URL)}
+            label="Open ma uwu Lyircs-Helper website"
+            style={styles.linkBtn}
+          >
+            <Text style={styles.link}>Lyrics-Helper ↗</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => void Linking.openURL(SNDCLD_URL)}
+            label="Open ma uwu SoundCloud page"
+            style={styles.linkBtn}
+          >
+            <Text style={styles.link}>SoundCloud ↗</Text>
+          </Pressable>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>What is this?</Text>
           <Text style={styles.body}>
-            bitster is a free, non-commercial hobby project — a party game
-            about placing songs on a timeline, played with friends over your
-            own music streaming accounts.
+            bitster is a free, non-commercial hobby project — a party game about
+            placing songs on a timeline, played with friends over your own music
+            streaming accounts.
           </Text>
           <Text style={styles.body}>
             It is an independent fan project and is not affiliated with,
@@ -62,17 +91,17 @@ export default function AboutScreen() {
             Spotify. Spotify is a trademark of Spotify AB.
           </Text>
           <Text style={styles.body}>
-            The app streams no music itself: playback runs through each
-            player's own Spotify Premium account and the official Spotify
-            app. No audio is stored or redistributed.
+            The app streams no music itself: playback runs through each player's
+            own Spotify Premium account and the official Spotify app. No audio
+            is stored or redistributed.
           </Text>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Fonts</Text>
           <Text style={styles.body}>
-            All bundled fonts are free and open source under the SIL Open
-            Font License 1.1:
+            All bundled fonts are free and open source under the SIL Open Font
+            License 1.1:
           </Text>
           {FONT_CREDITS.map((f) => (
             <View key={f.name} style={styles.creditRow}>
@@ -113,9 +142,7 @@ export default function AboutScreen() {
         </View>
 
         <Divider />
-        <Text style={styles.footer}>
-          Made with ♥ and too many song replays
-        </Text>
+        <Text style={styles.footer}>Made with ♥ and too many song replays</Text>
       </ScrollView>
     </SafeAreaView>
   );
