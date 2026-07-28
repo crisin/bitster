@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Platform } from "react-native";
 import { Pressable } from "@/components/ui/Pressable";
 import { Chip } from "@/components/ui/Chip";
 import { Input } from "@/components/ui/Input";
+import { Slider } from "@/components/ui/Slider";
 import { useThemeStore } from "@/theme/store";
 import { ACCENT_PRESETS, normalizeHex } from "@/theme/customTheme";
 import { createThemedStyles } from "@/theme/themedStyles";
@@ -23,6 +24,7 @@ const EFFECT_OPTIONS = [
   { key: "rainbow", label: "Rainbow" },
   { key: "swirl", label: "Swirl" },
   { key: "melt", label: "Melt 🫠" },
+  { key: "glitch", label: "Glitch 📡" },
   { key: "flicker", label: "Flicker" },
   { key: "scanlines", label: "Scanlines" },
   { key: "vignette", label: "Vignette" },
@@ -37,6 +39,8 @@ export function CustomThemeEditor() {
   const custom = useThemeStore((s) => s.custom);
   const updateCustom = useThemeStore((s) => s.updateCustom);
   const updateCustomEffects = useThemeStore((s) => s.updateCustomEffects);
+  const meltIntensity = useThemeStore((s) => s.meltIntensity);
+  const setMeltIntensity = useThemeStore((s) => s.setMeltIntensity);
 
   const [hexDraft, setHexDraft] = useState(custom.accent);
   const hexValid = normalizeHex(hexDraft) !== null;
@@ -117,6 +121,30 @@ export function CustomThemeEditor() {
         ))}
       </View>
 
+      {/* Melt tuning lives right next to its toggle (web-only effect) */}
+      {custom.effects.melt && Platform.OS === "web" && (
+        <>
+          <Text style={styles.sectionTitle}>Melt intensity</Text>
+          <View style={styles.meltRow}>
+            <Text style={styles.meltEdge}>🧊</Text>
+            <View style={styles.meltTrack}>
+              <Slider
+                value={meltIntensity}
+                min={0}
+                max={1}
+                step={0.05}
+                onValueChange={setMeltIntensity}
+                label="Melt intensity"
+              />
+            </View>
+            <Text style={styles.meltEdge}>🫠</Text>
+            <Text style={styles.meltValue}>
+              {Math.round(meltIntensity * 100)}%
+            </Text>
+          </View>
+        </>
+      )}
+
       <Text style={styles.sectionTitle}>Floating emojis</Text>
       <Input
         placeholder="🎵✨🔥 (empty = none)"
@@ -171,6 +199,25 @@ const useStyles = createThemedStyles((COLORS) =>
     swatchCheck: {
       fontSize: FONT.size.lg,
       fontWeight: FONT.weight.bold,
+    },
+    meltRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: SPACE.sm,
+    },
+    meltTrack: {
+      flex: 1,
+    },
+    meltEdge: {
+      fontSize: FONT.size.base,
+    },
+    meltValue: {
+      width: 44,
+      textAlign: "right",
+      fontSize: FONT.size.sm,
+      fontWeight: FONT.weight.semibold,
+      color: COLORS.accent,
+      fontVariant: ["tabular-nums"],
     },
   }),
 );

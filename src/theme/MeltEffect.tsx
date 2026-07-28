@@ -38,13 +38,21 @@ interface MeltEffectProps {
   /** 0 = off … 1 = full goo */
   intensity: number;
   tempo: EffectTempo;
+  /** Theme background — fills the torn screen edges so no white bleeds in */
+  backdropColor: string;
 }
 
-export function MeltEffect({ intensity, tempo }: MeltEffectProps) {
+export function MeltEffect({ intensity, tempo, backdropColor }: MeltEffectProps) {
   // The rAF loop reads live values from a ref — rebuilding the filter (and
   // visibly un-melting the screen) on every slider tick would flicker badly
   const params = useRef({ intensity, tempo });
   params.current = { intensity, tempo };
+  const floodRef = useRef<SVGElement | null>(null);
+
+  // Keep the edge fill in sync with the theme without rebuilding the filter
+  useEffect(() => {
+    floodRef.current?.setAttribute("flood-color", backdropColor);
+  }, [backdropColor]);
 
   useEffect(() => {
     if (!meltSupported()) return;
@@ -65,23 +73,63 @@ export function MeltEffect({ intensity, tempo }: MeltEffectProps) {
     filter.setAttribute("y", "-15%");
     filter.setAttribute("width", "130%");
     filter.setAttribute("height", "130%");
+    // linearRGB (the default) shifts the displacement zero-point and adds
+    // banding — sRGB keeps the warp centered and smooth
+    filter.setAttribute("color-interpolation-filters", "sRGB");
 
+    // ONE coarse octave: big soft blobs instead of grainy high-frequency
+    // tearing (the second octave was what looked pixelated)
     const turbulence = document.createElementNS(svgNS, "feTurbulence");
     turbulence.setAttribute("type", "fractalNoise");
-    turbulence.setAttribute("baseFrequency", "0.008 0.016");
-    turbulence.setAttribute("numOctaves", "2");
+    turbulence.setAttribute("baseFrequency", "0.006 0.012");
+    turbulence.setAttribute("numOctaves", "1");
     turbulence.setAttribute("seed", "7");
     turbulence.setAttribute("result", "noise");
 
+    // Pre-smooth the displacement MAP (not the UI) — the warp field itself
+    // becomes buttery, so edges bend instead of stair-stepping
+    const noiseBlur = document.createElementNS(svgNS, "feGaussianBlur");
+    noiseBlur.setAttribute("in", "noise");
+    noiseBlur.setAttribute("stdDeviation", "8");
+    noiseBlur.setAttribute("result", "smoothNoise");
+
     const displacement = document.createElementNS(svgNS, "feDisplacementMap");
     displacement.setAttribute("in", "SourceGraphic");
-    displacement.setAttribute("in2", "noise");
+    displacement.setAttribute("in2", "smoothNoise");
     displacement.setAttribute("scale", "0");
     displacement.setAttribute("xChannelSelector", "R");
     displacement.setAttribute("yChannelSelector", "G");
+    displacement.setAttribute("result", "warped");
+
+    // Whisper of post-blur as anti-aliasing over the displaced pixels —
+    // way below text-legibility territory, just melts the jaggies
+    const antialias = document.createElementNS(svgNS, "feGaussianBlur");
+    antialias.setAttribute("in", "warped");
+    antialias.setAttribute("stdDeviation", "0.4");
+    antialias.setAttribute("result", "smoothWarped");
+
+    // Displacement pulls pixels in from beyond the screen edge where the
+    // source has none — flood the filter region with the theme background
+    // UNDER the warped image, so edges tear into theme color, not white
+    const flood = document.createElementNS(svgNS, "feFlood");
+    flood.setAttribute("flood-color", backdropColor);
+    flood.setAttribute("result", "edgeFill");
+    floodRef.current = flood;
+
+    const merge = document.createElementNS(svgNS, "feMerge");
+    const mergeBg = document.createElementNS(svgNS, "feMergeNode");
+    mergeBg.setAttribute("in", "edgeFill");
+    const mergeFg = document.createElementNS(svgNS, "feMergeNode");
+    mergeFg.setAttribute("in", "smoothWarped");
+    merge.appendChild(mergeBg);
+    merge.appendChild(mergeFg);
 
     filter.appendChild(turbulence);
+    filter.appendChild(noiseBlur);
     filter.appendChild(displacement);
+    filter.appendChild(antialias);
+    filter.appendChild(flood);
+    filter.appendChild(merge);
     svg.appendChild(filter);
     document.body.appendChild(svg);
 
@@ -130,8 +178,9 @@ export function MeltEffect({ intensity, tempo }: MeltEffectProps) {
         maxScale * (0.65 + 0.35 * Math.sin(seconds * wobbleHz * 2 * Math.PI));
       displacement.setAttribute("scale", scale.toFixed(1));
 
-      // Slow independent drift keeps the noise pattern itself alive
-      const drift = 0.008 + 0.0035 * Math.sin(seconds * 0.3 * t.factor);
+      // Slow independent drift keeps the noise pattern itself alive —
+      // range stays coarse so the warp never turns grainy again
+      const drift = 0.006 + 0.002 * Math.sin(seconds * 0.3 * t.factor);
       turbulence.setAttribute(
         "baseFrequency",
         `${drift.toFixed(4)} ${(drift * 2).toFixed(4)}`,
@@ -142,6 +191,7 @@ export function MeltEffect({ intensity, tempo }: MeltEffectProps) {
     return () => {
       cancelAnimationFrame(rafId);
       root.style.filter = "";
+      floodRef.current = null;
       svg.remove();
     };
   }, []);

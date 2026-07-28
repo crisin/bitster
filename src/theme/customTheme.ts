@@ -16,6 +16,7 @@ export interface CustomThemeConfig {
     rainbow: boolean;
     swirl: boolean;
     melt: boolean;
+    glitch: boolean;
     flicker: boolean;
     scanlines: boolean;
     vignette: boolean;
@@ -36,6 +37,7 @@ export const DEFAULT_CUSTOM_CONFIG: CustomThemeConfig = {
     rainbow: false,
     swirl: false,
     melt: false,
+    glitch: false,
     flicker: false,
     scanlines: false,
     vignette: false,
@@ -105,6 +107,7 @@ export function buildCustomTheme(config: CustomThemeConfig): Theme {
     rainbow: config.effects.rainbow,
     swirl: config.effects.swirl,
     melt: config.effects.melt,
+    glitch: config.effects.glitch,
     flicker: config.effects.flicker,
     scanlines: config.effects.scanlines,
     vignette: config.effects.vignette,

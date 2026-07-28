@@ -14,6 +14,7 @@ import {
   MAX_FACTOR,
   MIN_FACTOR,
 } from "@/theme/effectTempo";
+import { CUSTOM_THEME_ID } from "@/theme/customTheme";
 import { createThemedStyles, useTheme } from "@/theme/themedStyles";
 import { haptics } from "@/hooks/useHaptics";
 import { FONT, RADIUS, SPACE, LABEL_STYLE, TOUCH } from "@/utils/constants";
@@ -110,8 +111,10 @@ export function EffectSettings() {
         </Text>
       </View>
 
-      {/* Melt intensity — web-only effect, Safari sits it out */}
-      {theme.effects.melt && Platform.OS === "web" && (
+      {/* Melt intensity — web-only; for the custom theme the editor owns it */}
+      {theme.effects.melt &&
+        theme.id !== CUSTOM_THEME_ID &&
+        Platform.OS === "web" && (
         <>
           <Text style={styles.sectionTitle}>🫠 Melt</Text>
           <View style={styles.sliderRow}>

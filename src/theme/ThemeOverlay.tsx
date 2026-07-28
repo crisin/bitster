@@ -8,6 +8,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { resolveEffectTempo, type EffectTempo } from "./effectTempo";
+import { GlitchEffect } from "./GlitchEffect";
 import { MeltEffect } from "./MeltEffect";
 import { useThemeStore } from "./store";
 import { useTheme } from "./themedStyles";
@@ -332,11 +333,20 @@ export function ThemeOverlay() {
   const { width, height } = useWindowDimensions();
   const fx = theme.effects;
 
+  // Web: the page BEHIND the app must match the theme — melt displacement and
+  // glitch jitter both expose it at the screen edges (white tear lines
+  // otherwise). Must run before the early return below (hook rules).
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    document.body.style.backgroundColor = theme.colors.bgPrimary;
+  }, [theme.colors.bgPrimary]);
+
   const hasAny =
     fx.pulse ||
     fx.rainbow ||
     fx.swirl ||
     fx.melt ||
+    fx.glitch ||
     fx.flicker ||
     fx.scanlines ||
     fx.vignette ||
@@ -345,7 +355,16 @@ export function ThemeOverlay() {
 
   return (
     <Animated.View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-      {fx.melt && <MeltEffect intensity={meltIntensity} tempo={tempo} />}
+      {fx.melt && (
+        <MeltEffect
+          intensity={meltIntensity}
+          tempo={tempo}
+          backdropColor={theme.colors.bgPrimary}
+        />
+      )}
+      {fx.glitch && (
+        <GlitchEffect factor={tempo.factor} accent={theme.colors.accent} />
+      )}
       {fx.rainbow && <Rainbow factor={tempo.factor} />}
       {fx.swirl && (
         <Swirl width={width} height={height} factor={tempo.factor} />

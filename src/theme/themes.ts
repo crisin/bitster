@@ -22,6 +22,8 @@ export interface ThemeEffects {
   swirl: boolean;
   /** The whole UI liquefies via SVG displacement (web only, not Safari) */
   melt: boolean;
+  /** "Bad reception": random tear bars + screen jitter bursts */
+  glitch: boolean;
   /** Emojis floating up the screen, null = none */
   floaties: string[] | null;
 }
@@ -49,6 +51,7 @@ const NO_EFFECTS: ThemeEffects = {
   pulse: false,
   swirl: false,
   melt: false,
+  glitch: false,
   floaties: null,
 };
 
@@ -197,7 +200,8 @@ export const THEMES: Theme[] = [
       warningLight: "rgba(255, 0, 229, 0.12)",
       yearText: "#f5d90a",
     },
-    effects: { ...NO_EFFECTS, glow: true },
+    // Flickering neon signs get signal interference, obviously
+    effects: { ...NO_EFFECTS, glow: true, glitch: true },
     statusBar: "light",
   },
   {
