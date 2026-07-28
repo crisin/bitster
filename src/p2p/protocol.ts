@@ -10,15 +10,21 @@ import type {
   RecapPlayer,
   RecapReason,
   Room,
+  RerollReason,
   RoundBuzz,
   RoundGuess,
   RoundOutcome,
+  RoundPass,
   RoundRecord,
+  RoundReroll,
+  RoundToken,
   Song,
+  TokenReason,
 } from "@/game/types";
 import {
   EMPTY_STATS,
   MAX_RANDOM_POOL,
+  MAX_ROUND_ENTRIES,
   MAX_ROUNDS_PER_GAME,
   MIN_RANDOM_POOL,
   RECAP_VERSION,
@@ -259,6 +265,19 @@ const ROUND_OUTCOMES: readonly RoundOutcome[] = [
   "abandoned",
 ];
 
+const TOKEN_REASONS: readonly TokenReason[] = [
+  "guess-song",
+  "guess-year",
+  "skip",
+  "buzz",
+];
+
+const REROLL_REASONS: readonly RerollReason[] = [
+  "unplayable",
+  "unusable",
+  "fetch-retry",
+];
+
 function isIntOrNull(v: unknown): v is number | null {
   return v === null || isNonNegativeInt(v);
 }
@@ -309,6 +328,64 @@ function parseRoundBuzz(v: unknown): RoundBuzz | null {
   };
 }
 
+/**
+ * The per-round event arrays. All three are additive: a recap from an older
+ * host simply has none of them, and a round without its events is still a
+ * perfectly good round — so `undefined` becomes `[]` instead of a rejection.
+ * A present-but-broken array IS rejected: that is a bug or an attack, not age.
+ */
+function parseRoundList<T>(
+  v: unknown,
+  parseItem: (item: unknown) => T | null,
+): T[] | null {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || v.length > MAX_ROUND_ENTRIES) return null;
+  const items: T[] = [];
+  for (const raw of v) {
+    const item = parseItem(raw);
+    if (!item) return null;
+    items.push(item);
+  }
+  return items;
+}
+
+function parseRoundToken(v: unknown): RoundToken | null {
+  if (!isObject(v)) return null;
+  if (!isNonEmptyString(v.playerId) || typeof v.playerName !== "string")
+    return null;
+  if (
+    typeof v.reason !== "string" ||
+    !(TOKEN_REASONS as readonly string[]).includes(v.reason)
+  )
+    return null;
+  // A delta of any other size would rewrite the economy of somebody else's log
+  if (v.delta !== 1 && v.delta !== -1) return null;
+  return {
+    playerId: v.playerId,
+    playerName: v.playerName,
+    delta: v.delta,
+    reason: v.reason as TokenReason,
+  };
+}
+
+function parseRoundReroll(v: unknown): RoundReroll | null {
+  if (!isObject(v)) return null;
+  if (!isNonNegativeInt(v.index)) return null;
+  if (
+    typeof v.reason !== "string" ||
+    !(REROLL_REASONS as readonly string[]).includes(v.reason)
+  )
+    return null;
+  return { index: v.index, reason: v.reason as RerollReason };
+}
+
+function parseRoundPass(v: unknown): RoundPass | null {
+  if (!isObject(v)) return null;
+  if (!isNonEmptyString(v.playerId) || typeof v.playerName !== "string")
+    return null;
+  return { playerId: v.playerId, playerName: v.playerName };
+}
+
 export function parseRoundRecord(v: unknown): RoundRecord | null {
   if (!isObject(v)) return null;
   if (!isNonNegativeInt(v.round)) return null;
@@ -339,6 +416,11 @@ export function parseRoundRecord(v: unknown): RoundRecord | null {
     if (!buzz) return null;
   }
 
+  const tokens = parseRoundList(v.tokens, parseRoundToken);
+  const rerolls = parseRoundList(v.rerolls, parseRoundReroll);
+  const passes = parseRoundList(v.passes, parseRoundPass);
+  if (!tokens || !rerolls || !passes) return null;
+
   return {
     round: v.round,
     song,
@@ -350,6 +432,9 @@ export function parseRoundRecord(v: unknown): RoundRecord | null {
     placeMs,
     guess,
     buzz,
+    tokens,
+    rerolls,
+    passes,
   };
 }
 

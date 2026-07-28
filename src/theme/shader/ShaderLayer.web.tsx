@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { log } from "@/utils/logger";
 import type { ShaderPresetId } from "./presets";
 import { FRAGMENT_SHADERS, VERTEX_SHADER } from "./presets";
@@ -115,15 +115,22 @@ export function ShaderLayer({
   bpm,
 }: ShaderLayerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const glRef = useRef<WebGLRenderingContext | null>(null);
+  const lostRef = useRef(false);
+  // Bumped when the driver hands the context back — every GL object died with
+  // it, so the pipeline effect has to build everything again
+  const [generation, setGeneration] = useState(0);
   // Values the render loop reads every frame — kept in a ref so a settings
   // change never tears down and recompiles the program
-  const live = useRef({ accent, intensity, factor, bpm });
-  live.current = { accent, intensity, factor, bpm };
+  const live = useRef({ accent, intensity, factor, bpm, renderScale });
+  live.current = { accent, intensity, factor, bpm, renderScale };
 
+  // The context outlives every preset switch. Creating it here — once per
+  // mounted canvas — is what keeps `loseContext()` in the teardown from
+  // killing a canvas that React is about to reuse.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const gl = canvas.getContext("webgl", {
       alpha: true,
       antialias: false,
@@ -137,6 +144,36 @@ export function ShaderLayer({
       log.warn("theme", "No WebGL context — shader layer stays off");
       return;
     }
+    // No generation bump needed: this effect runs before the pipeline one in
+    // the same commit, so the first build already sees the context
+    glRef.current = gl;
+
+    // Mobile browsers drop the context when the app is backgrounded; without
+    // preventDefault the canvas never comes back
+    const onLost = (event: Event) => {
+      event.preventDefault();
+      lostRef.current = true;
+    };
+    const onRestored = () => {
+      lostRef.current = false;
+      setGeneration((g) => g + 1);
+    };
+    canvas.addEventListener("webglcontextlost", onLost);
+    canvas.addEventListener("webglcontextrestored", onRestored);
+
+    return () => {
+      canvas.removeEventListener("webglcontextlost", onLost);
+      canvas.removeEventListener("webglcontextrestored", onRestored);
+      glRef.current = null;
+      // Safe here and only here: the canvas is leaving the DOM with us
+      gl.getExtension("WEBGL_lose_context")?.loseContext();
+    };
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const gl = glRef.current;
+    if (!canvas || !gl || gl.isContextLost()) return;
 
     const program = buildProgram(gl, FRAGMENT_SHADERS[preset]);
     if (!program) return;
@@ -169,8 +206,9 @@ export function ShaderLayer({
       const cssH = canvas.clientHeight || window.innerHeight;
       // Deliberately NOT devicePixelRatio: a phone at 3x would render nine
       // times the pixels for an effect nobody looks at that closely
-      const w = Math.max(1, Math.round(cssW * renderScale));
-      const h = Math.max(1, Math.round(cssH * renderScale));
+      const scale = live.current.renderScale;
+      const w = Math.max(1, Math.round(cssW * scale));
+      const h = Math.max(1, Math.round(cssH * scale));
       if (w === width && h === height) return;
       width = w;
       height = h;
@@ -187,11 +225,10 @@ export function ShaderLayer({
     let lastFrame = 0;
     let elapsed = 0;
     let frame = 0;
-    let lost = false;
     const still = reducedMotion();
 
     const draw = (now: number) => {
-      if (lost) return;
+      if (lostRef.current) return;
       const dt = lastFrame === 0 ? 0 : Math.min(100, now - lastFrame);
       lastFrame = now;
       const { accent: hex, intensity: amount, factor: speed, bpm: tempo } =
@@ -213,34 +250,19 @@ export function ShaderLayer({
       if (!still) frame = requestAnimationFrame(draw);
     };
 
-    // Mobile browsers drop the context when the app is backgrounded; without
-    // preventDefault the canvas never comes back
-    const onLost = (event: Event) => {
-      event.preventDefault();
-      lost = true;
-      if (frame) cancelAnimationFrame(frame);
-    };
-    const onRestored = () => {
-      lost = false;
-      lastFrame = 0;
-      frame = requestAnimationFrame(draw);
-    };
-    canvas.addEventListener("webglcontextlost", onLost);
-    canvas.addEventListener("webglcontextrestored", onRestored);
-
     frame = requestAnimationFrame(draw);
 
     return () => {
       if (frame) cancelAnimationFrame(frame);
       window.removeEventListener("resize", resize);
-      canvas.removeEventListener("webglcontextlost", onLost);
-      canvas.removeEventListener("webglcontextrestored", onRestored);
+      // A lost context has already reclaimed everything; touching it warns
+      if (gl.isContextLost()) return;
       gl.deleteBuffer(buffer);
       gl.deleteProgram(program);
-      gl.getExtension("WEBGL_lose_context")?.loseContext();
     };
-    // Only a different preset or resolution justifies rebuilding the pipeline
-  }, [preset, renderScale]);
+    // Only a different shader — or a context that came back from the dead —
+    // justifies rebuilding the pipeline. Scale and colours ride the live ref.
+  }, [preset, generation]);
 
   return (
     <canvas

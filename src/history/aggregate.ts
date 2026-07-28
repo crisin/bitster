@@ -269,6 +269,71 @@ export function songLeaderboard(
   );
 }
 
+export interface TokenRow {
+  playerId: string;
+  name: string;
+  /** Tokens earned by guessing */
+  earned: number;
+  /** Tokens spent buzzing or skipping — a positive number */
+  spent: number;
+  /** earned − spent; negative means they burned more than they guessed back */
+  net: number;
+  guessedSong: number;
+  guessedYear: number;
+  buzzes: number;
+  skips: number;
+}
+
+/**
+ * The bitster economy of one game, per player. Derived rather than stored: the
+ * round log already holds every movement, and a second copy of the same numbers
+ * would be one more thing that can disagree with itself.
+ *
+ * Rounds recorded before the event log existed simply contribute nothing, so an
+ * old game shows an empty ledger instead of wrong figures.
+ */
+export function tokenLedger(rounds: StoredRound[]): TokenRow[] {
+  const rows = new Map<string, TokenRow>();
+  const rowFor = (playerId: string, name: string): TokenRow => {
+    const existing = rows.get(playerId);
+    if (existing) {
+      // Names can arrive empty from an older record — take the first real one
+      if (!existing.name && name) existing.name = name;
+      return existing;
+    }
+    const row: TokenRow = {
+      playerId,
+      name,
+      earned: 0,
+      spent: 0,
+      net: 0,
+      guessedSong: 0,
+      guessedYear: 0,
+      buzzes: 0,
+      skips: 0,
+    };
+    rows.set(playerId, row);
+    return row;
+  };
+
+  for (const round of rounds) {
+    for (const token of round.tokens ?? []) {
+      const row = rowFor(token.playerId, token.playerName);
+      if (token.delta > 0) row.earned += token.delta;
+      else row.spent += -token.delta;
+      if (token.reason === "guess-song") row.guessedSong++;
+      if (token.reason === "guess-year") row.guessedYear++;
+      if (token.reason === "buzz") row.buzzes++;
+      if (token.reason === "skip") row.skips++;
+    }
+  }
+
+  for (const row of rows.values()) row.net = row.earned - row.spent;
+  return [...rows.values()].sort(
+    (a, b) => b.earned - a.earned || b.net - a.net || a.name.localeCompare(b.name),
+  );
+}
+
 /** Every identity/sub-key combination this device has games for */
 export function knownPlayers(games: StoredGame[], identityId: string): Who[] {
   const seen = new Map<string, Who>();

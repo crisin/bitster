@@ -1,5 +1,9 @@
 import type { GameStateMeta } from "@/game/types";
-import { MAX_GUESS_TEXT, MAX_ROUNDS_PER_GAME } from "@/game/types";
+import {
+  MAX_GUESS_TEXT,
+  MAX_ROUND_ENTRIES,
+  MAX_ROUNDS_PER_GAME,
+} from "@/game/types";
 import { describe, expect, it } from "vitest";
 import {
   addPlayer,
@@ -860,6 +864,9 @@ describe("round log", () => {
     placeMs: 1200,
     guess: null,
     buzz: null,
+    tokens: [],
+    rerolls: [],
+    passes: [],
   };
 
   it("stamps sequential round numbers regardless of the caller", () => {
@@ -876,6 +883,30 @@ describe("round log", () => {
       room = appendRound(room, BASE);
     }
     expect(room.rounds).toHaveLength(MAX_ROUNDS_PER_GAME);
+  });
+
+  it("caps the event arrays and the names inside them", () => {
+    let room = makeTestRoom();
+    room = appendRound(room, {
+      ...BASE,
+      tokens: Array.from({ length: MAX_ROUND_ENTRIES + 4 }, () => ({
+        playerId: "host-1",
+        playerName: "A".repeat(60),
+        delta: -1 as const,
+        reason: "buzz" as const,
+      })),
+      rerolls: Array.from({ length: MAX_ROUND_ENTRIES + 4 }, (_, i) => ({
+        index: i,
+        reason: "unplayable" as const,
+      })),
+      passes: [{ playerId: "peer-2", playerName: "B".repeat(60) }],
+    });
+
+    const round = room.rounds[0];
+    expect(round.tokens).toHaveLength(MAX_ROUND_ENTRIES);
+    expect(round.rerolls).toHaveLength(MAX_ROUND_ENTRIES);
+    expect(round.tokens[0].playerName.length).toBeLessThanOrEqual(24);
+    expect(round.passes[0].playerName.length).toBeLessThanOrEqual(24);
   });
 
   it("caps guess text and rejects a nonsensical duration", () => {
@@ -1057,6 +1088,9 @@ describe("connection state", () => {
           placeMs: 1200,
           guess: null,
           buzz: null,
+          tokens: [],
+          rerolls: [],
+          passes: [],
         },
       ],
     };

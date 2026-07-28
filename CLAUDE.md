@@ -105,7 +105,8 @@ src/
                               # Divider, Pressable, Slider, StatusDot, DevLogButton
     game/                     # Timeline(+Card/Gap), RevealCard, NowPlaying, ScoreBoard,
                               # Awards, GuessForm, BuzzerButton, Stage, CountdownPill,
-                              # AllPlayerTimelines, MiniTimeline, PlayedSongs, RoundLog
+                              # AllPlayerTimelines, MiniTimeline, PlayedSongs,
+                              # RoundLog (aufklappbar, Events pro Runde), TokenLedger
       phases/                 # LobbyView, PlayingView, BitsterWindowView, RevealView, FinishedView
     lobby/                    # RoomCode, GameSettings, PlayerSlot
     streaming/                # ConnectButton, DeviceSelector, ConnectionCheck
@@ -250,8 +251,13 @@ Dieses Projekt wird **vollständig KI-gestützt** entwickelt. Keine manuellen Ze
    Score = Timeline-Länge − Penalties).
 5. **Reveal:** Ergebnis + Song-Details (Cover, Album, 🅴, Deep-Cut/Banger-Badge),
    nächste Runde
-6. **Finished:** Gewinner, ScoreBoard, Awards + Runden-Log (aus `room.rounds` via
-   `game-recap`), Link auf die Historie, Rematch-Option
+6. **Finished:** Gewinner, ScoreBoard, Awards, Token-Bilanz + Runden-Log (aus
+   `room.rounds` via `game-recap`), Link auf die Historie, Rematch-Option.
+   Jede Runde im Log lässt sich aufklappen und zeigt dann ihre Ereignisse:
+   verworfene Songs (`rerolls`), Guess mit Einzel-Verdikt, Platzierung mit Zeit,
+   Passes, bitster samt Ausgang — jeweils mit der Token-Bewegung, die dazu
+   gehört. Was in `RoundRecord` steht, ist die Wahrheit; die Bilanz pro Spieler
+   wird daraus abgeleitet (`tokenLedger`), nie doppelt gespeichert.
 
 ## Game State Sync
 

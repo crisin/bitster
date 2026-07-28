@@ -6,7 +6,7 @@ import { useHistoryStore } from "@/history/store";
 import { useP2PStore } from "@/p2p/store";
 import { initSpotify } from "@/streaming/providers/spotify";
 import { useStreamingStore } from "@/streaming/store";
-import { hydrateTheme } from "@/theme/store";
+import { hydrateTheme, useThemeStore } from "@/theme/store";
 import { useTheme } from "@/theme/themedStyles";
 import { ThemeOverlay } from "@/theme/ThemeOverlay";
 import { FONT_ASSETS } from "@/theme/typography";
@@ -34,6 +34,7 @@ export default function RootLayout() {
         p2p: useP2PStore,
         streaming: useStreamingStore,
         history: useHistoryStore,
+        theme: useThemeStore,
       };
     }
     return () => {

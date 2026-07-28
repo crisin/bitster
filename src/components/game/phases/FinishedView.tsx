@@ -9,6 +9,7 @@ import { useP2PStore } from "@/p2p/store";
 import { Awards } from "@/components/game/Awards";
 import { RoundLog } from "@/components/game/RoundLog";
 import { ScoreBoard } from "@/components/game/ScoreBoard";
+import { TokenLedger } from "@/components/game/TokenLedger";
 import { DISPLAY_FONT, FONT, RADIUS, SPACE } from "@/utils/constants";
 import { createThemedStyles } from "@/theme/themedStyles";
 
@@ -123,6 +124,8 @@ export function FinishedView() {
           </View>
         </View>
       )}
+
+      <TokenLedger rounds={rounds} meId={myPeerId} />
 
       <RoundLog rounds={rounds} />
 

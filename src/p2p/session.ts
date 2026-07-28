@@ -3,6 +3,8 @@ import type {
   GuessResult,
   PlacementResult,
   Room,
+  RoundReroll,
+  RoundToken,
 } from "@/game/types";
 import { log as logger } from "@/utils/logger";
 import { validateRoom } from "./protocol";
@@ -49,6 +51,13 @@ export interface HostSnapshot {
   roundStartedAt: number;
   roundRecorded: boolean;
   recapSent: boolean;
+  /**
+   * Round-log events collected so far. Optional because a snapshot written
+   * before they existed is still perfectly restorable — the reloaded host just
+   * starts that round's event list empty rather than refusing the whole room.
+   */
+  pendingTokens?: RoundToken[];
+  pendingRerolls?: RoundReroll[];
 }
 
 const SESSION_KEY = "bitster.p2p.session";

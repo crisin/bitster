@@ -9,6 +9,10 @@ import type {
   RoundBuzz,
   RoundGuess,
   RoundOutcome,
+  RoundPass,
+  RoundReroll,
+  RoundToken,
+  TokenReason,
   Song,
 } from "@/game/types";
 import { EMPTY_STATS } from "@/game/types";
@@ -118,6 +122,14 @@ export class HostSession {
   private fetchFailed = false;
   /** Guards against a second "roll the dice" while one is still collecting */
   private poolBuilding = false;
+  /**
+   * Token movements and discarded slots for the round in progress. Collected
+   * as they happen because neither is recoverable afterwards: the token counts
+   * only show the balance, and a discarded slot leaves no trace at all.
+   * Both are handed to the round log and reset when the next song starts.
+   */
+  private pendingTokens: RoundToken[] = [];
+  private pendingRerolls: RoundReroll[] = [];
 
   constructor(
     private readonly send: SendFn,
@@ -146,6 +158,8 @@ export class HostSession {
       roundStartedAt: this.roundStartedAt,
       roundRecorded: this.roundRecorded,
       recapSent: this.recapSent,
+      pendingTokens: this.pendingTokens,
+      pendingRerolls: this.pendingRerolls,
     };
   }
 
@@ -186,6 +200,9 @@ export class HostSession {
     this.roundStartedAt = snapshot.roundStartedAt;
     this.roundRecorded = snapshot.roundRecorded;
     this.recapSent = snapshot.recapSent;
+    // Pre-event snapshots simply have none — an empty list, never a refusal
+    this.pendingTokens = snapshot.pendingTokens ?? [];
+    this.pendingRerolls = snapshot.pendingRerolls ?? [];
     // Whatever await was in flight died with the page
     this.advancing = false;
     this.rearmTimers();
@@ -766,6 +783,7 @@ export class HostSession {
           const currentForSkip = logic.getCurrentPlayer(this.room);
           if (fromPeerId !== currentForSkip?.id) return;
           this.room = logic.skipSong(this.room, fromPeerId);
+          this.noteToken(fromPeerId, -1, "skip");
           // Log before the round's state is wiped. A skip discards the guess
           // reward, so it goes into the log with 0 tokens.
           this.recordRound({
@@ -818,7 +836,8 @@ export class HostSession {
             buzzed.buzzerId === fromPeerId &&
             this.room.buzzerId !== fromPeerId
           ) {
-            // Buzz accepted — start the lock-in countdown
+            // Buzz accepted — the token is already spent, start the lock-in
+            this.noteToken(fromPeerId, -1, "buzz");
             const timerMs = buzzed.settings.rules.buzz.timerSeconds * 1000;
             this.room = { ...buzzed, buzzDeadline: Date.now() + timerMs };
             this.pendingBuzzPosition = null;
@@ -1280,6 +1299,14 @@ export class HostSession {
           }
         : null;
 
+    // Passes are read off the live room rather than collected as they arrive:
+    // `passedIds` is exactly this window's list and is still intact here, since
+    // the phase flip that clears it happens after the round is written.
+    const passes: RoundPass[] = this.room.passedIds.map((id) => ({
+      playerId: id,
+      playerName: this.room.players.find((p) => p.id === id)?.name ?? "",
+    }));
+
     this.room = logic.appendRound(this.room, {
       song,
       activePlayerId: activeId,
@@ -1290,6 +1317,9 @@ export class HostSession {
       placeMs: this.roundStartedAt > 0 ? Date.now() - this.roundStartedAt : null,
       guess,
       buzz: part.buzz,
+      tokens: this.pendingTokens,
+      rerolls: this.pendingRerolls,
+      passes,
     });
     this.roundRecorded = true;
   }
@@ -1386,7 +1416,32 @@ export class HostSession {
     if (!this.pendingGuessResult || !this.pendingGuessBy) return 0;
     const reward = logic.guessReward(this.pendingGuessResult);
     this.room = logic.awardTokens(this.room, this.pendingGuessBy, reward);
+    // Logged as two separate earnings because that is how they were earned —
+    // "+2" alone would hide whether the year or the song was the hard part
+    if (
+      this.pendingGuessResult.titleCorrect &&
+      this.pendingGuessResult.artistCorrect
+    ) {
+      this.noteToken(this.pendingGuessBy, 1, "guess-song");
+    }
+    if (this.pendingGuessResult.yearCorrect === true) {
+      this.noteToken(this.pendingGuessBy, 1, "guess-year");
+    }
     return reward;
+  }
+
+  /**
+   * Note one token movement for the round log. The name is snapshotted here
+   * because the log outlives the player list.
+   */
+  private noteToken(playerId: string, delta: number, reason: TokenReason): void {
+    const player = this.room.players.find((p) => p.id === playerId);
+    this.pendingTokens.push({
+      playerId,
+      playerName: player?.name ?? "",
+      delta,
+      reason,
+    });
   }
 
   /** The buzzer's countdown ran out — lock in their provisional pick or forfeit */
@@ -1541,6 +1596,9 @@ export class HostSession {
   private async pickAndPlayNextSong(): Promise<boolean> {
     let song: Song | null = null;
     this.fetchFailed = false;
+    // Discards belong to the round they delayed, so the list starts fresh with
+    // the hunt and is handed over when that round is written
+    const rerolls: RoundReroll[] = [];
 
     const playlistId = this.room.playlistId;
     if (playlistId) {
@@ -1581,6 +1639,7 @@ export class HostSession {
             if (err.transient && transientRetries < MAX_TRANSIENT_RETRIES) {
               // The slot is probably fine — do NOT mark it as used
               transientRetries++;
+              rerolls.push({ index, reason: "fetch-retry" });
               await new Promise((resolve) =>
                 setTimeout(resolve, TRANSIENT_RETRY_MS),
               );
@@ -1591,7 +1650,18 @@ export class HostSession {
             return false;
           }
           logger.warn("p2p", `Track at index ${index} unusable: ${err}`);
+          rerolls.push({ index, reason: "unusable" });
+          slotsTried++;
+          this.room = {
+            ...this.room,
+            playedIndices: [...this.room.playedIndices, index],
+          };
+          continue;
         }
+
+        // Reached only when the track came back null: the provider filtered it
+        // out as unplayable for this account
+        rerolls.push({ index, reason: "unplayable" });
 
         // This slot really had nothing playable in it — don't come back to it
         slotsTried++;
@@ -1617,6 +1687,8 @@ export class HostSession {
     this.roundStartedAt = Date.now();
     this.roundRecorded = false;
     this.pendingPosition = null;
+    this.pendingTokens = [];
+    this.pendingRerolls = rerolls;
     return true;
   }
 

@@ -158,6 +158,12 @@ Lobby, wie viel von der Playlist auf seinem Account spielbar aussieht, und
 **Warum erst messen:** `is_playable` ist optional. Fehlt es, filtert nichts —
 und ob es fehlt, sagt die Doku nicht. Nach einem Spieleabend sagen es die Zähler.
 
+**Dazugekommen:** Der Runden-Log hält jetzt `rerolls` fest — jeden Playlist-Slot,
+den der Host vor einer Runde verworfen hat, mit Grund (`unplayable`, `unusable`,
+`fetch-retry`) und Index. Damit ist die Frage „wie oft passiert das eigentlich?"
+nach dem nächsten Abend nicht mehr geschätzt, sondern im Log nachlesbar — pro
+Runde sichtbar, ohne extra Instrumentierung.
+
 **Offen, sobald die Zahlen da sind:**
 
 - **Playback verifizieren.** Spotify quittiert `play` mit `204` = „Befehl

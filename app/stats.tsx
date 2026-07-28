@@ -1,4 +1,5 @@
 import { RoundLog } from "@/components/game/RoundLog";
+import { TokenLedger } from "@/components/game/TokenLedger";
 import { Pressable } from "@/components/ui/Pressable";
 import {
   bestRound,
@@ -6,6 +7,7 @@ import {
   decadeHistogram,
   findNemesis,
   knownPlayers,
+  myPlayerId,
   songLeaderboard,
   type Who,
 } from "@/history/aggregate";
@@ -397,7 +399,13 @@ export default function StatsScreen() {
                       </Text>
                     </Pressable>
                     {expanded === game.id && (
-                      <RoundLog rounds={game.recap.rounds} initiallyOpen />
+                      <View style={styles.gameDetail}>
+                        <TokenLedger
+                          rounds={game.recap.rounds}
+                          meId={myPlayerId(game, who)}
+                        />
+                        <RoundLog rounds={game.recap.rounds} initiallyOpen />
+                      </View>
                     )}
                   </View>
                 ))}
@@ -613,6 +621,7 @@ const useStyles = createThemedStyles((COLORS) =>
     songName: { flex: 1, fontSize: FONT.size.sm, color: COLORS.textPrimary },
     songMeta: { fontSize: FONT.size.xs, color: COLORS.textSecondary },
     gameRow: { paddingVertical: SPACE.sm, minHeight: 44 },
+    gameDetail: { gap: SPACE.sm, paddingBottom: SPACE.sm },
     gameCode: {
       fontFamily: DISPLAY_FONT,
       fontSize: 20,

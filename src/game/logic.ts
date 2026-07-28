@@ -18,6 +18,7 @@ import {
   DEFAULT_SETTINGS,
   EMPTY_STATS,
   MAX_GUESS_TEXT,
+  MAX_ROUND_ENTRIES,
   MAX_ROUNDS_PER_GAME,
   RECAP_VERSION,
 } from "./types";
@@ -448,6 +449,18 @@ export function appendRound(
     buzz: record.buzz
       ? { ...record.buzz, playerName: record.buzz.playerName.slice(0, 24) }
       : null,
+    // The event arrays are bounded by the game itself (pick attempts, players
+    // in a room) — capping here is what makes that true for the STORED record
+    // as well, whatever a caller hands in.
+    tokens: record.tokens.slice(0, MAX_ROUND_ENTRIES).map((t) => ({
+      ...t,
+      playerName: t.playerName.slice(0, 24),
+    })),
+    rerolls: record.rerolls.slice(0, MAX_ROUND_ENTRIES),
+    passes: record.passes.slice(0, MAX_ROUND_ENTRIES).map((p) => ({
+      ...p,
+      playerName: p.playerName.slice(0, 24),
+    })),
   };
 
   return { ...room, rounds: [...room.rounds, stamped] };

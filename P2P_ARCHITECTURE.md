@@ -200,6 +200,27 @@ Ausgang und die Zeit bis zur Platzierung. Geschrieben wird pur in
 endet — Reveal, Blitz-Timeout, Skip, Turn-Grace und Spielerverlust. Ein
 `roundRecorded`-Flag verhindert doppelte wie verlorene Einträge.
 
+Dazu kommen drei Ereignis-Listen pro Runde, die es sonst nirgends mehr gäbe:
+
+| Feld       | Inhalt                                                                     | Warum nicht ableitbar                                                                 |
+| ---------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `tokens`   | jede Token-Bewegung (`guess-song`/`guess-year` +1, `skip`/`buzz` −1)        | Der State zeigt nur den Kontostand — wer wofür bezahlt hat, ist danach weg               |
+| `rerolls`  | Playlist-Slots, die vor dieser Runde verworfen wurden, mit Grund und Index  | Ein still verworfener Song ist sonst nicht von einer kleinen Playlist zu unterscheiden   |
+| `passes`   | wer im bitster-Fenster ausdrücklich gepasst hat                             | `passedIds` wird beim Phasenwechsel geleert                                              |
+
+Gesammelt wird während der Runde in der `HostSession` (`pendingTokens`,
+`pendingRerolls`), übergeben beim Schreiben des Eintrags; `passes` liest der
+Host direkt aus `room.passedIds`, das an dieser Stelle noch steht. Alle drei
+sind **additiv**: ein Recap von einem älteren Host hat sie nicht, und der
+Wire-Parser macht daraus `[]` statt die Runde abzulehnen. Eine vorhandene,
+aber kaputte Liste wird dagegen abgelehnt — das ist ein Bug oder ein Angriff,
+kein Alter. `MAX_ROUND_ENTRIES` cappt jede Liste in `appendRound` **und** im
+Parser.
+
+Die Token-Bilanz pro Spieler (`tokenLedger` in `history/aggregate.ts`) wird aus
+diesen Listen **abgeleitet**, nicht zusätzlich gespeichert — zwei Kopien
+derselben Zahlen wären eine Quelle für Widersprüche mehr.
+
 `room.rounds` verlässt den Host **nie** über `game-state` — es enthält die echten
 Jahre auch von Songs, die übersprungen wurden und nie aufgedeckt waren. Erst wenn
 das Spiel vorbei ist, baut der Host genau einmal ein `game-recap` und schickt es

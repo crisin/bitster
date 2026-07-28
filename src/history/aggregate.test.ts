@@ -8,6 +8,7 @@ import {
   findNemesis,
   knownPlayers,
   songLeaderboard,
+  tokenLedger,
   type Who,
 } from "./aggregate";
 import type { StoredGame, StoredRound } from "./types";
@@ -28,6 +29,9 @@ function round(over: Partial<StoredRound> = {}): StoredRound {
     placeMs: 4_000,
     guess: null,
     buzz: null,
+    tokens: [],
+    rerolls: [],
+    passes: [],
     ...over,
   };
 }
@@ -345,6 +349,9 @@ describe("stored types", () => {
       placeMs: 1000,
       guess: null,
       buzz: null,
+      tokens: [],
+      rerolls: [],
+      passes: [],
     };
     const stored: StoredRound = {
       ...wire,
@@ -356,5 +363,58 @@ describe("stored types", () => {
       },
     };
     expect(stored.song).not.toHaveProperty("uri");
+  });
+});
+
+describe("tokenLedger", () => {
+  const spend = (playerId: string, name: string, reason: "buzz" | "skip") => ({
+    playerId,
+    playerName: name,
+    delta: -1,
+    reason,
+  });
+  const earn = (
+    playerId: string,
+    name: string,
+    reason: "guess-song" | "guess-year",
+  ) => ({ playerId, playerName: name, delta: 1, reason });
+
+  it("splits earned from spent and nets them out", () => {
+    const rounds = [
+      round({
+        tokens: [
+          earn(ME, "Me", "guess-song"),
+          earn(ME, "Me", "guess-year"),
+          spend(RIVAL, "Rival", "buzz"),
+        ],
+      }),
+      round({ round: 2, tokens: [spend(ME, "Me", "skip")] }),
+    ];
+
+    const [me, rival] = tokenLedger(rounds);
+    expect(me).toMatchObject({
+      playerId: ME,
+      earned: 2,
+      spent: 1,
+      net: 1,
+      guessedSong: 1,
+      guessedYear: 1,
+      skips: 1,
+    });
+    expect(rival).toMatchObject({ playerId: RIVAL, earned: 0, spent: 1, net: -1, buzzes: 1 });
+  });
+
+  it("survives rounds recorded before the log tracked tokens", () => {
+    // Straight off disk, where nothing validates the per-round shape
+    const ancient = { ...round(), tokens: undefined } as unknown as StoredRound;
+    expect(tokenLedger([ancient])).toEqual([]);
+  });
+
+  it("takes the first real name when an older record has none", () => {
+    const rounds = [
+      round({ tokens: [{ ...earn(ME, "", "guess-song") }] }),
+      round({ round: 2, tokens: [earn(ME, "Me", "guess-year")] }),
+    ];
+    expect(tokenLedger(rounds)[0].name).toBe("Me");
   });
 });

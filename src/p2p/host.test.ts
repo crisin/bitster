@@ -1310,7 +1310,183 @@ describe("HostSession — round log and recap", () => {
     }
     session.destroy();
   });
+
+  it("books the token a skip costs against the player who skipped", async () => {
+    const session = makeSession();
+    await startDemoGameWith(session, [{ id: "peer-2", name: "Bob" }]);
+    await session.handleAction({ type: "skip-song" }, "host-1");
+
+    await finishViaRematch(session);
+    const round = lastRecap()!.rounds[0];
+    expect(round.tokens).toEqual([
+      { playerId: "host-1", playerName: "Alice", delta: -1, reason: "skip" },
+    ]);
+    session.destroy();
+  });
+
+  it("books a buzz against the buzzer and the pass against everyone else", async () => {
+    const session = makeSession();
+    await startDemoGameWith(session, [
+      { id: "peer-2", name: "Bob" },
+      { id: "peer-3", name: "Cleo" },
+    ]);
+    await giveEveryoneACard(session, ["host-1", "peer-2", "peer-3"]);
+    await session.handleAction(
+      { type: "place-song", payload: { position: 0 } },
+      "host-1",
+    );
+    await session.handleAction({ type: "bitster-pass" }, "peer-3");
+    await session.handleAction({ type: "bitster-buzz" }, "peer-2");
+    await session.handleAction(
+      { type: "buzz-place", payload: { position: 0 } },
+      "peer-2",
+    );
+
+    await finishViaRematch(session);
+    const round = lastRecap()!.rounds[lastRecap()!.rounds.length - 1]!;
+    expect(round.tokens).toEqual([
+      { playerId: "peer-2", playerName: "Bob", delta: -1, reason: "buzz" },
+    ]);
+    expect(round.passes).toEqual([{ playerId: "peer-3", playerName: "Cleo" }]);
+    session.destroy();
+  });
+
+  it("books the guess reward at the reveal, split by what was guessed", async () => {
+    // A fixed track, so the guess can actually be right — the demo playlist
+    // picks at random and would make the reward a coin flip
+    registerFixedTrackProvider({
+      id: "t1",
+      uri: "spotify:track:t1",
+      name: "Blue Monday",
+      artist: "New Order",
+      year: 1983,
+    });
+
+    const session = makeSession();
+    await startPlaylistGame(session);
+    const before = lastBroadcastState().players.find((p) => p.id === "host-1")!
+      .tokens;
+
+    await session.handleAction(
+      {
+        type: "guess-song",
+        payload: { title: "Blue Monday", artist: "New Order", year: 1983 },
+      },
+      "host-1",
+    );
+    // Nothing is awarded before the reveal — the token count would leak it
+    expect(
+      lastBroadcastState().players.find((p) => p.id === "host-1")?.tokens,
+    ).toBe(before);
+
+    await session.handleAction(
+      { type: "place-song", payload: { position: 0 } },
+      "host-1",
+    );
+    await finishViaRematch(session);
+
+    const round = lastRecap()!.rounds[0];
+    expect(round.tokens.map((t) => t.reason)).toEqual([
+      "guess-song",
+      "guess-year",
+    ]);
+    expect(round.tokens.every((t) => t.delta === 1 && t.playerId === "host-1")).toBe(
+      true,
+    );
+    expect(round.guess?.tokens).toBe(2);
+    session.destroy();
+  });
+
+  it("records the slots that were rolled away before the round started", async () => {
+    // The first two slots hold nothing playable, the third does
+    let call = 0;
+    registerTrackProvider(() => {
+      call++;
+      // null = the provider filtered it out for this account
+      if (call <= 2) return null;
+      return {
+        id: `track-${call}`,
+        uri: `spotify:track:${call}`,
+        name: "Playable",
+        artist: "Someone",
+        year: 1999,
+      };
+    });
+
+    const session = makeSession();
+    await startPlaylistGame(session);
+    await session.handleAction(
+      { type: "place-song", payload: { position: 0 } },
+      "host-1",
+    );
+
+    await finishViaRematch(session);
+    const round = lastRecap()!.rounds[0];
+    expect(round.rerolls).toHaveLength(2);
+    expect(round.rerolls.every((r) => r.reason === "unplayable")).toBe(true);
+    // Each discarded slot is named, so a dead track stays findable
+    expect(new Set(round.rerolls.map((r) => r.index)).size).toBe(2);
+    session.destroy();
+  });
 });
+
+/**
+ * A provider that answers every track request from one function. Enough for
+ * the host: it only ever asks for a track at an index and for playlist meta.
+ */
+function registerTrackProvider(next: () => Track | null): void {
+  registerProvider({
+    id: "spotify",
+    name: "Spotify",
+    color: "#1DB954",
+    icon: "♫",
+    auth: {
+      login: async () => {},
+      logout: async () => {},
+      isAuthenticated: () => true,
+      refreshToken: async () => {},
+    },
+    player: {
+      play: async () => {},
+      pause: async () => {},
+      getDevices: async () => [],
+      setDevice: async () => {},
+    },
+    library: {
+      getTrackAtIndex: async () => next(),
+      parsePlaylistUrl: () => "playlist-1",
+      buildPlaylistUrl: (id: string) =>
+        `https://open.spotify.com/playlist/${id}`,
+      getPlaylistMeta: async () => ({
+        id: "playlist-1",
+        name: "Test",
+        trackCount: 50,
+        imageUrl: null,
+      }),
+    },
+  });
+  useStreamingStore.getState().setAuthStatus("authenticated");
+  useStreamingStore.getState().setActiveProvider("spotify");
+}
+
+/** Every round plays the same known track — makes a guess assertable */
+function registerFixedTrackProvider(track: Track): void {
+  registerTrackProvider(() => track);
+}
+
+async function startPlaylistGame(session: HostSession): Promise<void> {
+  await session.handleAction(
+    { type: "join", payload: { name: "Bob" } },
+    "peer-2",
+  );
+  await session.handleAction(
+    {
+      type: "start-game",
+      payload: { playlistUrl: "https://open.spotify.com/playlist/playlist-1" },
+    },
+    "host-1",
+  );
+}
 
 /** Force the game to end so the recap (and with it the log) is emitted */
 async function finishViaRematch(session: HostSession): Promise<void> {

@@ -192,6 +192,42 @@ export interface RoundBuzz {
   penalty: boolean;
 }
 
+/**
+ * Why a token moved. Tokens are the bitster currency: spent to buzz or skip,
+ * earned by guessing — and `delta` says which, so a reader never has to know
+ * the sign convention of each reason.
+ */
+export type TokenReason = "guess-song" | "guess-year" | "skip" | "buzz";
+
+export interface RoundToken {
+  playerId: string;
+  /** Snapshot — the player may have left by the time the log is read */
+  playerName: string;
+  /** +1 earned, −1 spent */
+  delta: number;
+  reason: TokenReason;
+}
+
+/**
+ * A playlist slot that never became a round. Recorded because a song silently
+ * vanishing is otherwise indistinguishable from a small playlist — and because
+ * these counts are what decides whether the re-roll work in PLAN.md (P5) is
+ * worth doing.
+ */
+export type RerollReason = "unplayable" | "unusable" | "fetch-retry";
+
+export interface RoundReroll {
+  /** The playlist slot, so a specific dead track stays findable */
+  index: number;
+  reason: RerollReason;
+}
+
+/** Someone who explicitly waved the placement through instead of buzzing */
+export interface RoundPass {
+  playerId: string;
+  playerName: string;
+}
+
 export interface RoundRecord {
   /** 1-based, counts every round including skips and aborts */
   round: number;
@@ -208,7 +244,20 @@ export interface RoundRecord {
   placeMs: number | null;
   guess: RoundGuess | null;
   buzz: RoundBuzz | null;
+  /** Every token that moved this round, in the order it moved */
+  tokens: RoundToken[];
+  /** Slots thrown away while hunting for THIS round's song */
+  rerolls: RoundReroll[];
+  /** Who passed in the bitster window (empty unless the window ran) */
+  passes: RoundPass[];
 }
+
+/**
+ * Cap for the per-round event arrays. Each one is naturally bounded (pick
+ * attempts, players in a room), so this is purely the wire guard: a hostile
+ * host must not be able to grow a recap without limit.
+ */
+export const MAX_ROUND_ENTRIES = 16;
 
 export type RecapReason = "win" | "playlist-exhausted" | "abandoned";
 
