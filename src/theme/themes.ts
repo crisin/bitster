@@ -20,6 +20,8 @@ export interface ThemeEffects {
   pulse: boolean;
   /** Rotating psychedelic color swirl (web only) */
   swirl: boolean;
+  /** The whole UI liquefies via SVG displacement (web only, not Safari) */
+  melt: boolean;
   /** Emojis floating up the screen, null = none */
   floaties: string[] | null;
 }
@@ -46,6 +48,7 @@ const NO_EFFECTS: ThemeEffects = {
   rainbow: false,
   pulse: false,
   swirl: false,
+  melt: false,
   floaties: null,
 };
 
@@ -287,6 +290,7 @@ export const THEMES: Theme[] = [
       rainbow: true,
       swirl: true,
       pulse: true,
+      melt: true,
       floaties: ["🌀", "🍄", "👽", "🫠", "💾"],
     },
     statusBar: "light",

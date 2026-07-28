@@ -16,7 +16,7 @@ Stand: 20.07.2026 (nach Relay-Migration, Auth-Härtung, Playback-Robustheit und 
 - [ ] **Error Boundary** um die App (Crash → freundlicher Screen statt weißer Seite).
 - [ ] **Rejoin nach App-Neustart** — Reconnect überlebt Socket-Drops und Screen-Lock (AppState-Listener), aber kein komplettes Neustarten der App (Session-Persistenz für Raumcode + Peer-ID).
 - [ ] **No-Buzz-Auto-Reveal** — der Buzz-Lock-in hat einen Timer (host.ts `buzzTimer`), aber das bitster-Window OHNE Buzz läuft unbegrenzt, bis alle passen oder der aktive Spieler revealt; optionaler Auto-Reveal nach X Sekunden.
-- [ ] **🫠 Melt Mode** — Crazy-Effekt-Modus: die ganze Oberfläche verflüssigt sich. Web: animierte SVG-Displacement-Filter (feTurbulence + feDisplacementMap als CSS-Filter auf dem App-Root — schmilzt die ECHTE UI, kein WebGL nötig), Steigerung optional per WebGL-Shader; nativ via react-native-skia Runtime-Shader. Als Effekt-Flag im Theme-System (`ThemeEffects.melt`).
+- [ ] **🫠 Melt Mode v2/v3** — v1 (Live-Melt via SVG-Displacement auf dem App-Root, `ThemeEffects.melt`, Intensitäts-Slider, Tadi + Custom-Editor) ist drin — Web ohne Safari, respektiert prefers-reduced-motion. Offen: v2 WebGL-Frozen-Frame-Melt als Übergang (Reveal/„TOO SLOW!"/GAME OVER — läuft dann auch auf iOS-Web, Doom-Style-Drip), v3 nativ (Android 13+ RenderEffect-RuntimeShader live, iOS via react-native-skia Snapshot + SkSL).
 
 ## Nice to Have
 

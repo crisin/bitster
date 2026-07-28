@@ -8,6 +8,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { resolveEffectTempo, type EffectTempo } from "./effectTempo";
+import { MeltEffect } from "./MeltEffect";
 import { useThemeStore } from "./store";
 import { useTheme } from "./themedStyles";
 
@@ -327,6 +328,7 @@ function expandFloaties(floaties: string[]): string[] {
 export function ThemeOverlay() {
   const theme = useTheme();
   const tempo = useEffectTempo();
+  const meltIntensity = useThemeStore((s) => s.meltIntensity);
   const { width, height } = useWindowDimensions();
   const fx = theme.effects;
 
@@ -334,6 +336,7 @@ export function ThemeOverlay() {
     fx.pulse ||
     fx.rainbow ||
     fx.swirl ||
+    fx.melt ||
     fx.flicker ||
     fx.scanlines ||
     fx.vignette ||
@@ -342,6 +345,7 @@ export function ThemeOverlay() {
 
   return (
     <Animated.View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+      {fx.melt && <MeltEffect intensity={meltIntensity} tempo={tempo} />}
       {fx.rainbow && <Rainbow factor={tempo.factor} />}
       {fx.swirl && (
         <Swirl width={width} height={height} factor={tempo.factor} />

@@ -37,6 +37,8 @@ interface ThemeStore {
   effectBpm: number;
   /** Slider position for the "custom" effect-speed mode */
   effectFactor: number;
+  /** How hard the melt effect distorts the UI (0 = off … 1 = full goo) */
+  meltIntensity: number;
   custom: CustomThemeConfig;
   setTheme: (id: string) => void;
   setFontScale: (id: string) => void;
@@ -44,6 +46,7 @@ interface ThemeStore {
   setEffectSpeed: (id: string) => void;
   setEffectBpm: (bpm: number) => void;
   setEffectFactor: (factor: number) => void;
+  setMeltIntensity: (intensity: number) => void;
   updateCustom: (patch: Partial<CustomThemeConfig>) => void;
   updateCustomEffects: (
     patch: Partial<CustomThemeConfig["effects"]>,
@@ -58,6 +61,7 @@ function persist(): void {
     effectSpeedId,
     effectBpm,
     effectFactor,
+    meltIntensity,
     custom,
   } = useThemeStore.getState();
   AsyncStorage.setItem(
@@ -69,6 +73,7 @@ function persist(): void {
       effectSpeedId,
       effectBpm,
       effectFactor,
+      meltIntensity,
       custom,
     }),
   ).catch(() => {
@@ -98,6 +103,7 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
   effectSpeedId: DEFAULT_EFFECT_SPEED_ID,
   effectBpm: DEFAULT_EFFECT_BPM,
   effectFactor: 1,
+  meltIntensity: 0.5,
   custom: DEFAULT_CUSTOM_CONFIG,
 
   setTheme: (id) => {
@@ -147,6 +153,12 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
     // (AsyncStorage is synchronous localStorage on web)
     persistDebounced();
   },
+  setMeltIntensity: (intensity) => {
+    const clamped = Math.min(1, Math.max(0, intensity));
+    if (get().meltIntensity === clamped) return;
+    set({ meltIntensity: clamped });
+    persistDebounced();
+  },
   updateCustom: (patch) => {
     set({ custom: { ...get().custom, ...patch } });
     persist();
@@ -172,6 +184,7 @@ export async function hydrateTheme(): Promise<void> {
           effectSpeedId: string;
           effectBpm: number;
           effectFactor: number;
+          meltIntensity: number;
           custom: Partial<CustomThemeConfig>;
         }>;
         useThemeStore.setState({
@@ -198,6 +211,10 @@ export async function hydrateTheme(): Promise<void> {
             typeof s.effectFactor === "number"
               ? clampFactor(s.effectFactor)
               : 1,
+          meltIntensity:
+            typeof s.meltIntensity === "number"
+              ? Math.min(1, Math.max(0, s.meltIntensity))
+              : 0.5,
           custom: {
             ...DEFAULT_CUSTOM_CONFIG,
             ...s.custom,

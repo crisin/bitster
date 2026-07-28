@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Platform } from "react-native";
 import { Chip } from "@/components/ui/Chip";
 import { Divider } from "@/components/ui/Divider";
 import { Pressable } from "@/components/ui/Pressable";
@@ -30,9 +30,11 @@ export function EffectSettings() {
   const speedId = useThemeStore((s) => s.effectSpeedId);
   const bpm = useThemeStore((s) => s.effectBpm);
   const factor = useThemeStore((s) => s.effectFactor);
+  const meltIntensity = useThemeStore((s) => s.meltIntensity);
   const setEffectSpeed = useThemeStore((s) => s.setEffectSpeed);
   const setEffectBpm = useThemeStore((s) => s.setEffectBpm);
   const setEffectFactor = useThemeStore((s) => s.setEffectFactor);
+  const setMeltIntensity = useThemeStore((s) => s.setMeltIntensity);
 
   const taps = useRef<number[]>([]);
   const [tapCount, setTapCount] = useState(0);
@@ -61,7 +63,8 @@ export function EffectSettings() {
   );
 
   const fx = theme.effects;
-  const animated = fx.rainbow || fx.swirl || fx.pulse || fx.floaties !== null;
+  const animated =
+    fx.rainbow || fx.swirl || fx.pulse || fx.melt || fx.floaties !== null;
   if (!animated) return null;
 
   const bpmMode = speedId === BPM_SPEED_ID;
@@ -106,6 +109,34 @@ export function EffectSettings() {
           {sliderValue.toFixed(2).replace(/0$/, "")}×
         </Text>
       </View>
+
+      {/* Melt intensity — web-only effect, Safari sits it out */}
+      {theme.effects.melt && Platform.OS === "web" && (
+        <>
+          <Text style={styles.sectionTitle}>🫠 Melt</Text>
+          <View style={styles.sliderRow}>
+            <Text style={styles.sliderEdge}>🧊</Text>
+            <View style={styles.sliderTrack}>
+              <Slider
+                value={meltIntensity}
+                min={0}
+                max={1}
+                step={0.05}
+                onValueChange={setMeltIntensity}
+                label="Melt intensity"
+              />
+            </View>
+            <Text style={styles.sliderEdge}>🫠</Text>
+            <Text style={styles.sliderValue}>
+              {Math.round(meltIntensity * 100)}%
+            </Text>
+          </View>
+          <Text style={styles.hint}>
+            Liquefies the whole screen. Not on Safari, not with
+            reduced-motion enabled.
+          </Text>
+        </>
+      )}
 
       {bpmMode && (
         <View style={styles.bpmBox}>

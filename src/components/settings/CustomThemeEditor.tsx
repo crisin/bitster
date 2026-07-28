@@ -22,6 +22,7 @@ const EFFECT_OPTIONS = [
   { key: "pulse", label: "Pulse" },
   { key: "rainbow", label: "Rainbow" },
   { key: "swirl", label: "Swirl" },
+  { key: "melt", label: "Melt 🫠" },
   { key: "flicker", label: "Flicker" },
   { key: "scanlines", label: "Scanlines" },
   { key: "vignette", label: "Vignette" },
