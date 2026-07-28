@@ -94,7 +94,8 @@ src/
   hooks/                      # useHaptics, useConnectionStatus, useCurrentPlayer
   utils/                      # constants.ts (Design-Tokens), roomCode.ts, logger.ts
 
-assets/fonts/                 # Bundled Fonts (OFL) — App-Icon/Favicon fehlen noch (TODO)
+assets/                       # fonts/ (OFL) + icon.png/favicon.png (generierte Platzhalter,
+                              # zum Ersetzen einfach PNGs überschreiben)
 ```
 
 ### Streaming Provider Interface
