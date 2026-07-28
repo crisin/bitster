@@ -28,6 +28,7 @@ export function PlayingView({ selectedGap, onGapSelect }: PlayingViewProps) {
   const currentPlayerId = useGameStore((s) => s.currentPlayerId);
   const timelines = useGameStore((s) => s.timelines);
   const placeDeadline = useGameStore((s) => s.placeDeadline);
+  const rules = useGameStore((s) => s.settings.rules);
   const playbackError = useStreamingStore((s) => s.playbackError);
   const { isMyTurn, currentPlayer, actsForCurrent, actingId } =
     useCurrentPlayer();
@@ -106,13 +107,22 @@ export function PlayingView({ selectedGap, onGapSelect }: PlayingViewProps) {
           Guess locked in! Now place the song in the timeline.
         </Text>
       )}
-      {actingTokens > 0 && (
+      {/* The reroll can be off entirely, or free — both are real modes */}
+      {rules.skip.enabled && actingTokens >= rules.skip.cost && (
         <Button
-          title={`Skip Song (costs 1★)`}
+          title={
+            rules.skip.cost === 0
+              ? "🎲 Reroll (free)"
+              : `🎲 Reroll (costs ${rules.skip.cost}★)`
+          }
           onPress={handleSkipSong}
           variant="ghost"
           cooldownMs={2000}
-          label="Skip this song, costs one star token"
+          label={
+            rules.skip.cost === 0
+              ? "Reroll this song, free in this mode"
+              : `Reroll this song, costs ${rules.skip.cost} star tokens`
+          }
         />
       )}
     </View>

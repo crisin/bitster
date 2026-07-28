@@ -67,9 +67,42 @@ export interface PlacementRules {
   timerSeconds: number | null;
 }
 
+/**
+ * What a guess has to get right to be worth a token. This is the difficulty
+ * dial: "either" is a party, "both" is what a music nerd expects.
+ */
+export type GuessRequirement = "either" | "title" | "artist" | "both";
+
+export interface GuessRules {
+  require: GuessRequirement;
+  /** An exact-enough year is worth one more token */
+  yearBonus: boolean;
+  /**
+   * How far off the year may be and still count. 0 = exact. Anything above 0
+   * also quietly absorbs remaster years, which are wrong in the data itself
+   * (see P4 in PLAN.md) rather than wrong in the player's head.
+   */
+  yearTolerance: number;
+}
+
+export interface SkipRules {
+  /** The reroll: throw this song away and get another one */
+  enabled: boolean;
+  /** Tokens it costs — 0 makes rerolling free */
+  cost: number;
+}
+
+export interface TokenRules {
+  /** Tokens everyone starts the game with */
+  start: number;
+}
+
 export interface GameRules {
   buzz: BuzzRules;
   placement: PlacementRules;
+  skip: SkipRules;
+  guess: GuessRules;
+  tokens: TokenRules;
 }
 
 export const BUZZ_TIMER_OPTIONS = [15, 30, 45, 60] as const;
@@ -77,6 +110,15 @@ export const DEFAULT_BUZZ_TIMER_SECONDS = 30;
 
 /** Blitz-mode choices — null renders as "Off" */
 export const PLACEMENT_TIMER_OPTIONS = [null, 10, 20, 30] as const;
+
+export const WIN_SCORE_OPTIONS = [5, 8, 10, 15, 20] as const;
+export const START_TOKEN_OPTIONS = [0, 1, 2, 3, 4] as const;
+export const SKIP_COST_OPTIONS = [0, 1, 2] as const;
+export const YEAR_TOLERANCE_OPTIONS = [0, 1, 2, 3, 5] as const;
+/** Nobody needs a 12-token bankroll; the cap is what the wire enforces */
+export const MAX_START_TOKENS = 10;
+export const MAX_SKIP_COST = 5;
+export const MAX_YEAR_TOLERANCE = 25;
 
 export const DEFAULT_RULES: GameRules = {
   buzz: {
@@ -86,6 +128,18 @@ export const DEFAULT_RULES: GameRules = {
   },
   placement: {
     timerSeconds: null,
+  },
+  skip: {
+    enabled: true,
+    cost: 1,
+  },
+  guess: {
+    require: "both",
+    yearBonus: true,
+    yearTolerance: 0,
+  },
+  tokens: {
+    start: 2,
   },
 };
 

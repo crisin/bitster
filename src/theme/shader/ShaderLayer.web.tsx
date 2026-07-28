@@ -1,7 +1,9 @@
+import type { GamePulse } from "@/hooks/useGamePulse";
 import React, { useEffect, useRef, useState } from "react";
 import { log } from "@/utils/logger";
 import type { ShaderPresetId } from "./presets";
 import { FRAGMENT_SHADERS, VERTEX_SHADER } from "./presets";
+import { reactToGame } from "./reaction";
 
 /**
  * A full-screen WebGL canvas that runs one fragment shader.
@@ -25,6 +27,8 @@ export interface ShaderLayerProps {
   factor: number;
   /** Tapped tempo, or null when no beat is set */
   bpm: number | null;
+  /** What the game is doing right now — see useGamePulse */
+  pulse: GamePulse;
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -113,6 +117,7 @@ export function ShaderLayer({
   renderScale,
   factor,
   bpm,
+  pulse,
 }: ShaderLayerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const glRef = useRef<WebGLRenderingContext | null>(null);
@@ -122,8 +127,8 @@ export function ShaderLayer({
   const [generation, setGeneration] = useState(0);
   // Values the render loop reads every frame — kept in a ref so a settings
   // change never tears down and recompiles the program
-  const live = useRef({ accent, intensity, factor, bpm, renderScale });
-  live.current = { accent, intensity, factor, bpm, renderScale };
+  const live = useRef({ accent, intensity, factor, bpm, renderScale, pulse });
+  live.current = { accent, intensity, factor, bpm, renderScale, pulse };
 
   // The context outlives every preset switch. Creating it here — once per
   // mounted canvas — is what keeps `loseContext()` in the teardown from
@@ -231,20 +236,34 @@ export function ShaderLayer({
       if (lostRef.current) return;
       const dt = lastFrame === 0 ? 0 : Math.min(100, now - lastFrame);
       lastFrame = now;
-      const { accent: hex, intensity: amount, factor: speed, bpm: tempo } =
-        live.current;
-      shaderTime += (dt / 1000) * speed;
+      const {
+        accent: hex,
+        intensity: amount,
+        factor: speed,
+        bpm: tempo,
+        pulse,
+      } = live.current;
+
+      // The whole game reaction is one pure function (reaction.ts) — this loop
+      // only feeds it the clock and hands the result to the GPU
+      const reacted = reactToGame(pulse, {
+        intensity: amount,
+        beat: beatAt(elapsed, tempo, speed),
+        accent: hexToRgb(hex),
+        now: Date.now(),
+        still,
+      });
+
+      shaderTime += (dt / 1000) * speed * reacted.timeScale;
       elapsed += dt;
 
       resize();
       gl.uniform2f(uRes, width, height);
       gl.uniform1f(uTime, shaderTime);
-      gl.uniform1f(uBeat, still ? 0 : beatAt(elapsed, tempo, speed));
-      gl.uniform1f(uIntensity, amount);
-      const [r, g, b] = hexToRgb(hex);
-      gl.uniform3f(uAccent, r, g, b);
-      // Stage two fills this in; zero means "no game context"
-      gl.uniform3f(uGame, 0, 0, 0);
+      gl.uniform1f(uBeat, reacted.beat);
+      gl.uniform1f(uIntensity, reacted.intensity);
+      gl.uniform3f(uAccent, ...reacted.accent);
+      gl.uniform3f(uGame, ...reacted.game);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
       if (!still) frame = requestAnimationFrame(draw);

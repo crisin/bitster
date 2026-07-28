@@ -2,6 +2,8 @@ import React, { useState, useRef } from "react";
 import { View, Text, TextInput, StyleSheet } from "react-native";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { useGameStore } from "@/game/store";
+import type { GuessRules } from "@/game/types";
 import { FONT, SPACE, LABEL_STYLE } from "@/utils/constants";
 import { createThemedStyles } from "@/theme/themedStyles";
 
@@ -17,8 +19,25 @@ function parseYearGuess(raw: string): number | undefined {
   return Number.parseInt(trimmed, 10);
 }
 
+/** Spells out what THIS game pays for — the difficulty is a per-game rule */
+function describeGuess(rules: GuessRules): string {
+  const song = {
+    either: "Title or artist right",
+    title: "Title right",
+    artist: "Artist right",
+    both: "Title + artist right",
+  }[rules.require];
+  if (!rules.yearBonus) return `${song} = +1★`;
+  const year =
+    rules.yearTolerance > 0
+      ? `year within ${rules.yearTolerance}`
+      : "exact year";
+  return `${song} = +1★ · ${year} = +1★ extra`;
+}
+
 export function GuessForm({ onSubmit, disabled }: GuessFormProps) {
   const styles = useStyles();
+  const rules = useGameStore((s) => s.settings.rules.guess);
   const [title, setTitle] = useState("");
   const [artist, setArtist] = useState("");
   const [year, setYear] = useState("");
@@ -58,9 +77,10 @@ export function GuessForm({ onSubmit, disabled }: GuessFormProps) {
         returnKeyType="next"
         onSubmitEditing={() => yearRef.current?.focus()}
       />
+      {rules.yearBonus && (
       <Input
         ref={yearRef}
-        placeholder="Exact year (+1★)"
+        placeholder={rules.yearTolerance > 0 ? `Year ±${rules.yearTolerance} (+1★)` : "Exact year (+1★)"}
         label="Guess the exact release year for an extra token"
         value={year}
         onChangeText={setYear}
@@ -69,9 +89,8 @@ export function GuessForm({ onSubmit, disabled }: GuessFormProps) {
         returnKeyType="go"
         onSubmitEditing={handleSubmit}
       />
-      <Text style={styles.hint}>
-        Title + artist right = +1★ · exact year = +1★ extra
-      </Text>
+      )}
+      <Text style={styles.hint}>{describeGuess(rules)}</Text>
       <Button
         title="Guess"
         onPress={handleSubmit}

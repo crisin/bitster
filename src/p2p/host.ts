@@ -720,8 +720,12 @@ export class HostSession {
           this.pendingResult = result;
 
           // Their very first card cannot be placed wrong, so the challenge
-          // window would be a dead step that only costs somebody a token.
-          if (!logic.canBeChallenged(this.room)) {
+          // window would be a dead step that only costs somebody a token — and
+          // with bitster switched off there is no window to open at all.
+          if (
+            !this.room.settings.rules.buzz.enabled ||
+            !logic.canBeChallenged(this.room)
+          ) {
             this.doRevealSong(null);
             break;
           }
@@ -780,10 +784,18 @@ export class HostSession {
           // fresh song and double-spend tokens
           if (this.room.phase !== "playing" || this.advancing) return;
           if (!this.room.currentSong) return;
+          if (!this.room.settings.rules.skip.enabled) {
+            this.sendError("Rerolls are off in this mode", fromPeerId);
+            return;
+          }
           const currentForSkip = logic.getCurrentPlayer(this.room);
           if (fromPeerId !== currentForSkip?.id) return;
+          const skipCost = this.room.settings.rules.skip.cost;
           this.room = logic.skipSong(this.room, fromPeerId);
-          this.noteToken(fromPeerId, -1, "skip");
+          // A free reroll moves no token, so it must not fake one in the log
+          for (let i = 0; i < skipCost; i++) {
+            this.noteToken(fromPeerId, -1, "skip");
+          }
           // Log before the round's state is wiped. A skip discards the guess
           // reward, so it goes into the log with 0 tokens.
           this.recordRound({
@@ -1414,17 +1426,15 @@ export class HostSession {
    */
   private applyGuessReward(): number {
     if (!this.pendingGuessResult || !this.pendingGuessBy) return 0;
-    const reward = logic.guessReward(this.pendingGuessResult);
+    const guessRules = this.room.settings.rules.guess;
+    const reward = logic.guessReward(this.pendingGuessResult, guessRules);
     this.room = logic.awardTokens(this.room, this.pendingGuessBy, reward);
     // Logged as two separate earnings because that is how they were earned —
     // "+2" alone would hide whether the year or the song was the hard part
-    if (
-      this.pendingGuessResult.titleCorrect &&
-      this.pendingGuessResult.artistCorrect
-    ) {
+    if (logic.guessSongCorrect(this.pendingGuessResult, guessRules)) {
       this.noteToken(this.pendingGuessBy, 1, "guess-song");
     }
-    if (this.pendingGuessResult.yearCorrect === true) {
+    if (guessRules.yearBonus && this.pendingGuessResult.yearCorrect === true) {
       this.noteToken(this.pendingGuessBy, 1, "guess-year");
     }
     return reward;

@@ -1,5 +1,6 @@
 import type { GameStateMeta } from "@/game/types";
 import {
+  DEFAULT_RULES,
   MAX_GUESS_TEXT,
   MAX_ROUND_ENTRIES,
   MAX_ROUNDS_PER_GAME,
@@ -25,6 +26,7 @@ import {
   handleBuzz,
   hasLiveChallengers,
   setPlayerConnected,
+  skipSong,
   pickRandomSong,
   placeSong,
   recordPass,
@@ -557,6 +559,9 @@ describe("resolveBuzz — counter-placement in the active player's timeline", ()
         rules: {
           buzz: { enabled: true, penalty: "lose-point", timerSeconds: 30 },
           placement: { timerSeconds: null },
+          skip: DEFAULT_RULES.skip,
+          guess: DEFAULT_RULES.guess,
+          tokens: DEFAULT_RULES.tokens,
         },
       },
       players: room.players.map((p) =>
@@ -578,6 +583,9 @@ describe("resolveBuzz — counter-placement in the active player's timeline", ()
         rules: {
           buzz: { enabled: true, penalty: "lose-point", timerSeconds: 30 },
           placement: { timerSeconds: null },
+          skip: DEFAULT_RULES.skip,
+          guess: DEFAULT_RULES.guess,
+          tokens: DEFAULT_RULES.tokens,
         },
       },
     };
@@ -675,10 +683,10 @@ describe("evaluateGuess — fuzzy matching", () => {
     expect(result.titleCorrect).toBe(true);
     expect(result.artistCorrect).toBe(true);
     expect(result.yearCorrect).toBeNull(); // no year guessed
-    expect(guessReward(result)).toBe(1);
+    expect(guessReward(result, DEFAULT_RULES.guess)).toBe(1);
     // Evaluation is pure — tokens move only via awardTokens (at reveal)
     expect(room.players[0].tokens).toBe(2);
-    const rewarded = awardTokens(room, "host-1", guessReward(result));
+    const rewarded = awardTokens(room, "host-1", guessReward(result, DEFAULT_RULES.guess));
     expect(rewarded.players[0].tokens).toBe(3);
     expect(rewarded.players[0].stats.guessTokens).toBe(1);
   });
@@ -688,21 +696,21 @@ describe("evaluateGuess — fuzzy matching", () => {
     const result = evaluateGuess(room, "Blinding Lights", "Drake");
     expect(result.titleCorrect).toBe(true);
     expect(result.artistCorrect).toBe(false);
-    expect(guessReward(result)).toBe(0);
+    expect(guessReward(result, DEFAULT_RULES.guess)).toBe(0);
   });
 
   it("pays an extra token for the exact year", () => {
     const room = makeRoomWithSong("Blinding Lights", "The Weeknd");
     const result = evaluateGuess(room, "Blinding Lights", "The Weeknd", 2000);
     expect(result.yearCorrect).toBe(true);
-    expect(guessReward(result)).toBe(2);
+    expect(guessReward(result, DEFAULT_RULES.guess)).toBe(2);
     // Wrong year: no extra token, everything else unaffected
     const wrongYear = evaluateGuess(room, "Blinding Lights", "The Weeknd", 1999);
     expect(wrongYear.yearCorrect).toBe(false);
-    expect(guessReward(wrongYear)).toBe(1);
+    expect(guessReward(wrongYear, DEFAULT_RULES.guess)).toBe(1);
     // Year-only sniping works too
     const yearOnly = evaluateGuess(room, "", "", 2000);
-    expect(guessReward(yearOnly)).toBe(1);
+    expect(guessReward(yearOnly, DEFAULT_RULES.guess)).toBe(1);
   });
 
   it("matches single artist from multi-artist credit", () => {
@@ -1096,5 +1104,107 @@ describe("connection state", () => {
     };
     const state = buildGameState(withRounds, TEST_META);
     expect("rounds" in (state as object)).toBe(false);
+  });
+});
+
+describe("difficulty rules", () => {
+  function roomWithRules(over: Partial<Room["settings"]["rules"]>): Room {
+    let room = makeTestRoom();
+    room = {
+      ...room,
+      settings: {
+        ...room.settings,
+        rules: { ...room.settings.rules, ...over },
+      },
+    };
+    room = startGame(room, []);
+    return {
+      ...room,
+      currentSong: {
+        id: "test",
+        uri: "test:1",
+        name: "Blinding Lights",
+        artist: "The Weeknd",
+        year: 2000,
+      },
+    };
+  }
+
+  it("pays for half a guess on 'either', but not on 'both'", () => {
+    const easy = roomWithRules({
+      guess: { require: "either", yearBonus: true, yearTolerance: 0 },
+    });
+    const halfRight = evaluateGuess(easy, "Blinding Lights", "Drake");
+    expect(guessReward(halfRight, easy.settings.rules.guess)).toBe(1);
+    expect(guessReward(halfRight, DEFAULT_RULES.guess)).toBe(0);
+  });
+
+  it("honours title-only and artist-only difficulties", () => {
+    const titleOnly = roomWithRules({
+      guess: { require: "title", yearBonus: false, yearTolerance: 0 },
+    });
+    const result = evaluateGuess(titleOnly, "Blinding Lights", "Nobody");
+    expect(guessReward(result, titleOnly.settings.rules.guess)).toBe(1);
+
+    const artistOnly = roomWithRules({
+      guess: { require: "artist", yearBonus: false, yearTolerance: 0 },
+    });
+    const other = evaluateGuess(artistOnly, "Wrong", "The Weeknd");
+    expect(guessReward(other, artistOnly.settings.rules.guess)).toBe(1);
+  });
+
+  it("lets the year be off by the configured tolerance", () => {
+    const lenient = roomWithRules({
+      guess: { require: "both", yearBonus: true, yearTolerance: 2 },
+    });
+    expect(evaluateGuess(lenient, "", "", 2002).yearCorrect).toBe(true);
+    expect(evaluateGuess(lenient, "", "", 1998).yearCorrect).toBe(true);
+    expect(evaluateGuess(lenient, "", "", 2003).yearCorrect).toBe(false);
+  });
+
+  it("pays nothing for the year when the bonus is switched off", () => {
+    const noBonus = roomWithRules({
+      guess: { require: "both", yearBonus: false, yearTolerance: 0 },
+    });
+    const result = evaluateGuess(noBonus, "Blinding Lights", "The Weeknd", 2000);
+    // The verdict still says "right" — only the payout is gone
+    expect(result.yearCorrect).toBe(true);
+    expect(guessReward(result, noBonus.settings.rules.guess)).toBe(1);
+  });
+
+  it("charges the configured reroll cost, and nothing when it is free", () => {
+    const free = roomWithRules({ skip: { enabled: true, cost: 0 } });
+    expect(skipSong(free, "host-1").players[0].tokens).toBe(
+      free.players[0].tokens,
+    );
+
+    const pricey = roomWithRules({ skip: { enabled: true, cost: 2 } });
+    expect(skipSong(pricey, "host-1").players[0].tokens).toBe(
+      pricey.players[0].tokens - 2,
+    );
+  });
+
+  it("refuses a reroll nobody can pay for", () => {
+    const pricey = roomWithRules({ skip: { enabled: true, cost: 2 } });
+    const broke: Room = {
+      ...pricey,
+      players: pricey.players.map((p) => ({ ...p, tokens: 1 })),
+    };
+    expect(() => skipSong(broke, "host-1")).toThrow("No tokens");
+  });
+
+  it("hands out the configured starting tokens at kickoff", () => {
+    let room = makeTestRoom();
+    room = {
+      ...room,
+      settings: {
+        ...room.settings,
+        rules: { ...room.settings.rules, tokens: { start: 4 } },
+      },
+    };
+    // Set at start, not at join — the host may still be picking a mode
+    expect(room.players.every((p) => p.tokens === 2)).toBe(true);
+    const started = startGame(room, []);
+    expect(started.players.every((p) => p.tokens === 4)).toBe(true);
   });
 });

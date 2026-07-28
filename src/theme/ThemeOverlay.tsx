@@ -10,6 +10,7 @@ import {
 import { resolveEffectTempo, type EffectTempo } from "./effectTempo";
 import { GlitchEffect } from "./GlitchEffect";
 import { PointerEffects } from "./PointerEffects";
+import { useGamePulse } from "@/hooks/useGamePulse";
 import { ShaderLayer } from "./shader/ShaderLayer";
 import { getShaderScale } from "./shader/quality";
 import { MeltEffect } from "./MeltEffect";
@@ -337,6 +338,8 @@ export function ThemeOverlay() {
   const flashlightIntensity = useThemeStore((s) => s.flashlightIntensity);
   const clickGlitchIntensity = useThemeStore((s) => s.clickGlitchIntensity);
   const shaderIntensity = useThemeStore((s) => s.shaderIntensity);
+  // The only thing the effect layer knows about the game — three numbers
+  const pulse = useGamePulse();
   const shaderQualityId = useThemeStore((s) => s.shaderQualityId);
   const { width, height } = useWindowDimensions();
   const fx = theme.effects;
@@ -377,6 +380,7 @@ export function ThemeOverlay() {
           renderScale={getShaderScale(shaderQualityId)}
           factor={tempo.factor}
           bpm={tempo.bpm}
+          pulse={pulse}
         />
       )}
       {fx.melt && (

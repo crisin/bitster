@@ -152,7 +152,13 @@ void main() {
   float wedge = 6.2831853 / segments;
   float folded = abs(mod(a, wedge) - wedge * 0.5);
 
-  vec2 t = vec2(folded * segments * 0.5, 0.32 / r + u_time * (0.45 + u_beat * 0.5));
+  // u_game.y is the countdown. Going faster is the runtime's job; what it
+  // cannot do is narrow the pipe — so the walls close in as time runs out.
+  float squeeze = 1.0 + u_game.y * 1.6;
+  vec2 t = vec2(
+    folded * segments * 0.5,
+    0.32 / (r * squeeze) + u_time * (0.45 + u_beat * 0.5)
+  );
   float f = fbm(t * 2.6);
   float rings = 0.5 + 0.5 * sin(t.y * 12.0 + f * 4.0);
 
@@ -524,12 +530,17 @@ void main() {
   float clouds = fbm(uv * 2.0 + vec2(u_time * 0.06, 0.0));
   vec3 col = mix(vec3(0.02, 0.02, 0.06), u_accent * 0.28, clouds * smoothstep(-0.1, 0.5, uv.y));
 
+  // u_game.y is the countdown. The runtime already speeds everything up under
+  // pressure — what it CANNOT do is strike more often, so that happens here.
+  float panic = u_game.y;
   float flash = 0.0;
   for (int i = 0; i < 3; i++) {
     float seed = float(i) * 17.0 + 1.0;
     // One phase drives both: fract() is the strike's life, floor() picks the
     // path — so the bolt can't rewrite itself halfway down
-    float phase = u_time * (0.35 + 0.12 * float(i)) + hash(vec2(seed, 5.0));
+    float phase =
+      u_time * (0.35 + 0.12 * float(i)) * (1.0 + panic * 1.8) +
+      hash(vec2(seed, 5.0));
     float strike = fract(phase);
     // The front whips to the ground in the first fifth of the strike; the rest
     // of the cycle is the bolt hanging there and fading

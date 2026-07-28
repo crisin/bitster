@@ -34,7 +34,7 @@ funktionieren in jedem Netz, in dem WSS funktioniert.
 - **Storage:** expo-secure-store bzw. localStorage (Tokens), AsyncStorage (UI-Settings,
   Spielhistorie), localStorage/AsyncStorage (Reload-Session + Host-Snapshot)
 - **Styling:** StyleSheet.create + eigenes Theme-System (`src/theme/`), kein CSS-Framework
-- **Tests:** Vitest (`logic`, `host`, `peer`, `protocol`, `session`, `schema/song`, `history/*`, `logger`)
+- **Tests:** Vitest (`logic`, `modes`, `host`, `peer`, `protocol`, `session`, `schema/song`, `history/*`, `theme/shader/reaction`, `logger`)
 
 ## Projektstruktur
 
@@ -83,6 +83,7 @@ src/
 
   game/                       # === Pure Game Logic (kein UI, kein I/O) ===
     logic.ts                  # createRoom, placeSong, resolveBuzz, evaluateGuess, buildGameState …
+    modes.ts                  # Spielmodi als Presets über GameRules (modeFor/describeRules)
     types.ts                  # Room, Player(+stats/penalties), Song, Phase, GameSettings, GameState
     store.ts                  # Zustand – passiver Mirror des GameState-Broadcasts
 
@@ -95,7 +96,8 @@ src/
     ThemeOverlay.tsx          # Effekt-Layer (Rainbow, Swirl, Pulse, Floaties, …)
     PointerEffects.tsx        # Maus-Effekte: Warp-Linse, Taschenlampe, Klick-Glitch (Web)
     shader/                   # Fullscreen-Fragment-Shader (Web; nativ = Stub)
-      presets.ts              # GLSL: Kaleidoskop, Plasma, Tunnel, Aurora
+      presets.ts              # GLSL: 12 Presets (Kaleidoskop, Plasma, Tunnel, … Fireworks, Storm)
+      reaction.ts             # PUR: Spielzustand → Shader-Uniforms (Countdown, Verdikt)
       ShaderLayer.web.tsx     # Canvas + WebGL-Runtime, rAF, Context-Loss
       quality.ts              # Auflösungsstufen (der große Performance-Hebel)
     typography.ts             # Font-Optionen + Skalierung
@@ -112,7 +114,7 @@ src/
     streaming/                # ConnectButton, DeviceSelector, ConnectionCheck
     settings/                 # SettingsMenu, CustomThemeEditor, EffectSettings, TextSettings
 
-  hooks/                      # useHaptics, useConnectionStatus, useCurrentPlayer
+  hooks/                      # useHaptics, useConnectionStatus, useCurrentPlayer, useGamePulse
   utils/                      # constants.ts (Design-Tokens), roomCode.ts, logger.ts
 
 assets/                       # fonts/ (OFL) + icon.png/favicon.png (generierte Platzhalter,
@@ -218,7 +220,8 @@ Dieses Projekt wird **vollständig KI-gestützt** entwickelt. Keine manuellen Ze
 - **Naming:** camelCase für Variablen/Funktionen, PascalCase für Komponenten/Typen
 - **Dateien:** Komponenten .tsx, Logic .ts, keine .jsx/.js
 - **Imports:** Absolute Imports via `@/` Alias (src/)
-- **Tests:** Vitest für Logic/Host/Peer/Protocol/Session/Schema/History (keine Component-Tests aktuell)
+- **Tests:** Vitest für Logic/Modes/Host/Peer/Protocol/Session/Schema/History/Shader-Reaction
+  (keine Component-Tests aktuell)
 - **P2P Messages:** Typisierte Actions mit discriminated unions, Wire-Input IMMER durch `validateAction`
 - **Design-Direktive:** ABFAHRT — Party-App, im Zweifel die verspieltere Variante (Effekte hinter `ThemeEffects`-Flags, Layer bleibt `pointerEvents="none"`)
 
@@ -228,18 +231,29 @@ Dieses Projekt wird **vollständig KI-gestützt** entwickelt. Keine manuellen Ze
 2. **Lobby:** Der Host wählt die Songquelle — Playlist-Link **oder** 🎲 "Surprise Me"
    (Zufalls-Pool aus seinen eigenen Playlists, größengewichtet, mit Artist- und
    Jahrzehnt-Deckel). Alle connecten Spotify via PKCE.
-   Settings (Win-Score, bitster-Timer, ⚡Blitz-Timer) sind NUR in der Lobby änderbar.
+   Darüber liegt der **Modus-Picker** (`game/modes.ts`): Classic, Blitz, Party,
+   Connoisseur, Marathon, Speedrun, No bitster — jeder Modus ist nur ein
+   benannter Punkt im selben Regelraum, den "Fine-tuning" auch von Hand
+   erreicht (dann zeigt der Picker ⚙️ Custom). Der aktive Modus wird aus den
+   Settings **abgeleitet** (`modeFor`), nie gespeichert. Peers sehen dieselben
+   Regeln als Zusammenfassung (`describeRules`), können sie aber nicht ändern.
+   Settings sind NUR in der Lobby änderbar.
    Host kann zusätzlich **lokale Spieler** anlegen (Pass-and-Play am Host-Gerät,
    `Player.isLocal`); das Host-Gerät steuert deren Züge/Buzzes via `dispatch(action, { as: localId })`.
    Online-Peers können keine lokalen Spieler haben. Ohne Playlist-Link startet ein
    stilles Demo-Spiel (Mock-Songs, kein Playback).
 3. **Playing:** Song spielt auf allen Geräten. Der aktive Spieler kann EINMAL
-   raten (Titel/Artist = +1★, exaktes Jahr = +1★ extra — Belohnung erst beim
-   Reveal, damit der Token-Broadcast nichts verrät), skippen (−1★) oder platziert
-   in seine Timeline. ⚡Blitz-Modus: Countdown (`placeDeadline`) — läuft er ab,
-   ist der Song weg (failedSongs, "TOO SLOW!").
-4. **bitster-window:** Wird **übersprungen**, wenn der aktive Spieler noch keine
-   Karte hatte — eine Platzierung in eine leere Timeline ist per Definition
+   raten, rerollen oder in seine Timeline platzieren. Was ein Guess wert ist,
+   bestimmt `rules.guess`: `require` sagt, ob Titel, Artist, eines von beiden
+   oder beide stimmen müssen (+1★), `yearBonus`/`yearTolerance` den Jahres-Bonus
+   (+1★; Toleranz > 0 fängt nebenbei Remaster-Jahre ab, siehe P4). Die Belohnung
+   fällt erst beim Reveal, damit der Token-Broadcast nichts verrät. Der Reroll
+   kostet `rules.skip.cost` (0 = gratis) und kann ganz aus sein.
+   ⚡Blitz-Modus: Countdown (`placeDeadline`) — läuft er ab, ist der Song weg
+   (failedSongs, "TOO SLOW!").
+4. **bitster-window:** Wird **übersprungen**, wenn bitster in diesem Modus aus
+   ist (`rules.buzz.enabled`) oder der aktive Spieler noch keine Karte hatte —
+   eine Platzierung in eine leere Timeline ist per Definition
    richtig (`checkPlacement`), ein Buzz dagegen kann nicht gewinnen und würde nur
    einen Token verbrennen (`canBeChallenged`). Sonst gilt: nach dem Platzieren
    (Jahr noch maskiert) dürfen die anderen

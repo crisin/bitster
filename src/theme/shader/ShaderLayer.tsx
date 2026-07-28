@@ -1,3 +1,4 @@
+import type { GamePulse } from "@/hooks/useGamePulse";
 import type { ShaderPresetId } from "./presets";
 
 export interface ShaderLayerProps {
@@ -7,6 +8,7 @@ export interface ShaderLayerProps {
   renderScale: number;
   factor: number;
   bpm: number | null;
+  pulse: GamePulse;
 }
 
 /**

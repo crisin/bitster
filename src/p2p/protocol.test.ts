@@ -6,7 +6,11 @@ import {
   createRoom,
 } from "@/game/logic";
 import type { GameRecap, GameState, GameStateMeta } from "@/game/types";
-import { MAX_ROUND_ENTRIES, MAX_ROUNDS_PER_GAME } from "@/game/types";
+import {
+  DEFAULT_RULES,
+  MAX_ROUND_ENTRIES,
+  MAX_ROUNDS_PER_GAME,
+} from "@/game/types";
 import { describe, expect, it } from "vitest";
 import {
   parseRoundRecord,
@@ -128,6 +132,11 @@ describe("validateAction", () => {
           buzz: { enabled: true, penalty: "none", timerSeconds: 30 },
           // Placement rules default to "off" for senders that don't know them
           placement: { timerSeconds: null },
+          // Everything a sender leaves out falls back to the defaults, so an
+          // older client can still change one rule without wiping the rest
+          skip: DEFAULT_RULES.skip,
+          guess: DEFAULT_RULES.guess,
+          tokens: DEFAULT_RULES.tokens,
         },
       },
     });

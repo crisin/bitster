@@ -2,6 +2,7 @@ import type {
   GameRecap,
   GameRules,
   GameSettings,
+  GuessRequirement,
   GameState,
   Phase,
   PlacementResult,
@@ -22,9 +23,13 @@ import type {
   TokenReason,
 } from "@/game/types";
 import {
+  DEFAULT_RULES,
   EMPTY_STATS,
   MAX_RANDOM_POOL,
   MAX_ROUND_ENTRIES,
+  MAX_SKIP_COST,
+  MAX_START_TOKENS,
+  MAX_YEAR_TOLERANCE,
   MAX_ROUNDS_PER_GAME,
   MIN_RANDOM_POOL,
   RECAP_VERSION,
@@ -191,6 +196,53 @@ function parseRules(v: unknown): GameRules | null {
     placementTimer = t as number | null;
   }
 
+  // Reroll, difficulty and starting tokens are all newer than the first
+  // protocol. A host that doesn't send them isn't broken, it's older — so every
+  // group falls back to the default instead of failing the whole settings blob.
+  const skip = { ...DEFAULT_RULES.skip };
+  if (isObject(v.skip)) {
+    if (v.skip.enabled !== undefined) {
+      if (typeof v.skip.enabled !== "boolean") return null;
+      skip.enabled = v.skip.enabled;
+    }
+    if (v.skip.cost !== undefined) {
+      if (!isNonNegativeInt(v.skip.cost) || v.skip.cost > MAX_SKIP_COST)
+        return null;
+      skip.cost = v.skip.cost;
+    }
+  }
+
+  const guess = { ...DEFAULT_RULES.guess };
+  if (isObject(v.guess)) {
+    if (v.guess.require !== undefined) {
+      if (
+        typeof v.guess.require !== "string" ||
+        !(GUESS_REQUIREMENTS as readonly string[]).includes(v.guess.require)
+      )
+        return null;
+      guess.require = v.guess.require as GuessRequirement;
+    }
+    if (v.guess.yearBonus !== undefined) {
+      if (typeof v.guess.yearBonus !== "boolean") return null;
+      guess.yearBonus = v.guess.yearBonus;
+    }
+    if (v.guess.yearTolerance !== undefined) {
+      if (
+        !isNonNegativeInt(v.guess.yearTolerance) ||
+        v.guess.yearTolerance > MAX_YEAR_TOLERANCE
+      )
+        return null;
+      guess.yearTolerance = v.guess.yearTolerance;
+    }
+  }
+
+  const tokens = { ...DEFAULT_RULES.tokens };
+  if (isObject(v.tokens) && v.tokens.start !== undefined) {
+    if (!isNonNegativeInt(v.tokens.start) || v.tokens.start > MAX_START_TOKENS)
+      return null;
+    tokens.start = v.tokens.start;
+  }
+
   return {
     buzz: {
       enabled,
@@ -198,6 +250,9 @@ function parseRules(v: unknown): GameRules | null {
       timerSeconds: timerSeconds === undefined ? 30 : (timerSeconds as number),
     },
     placement: { timerSeconds: placementTimer },
+    skip,
+    guess,
+    tokens,
   };
 }
 
@@ -257,6 +312,13 @@ function parsePlayedSongs(v: unknown): GameState["playedSongs"] | null {
 }
 
 // -- Round log --
+
+const GUESS_REQUIREMENTS: readonly GuessRequirement[] = [
+  "either",
+  "title",
+  "artist",
+  "both",
+];
 
 const ROUND_OUTCOMES: readonly RoundOutcome[] = [
   "placed",

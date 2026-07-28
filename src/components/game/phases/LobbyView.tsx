@@ -296,7 +296,9 @@ export function LobbyView({
         </View>
       )}
 
-      {isHost && <GameSettings />}
+      {/* Peers see the rules too — walking into a game blind is worse than
+          a bit of extra text */}
+      <GameSettings readOnly={!isHost} />
 
       {!isHost && (
         <Text style={styles.hint}>Waiting for host to start...</Text>

@@ -4,6 +4,7 @@ import type {
   GameState,
   GameStateMeta,
   GuessResult,
+  GuessRules,
   PlacementResult,
   Player,
   RecapReason,
@@ -61,6 +62,9 @@ export function createRoom(
           ...DEFAULT_RULES.placement,
           ...settings?.rules?.placement,
         },
+        skip: { ...DEFAULT_RULES.skip, ...settings?.rules?.skip },
+        guess: { ...DEFAULT_RULES.guess, ...settings?.rules?.guess },
+        tokens: { ...DEFAULT_RULES.tokens, ...settings?.rules?.tokens },
       },
     },
     buzzerId: null,
@@ -78,7 +82,8 @@ export function createRoom(
   };
 }
 
-const STARTING_TOKENS = 2;
+/** Fallback for a player created before any settings exist (room creation) */
+const STARTING_TOKENS = DEFAULT_RULES.tokens.start;
 
 function createPlayer(id: string, name: string, isLocal = false): Player {
   return {
@@ -532,11 +537,13 @@ export function startGame(
   playlistId?: string,
   playlistTrackCount?: number,
 ): Room {
+  // Starting tokens are applied HERE rather than at join: the host may still be
+  // changing the mode while people trickle in, and everyone must start equal.
   const resetPlayers = room.players.map((p) => ({
     ...p,
     score: 0,
     timeline: [],
-    tokens: STARTING_TOKENS,
+    tokens: room.settings.rules.tokens.start,
     failedSongs: [],
     penalties: 0,
     stats: { ...EMPTY_STATS },
@@ -833,30 +840,60 @@ export function evaluateGuess(
 
   const titleCorrect = checkTitleMatch(guessTitle, room.currentSong.name);
   const artistCorrect = checkArtistMatch(guessArtist, room.currentSong.artist);
+  // Tolerance is a rule, not a fudge factor: at 0 this is an exact match
+  const tolerance = Math.max(0, room.settings.rules.guess.yearTolerance);
   const yearCorrect =
-    guessYear === undefined ? null : guessYear === room.currentSong.year;
+    guessYear === undefined
+      ? null
+      : Math.abs(guessYear - room.currentSong.year) <= tolerance;
 
   return { titleCorrect, artistCorrect, yearCorrect };
 }
 
-/** Tokens a guess result is worth: 1 for title+artist, 1 extra for exact year */
-export function guessReward(result: GuessResult): number {
+/** True when the guessed parts satisfy the configured difficulty */
+export function guessSongCorrect(
+  result: GuessResult,
+  rules: GuessRules,
+): boolean {
+  switch (rules.require) {
+    case "either":
+      return result.titleCorrect || result.artistCorrect;
+    case "title":
+      return result.titleCorrect;
+    case "artist":
+      return result.artistCorrect;
+    case "both":
+      return result.titleCorrect && result.artistCorrect;
+  }
+}
+
+/**
+ * Tokens a guess is worth under the current rules: one for the song (whatever
+ * the difficulty demands of it) and one more for the year.
+ */
+export function guessReward(result: GuessResult, rules: GuessRules): number {
   return (
-    (result.titleCorrect && result.artistCorrect ? 1 : 0) +
-    (result.yearCorrect === true ? 1 : 0)
+    (guessSongCorrect(result, rules) ? 1 : 0) +
+    (rules.yearBonus && result.yearCorrect === true ? 1 : 0)
   );
 }
 
+/**
+ * Reroll: throw this song away and take another. The cost comes from the rules,
+ * so a mode can make it free (0) or ban it outright — the caller checks
+ * `rules.skip.enabled`, this function only refuses what it cannot pay for.
+ */
 export function skipSong(room: Room, playerId: string): Room {
   const player = room.players.find((p) => p.id === playerId);
   if (!player) throw new Error("Player not found");
-  if (player.tokens <= 0) throw new Error("No tokens to spend");
+  const cost = room.settings.rules.skip.cost;
+  if (player.tokens < cost) throw new Error("No tokens to spend");
 
   const updatedPlayers = room.players.map((p) =>
     p.id === playerId
       ? {
           ...p,
-          tokens: p.tokens - 1,
+          tokens: p.tokens - cost,
           stats: { ...p.stats, skips: p.stats.skips + 1 },
         }
       : p,

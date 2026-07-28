@@ -191,6 +191,37 @@ Markt, und `restrictions.reason: "explicit"` ist sogar eine reine
 Konto-Einstellung. Der Host kann also grundsätzlich nicht wissen, ob ein Song
 bei allen Mitspielern läuft.
 
+## Spielmodi & Regelwerk
+
+`GameRules` ist die einzige Wahrheit über die Spielregeln — fünf Gruppen:
+`buzz` (an/aus, Timer, Strafe), `placement` (⚡Blitz), `skip` (Reroll: an/aus,
+Kosten), `guess` (Schwierigkeit: `require`, `yearBonus`, `yearTolerance`) und
+`tokens` (Start-Guthaben).
+
+**Modi sind Presets, keine eigene Regel.** `game/modes.ts` benennt Punkte in
+demselben Regelraum, den der Host auch von Hand erreicht. Nichts in der
+Spiellogik fragt „welcher Modus ist das" — es fragt die Regeln. Deshalb wird
+der aktive Modus aus den Settings **abgeleitet** (`modeFor`) statt gespeichert:
+eine gespeicherte ID könnte den Regeln widersprechen, die sie beschreibt.
+
+Durchgesetzt wird alles beim Host, nicht im UI:
+
+| Regel                  | Host-Stelle                                                            |
+| ---------------------- | ---------------------------------------------------------------------- |
+| `skip.enabled`         | `skip-song` antwortet mit einem Fehler statt zu tauschen                |
+| `skip.cost`            | `logic.skipSong`; 0 bucht **keine** Token-Bewegung ins Runden-Log       |
+| `buzz.enabled`         | `place-song` springt direkt zum Reveal — das Fenster wird nie geöffnet  |
+| `guess.*`              | `guessReward`/`guessSongCorrect`, angewendet erst beim Reveal           |
+| `tokens.start`         | `logic.startGame` — bewusst beim Start, nicht beim Join                 |
+
+Start-Token erst beim Start zu setzen ist Absicht: der Host darf den Modus noch
+wechseln, während Leute eintrudeln, und alle müssen gleich anfangen.
+
+Auf der Leitung sind `skip`, `guess` und `tokens` **additiv** — ein älterer Host
+sendet sie nicht, und `parseRules` setzt dann die Defaults ein, statt das ganze
+Settings-Objekt abzulehnen. Werte außerhalb der Grenzen (`MAX_START_TOKENS`,
+`MAX_SKIP_COST`, `MAX_YEAR_TOLERANCE`) fliegen dagegen raus.
+
 ## Runden-Log & Recap
 
 Der Host führt in `room.rounds` ein Protokoll: pro Runde Song (mit echtem Jahr),

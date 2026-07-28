@@ -13,6 +13,7 @@ vi.mock("react-native", () => ({
 }));
 
 import { useGameStore } from "@/game/store";
+import { DEFAULT_RULES } from "@/game/types";
 import { registerProvider } from "@/streaming/registry";
 import { useStreamingStore } from "@/streaming/store";
 import type { Track } from "@/streaming/types";
@@ -556,6 +557,12 @@ describe("HostSession — new-rules hardening", () => {
           rules: {
             buzz: { enabled: true, penalty: "none", timerSeconds: 30 },
             placement: { timerSeconds: 10 },
+
+            skip: DEFAULT_RULES.skip,
+
+            guess: DEFAULT_RULES.guess,
+
+            tokens: DEFAULT_RULES.tokens,
           },
         },
       },
@@ -594,6 +601,12 @@ describe("HostSession — new-rules hardening", () => {
           rules: {
             buzz: { enabled: true, penalty: "none", timerSeconds: 30 },
             placement: { timerSeconds: 10 },
+
+            skip: DEFAULT_RULES.skip,
+
+            guess: DEFAULT_RULES.guess,
+
+            tokens: DEFAULT_RULES.tokens,
           },
         },
       },
@@ -1114,6 +1127,12 @@ describe("HostSession — round log and recap", () => {
           rules: {
             buzz: { enabled: true, penalty: "none", timerSeconds: 30 },
             placement: { timerSeconds: 10 },
+
+            skip: DEFAULT_RULES.skip,
+
+            guess: DEFAULT_RULES.guess,
+
+            tokens: DEFAULT_RULES.tokens,
           },
         },
       },
@@ -1430,6 +1449,139 @@ describe("HostSession — round log and recap", () => {
   });
 });
 
+describe("HostSession — game modes", () => {
+  /** Push one rule group and start the demo game with it */
+  async function startWithRules(
+    session: HostSession,
+    over: Partial<typeof DEFAULT_RULES>,
+    peers: { id: string; name: string }[] = [{ id: "peer-2", name: "Bob" }],
+  ): Promise<void> {
+    await session.handleAction(
+      {
+        type: "update-settings",
+        payload: { rules: { ...DEFAULT_RULES, ...over } },
+      },
+      "host-1",
+    );
+    await startDemoGameWith(session, peers);
+  }
+
+  it("refuses a reroll when the mode has them switched off", async () => {
+    const session = makeSession();
+    await startWithRules(session, { skip: { enabled: false, cost: 1 } });
+    const tokensBefore = lastBroadcastState().players.find(
+      (p) => p.id === "host-1",
+    )!.tokens;
+
+    await session.handleAction({ type: "skip-song" }, "host-1");
+
+    expect(useP2PStore.getState().lastError).toMatch(/reroll/i);
+    // Still the same song, still the same tokens
+    expect(lastBroadcastState().phase).toBe("playing");
+    expect(
+      lastBroadcastState().players.find((p) => p.id === "host-1")?.tokens,
+    ).toBe(tokensBefore);
+    session.destroy();
+  });
+
+  it("charges nothing for a free reroll but still swaps the song", async () => {
+    const session = makeSession();
+    await startWithRules(session, { skip: { enabled: true, cost: 0 } });
+    const before = lastBroadcastState();
+    const tokensBefore = before.players.find((p) => p.id === "host-1")!.tokens;
+
+    await session.handleAction({ type: "skip-song" }, "host-1");
+
+    const after = lastBroadcastState();
+    expect(after.players.find((p) => p.id === "host-1")?.tokens).toBe(
+      tokensBefore,
+    );
+    expect(after.currentSongUri).not.toBe(before.currentSongUri);
+
+    await finishViaRematch(session);
+    // A free reroll moves no token, so the log must not invent one
+    expect(lastRecap()!.rounds[0].tokens).toEqual([]);
+    session.destroy();
+  });
+
+  it("skips the bitster window entirely when bitster is off", async () => {
+    const session = makeSession();
+    await startWithRules(
+      session,
+      { buzz: { enabled: false, penalty: "none", timerSeconds: 30 } },
+      [
+        { id: "peer-2", name: "Bob" },
+        { id: "peer-3", name: "Cleo" },
+      ],
+    );
+    await giveEveryoneACard(session, ["host-1", "peer-2", "peer-3"]);
+
+    // Second card: with bitster on this would open the window
+    await session.handleAction(
+      { type: "place-song", payload: { position: 0 } },
+      "host-1",
+    );
+    expect(lastBroadcastState().phase).toBe("reveal");
+    session.destroy();
+  });
+
+  it("deals the mode's starting tokens to everyone", async () => {
+    const session = makeSession();
+    await startWithRules(session, { tokens: { start: 4 } });
+    expect(
+      lastBroadcastState().players.every((p) => p.tokens === 4),
+    ).toBe(true);
+    session.destroy();
+  });
+
+  it("pays the easy difficulty for half a guess", async () => {
+    registerFixedTrackProvider({
+      id: "t1",
+      uri: "spotify:track:t1",
+      name: "Blue Monday",
+      artist: "New Order",
+      year: 1983,
+    });
+    const session = makeSession();
+    await session.handleAction(
+      {
+        type: "update-settings",
+        payload: {
+          rules: {
+            ...DEFAULT_RULES,
+            guess: { require: "either", yearBonus: true, yearTolerance: 2 },
+          },
+        },
+      },
+      "host-1",
+    );
+    await startPlaylistGame(session);
+
+    // Artist wrong, title right — worth nothing under "both", a token under "either"
+    await session.handleAction(
+      {
+        type: "guess-song",
+        payload: { title: "Blue Monday", artist: "Nobody", year: 1985 },
+      },
+      "host-1",
+    );
+    await session.handleAction(
+      { type: "place-song", payload: { position: 0 } },
+      "host-1",
+    );
+    await finishViaRematch(session);
+
+    const round = lastRecap()!.rounds[0];
+    // +1 for the song, +1 for a year that is two off but inside the tolerance
+    expect(round.guess?.tokens).toBe(2);
+    expect(round.tokens.map((t) => t.reason)).toEqual([
+      "guess-song",
+      "guess-year",
+    ]);
+    session.destroy();
+  });
+});
+
 /**
  * A provider that answers every track request from one function. Enough for
  * the host: it only ever asks for a track at an index and for playlist meta.
@@ -1546,6 +1698,12 @@ describe("HostSession — state stamping", () => {
           rules: {
             buzz: { enabled: true, penalty: "none", timerSeconds: 30 },
             placement: { timerSeconds: 20 },
+
+            skip: DEFAULT_RULES.skip,
+
+            guess: DEFAULT_RULES.guess,
+
+            tokens: DEFAULT_RULES.tokens,
           },
         },
       },
