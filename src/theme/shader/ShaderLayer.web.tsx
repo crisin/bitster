@@ -1,22 +1,30 @@
 import type { GamePulse } from "@/hooks/useGamePulse";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { log } from "@/utils/logger";
-import type { ShaderPresetId } from "./presets";
-import { FRAGMENT_SHADERS, VERTEX_SHADER } from "./presets";
-import { reactToGame } from "./reaction";
+import { EngineBuildError, ShaderEngine } from "./engine/engine.web";
+import { validateSpec, withGuard } from "./engine/compile";
+import type { EffectSpec } from "./engine/types";
+import {
+  IDLE_POINTER,
+  pointerUniform,
+  reactToGame,
+  type PointerState,
+} from "./reaction";
+import { resolveShaderSpec } from "./resolve";
+import { useShaderStudioStore } from "./studio";
 
 /**
- * A full-screen WebGL canvas that runs one fragment shader.
+ * A full-screen WebGL canvas driven by the multi-pass ShaderEngine.
  *
  * react-native-web renders through React DOM, so a plain <canvas> is just
- * another host element — no bridge, no wrapper, no extra dependency. And a
- * fullscreen fragment shader needs no scene graph, so there is no three.js
- * here either: one triangle covering the viewport, and a function that decides
- * the colour of every pixel.
+ * another host element — no bridge, no wrapper, no extra dependency. This
+ * component owns the React concerns (canvas lifecycle, context loss, rAF,
+ * the game reaction); the engine owns the GL objects.
  */
 
 export interface ShaderLayerProps {
-  preset: ShaderPresetId;
+  /** Shader id — simple preset, trip preset or "user:<id>" */
+  preset: string;
   /** Accent colour as #rrggbb */
   accent: string;
   /** 0..1 — feeds the shader and drives how loud it is */
@@ -29,6 +37,8 @@ export interface ShaderLayerProps {
   bpm: number | null;
   /** What the game is doing right now — see useGamePulse */
   pulse: GamePulse;
+  /** Tone-map pass that keeps the UI readable underneath */
+  guard: boolean;
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -56,46 +66,6 @@ function reducedMotion(): boolean {
   );
 }
 
-function compile(
-  gl: WebGLRenderingContext,
-  type: number,
-  source: string,
-): WebGLShader | null {
-  const shader = gl.createShader(type);
-  if (!shader) return null;
-  gl.shaderSource(shader, source);
-  gl.compileShader(shader);
-  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    log.error("theme", `Shader failed: ${gl.getShaderInfoLog(shader) ?? "?"}`);
-    gl.deleteShader(shader);
-    return null;
-  }
-  return shader;
-}
-
-function buildProgram(
-  gl: WebGLRenderingContext,
-  fragment: string,
-): WebGLProgram | null {
-  const vs = compile(gl, gl.VERTEX_SHADER, VERTEX_SHADER);
-  const fs = compile(gl, gl.FRAGMENT_SHADER, fragment);
-  if (!vs || !fs) return null;
-  const program = gl.createProgram();
-  if (!program) return null;
-  gl.attachShader(program, vs);
-  gl.attachShader(program, fs);
-  gl.linkProgram(program);
-  // The shaders are owned by the program once linked
-  gl.deleteShader(vs);
-  gl.deleteShader(fs);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    log.error("theme", `Program link failed: ${gl.getProgramInfoLog(program) ?? "?"}`);
-    gl.deleteProgram(program);
-    return null;
-  }
-  return program;
-}
-
 /**
  * How loud the beat is right now: a sharp spike on each beat that decays, so
  * effects punch on the downbeat instead of wobbling. Without a tapped tempo it
@@ -118,6 +88,7 @@ export function ShaderLayer({
   factor,
   bpm,
   pulse,
+  guard,
 }: ShaderLayerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const glRef = useRef<WebGLRenderingContext | null>(null);
@@ -126,9 +97,52 @@ export function ShaderLayer({
   // it, so the pipeline effect has to build everything again
   const [generation, setGeneration] = useState(0);
   // Values the render loop reads every frame — kept in a ref so a settings
-  // change never tears down and recompiles the program
+  // change never tears down and recompiles the pipeline
   const live = useRef({ accent, intensity, factor, bpm, renderScale, pulse });
   live.current = { accent, intensity, factor, bpm, renderScale, pulse };
+
+  // Mouse/finger, tracked in a ref: position at 60 Hz through React state
+  // would re-render the world — the draw loop just reads the latest value
+  const pointerRef = useRef<PointerState>({ ...IDLE_POINTER });
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const p = pointerRef.current;
+      p.x = e.clientX / window.innerWidth;
+      // GL counts from the bottom; flipping here keeps every shader simple
+      p.y = 1 - e.clientY / window.innerHeight;
+      p.active = true;
+    };
+    const onDown = (e: PointerEvent) => {
+      onMove(e);
+      pointerRef.current.clickAt = Date.now();
+    };
+    const onLeave = () => {
+      pointerRef.current.active = false;
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerdown", onDown, { passive: true });
+    window.addEventListener("blur", onLeave);
+    document.documentElement.addEventListener("pointerleave", onLeave);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("blur", onLeave);
+      document.documentElement.removeEventListener("pointerleave", onLeave);
+    };
+  }, []);
+
+  // A user shader edited in the Studio rebuilds the pipeline live
+  const userShaders = useShaderStudioStore((s) => s.shaders);
+  const spec: EffectSpec | null = useMemo(() => {
+    const resolved = resolveShaderSpec(preset, userShaders);
+    if (!resolved) return null;
+    const problems = validateSpec(resolved);
+    if (problems.length > 0) {
+      log.warn("theme", `Shader "${preset}" invalid: ${problems.join("; ")}`);
+      return null;
+    }
+    return guard ? withGuard(resolved) : resolved;
+  }, [preset, userShaders, guard]);
 
   // The context outlives every preset switch. Creating it here — once per
   // mounted canvas — is what keeps `loseContext()` in the teardown from
@@ -149,8 +163,6 @@ export function ShaderLayer({
       log.warn("theme", "No WebGL context — shader layer stays off");
       return;
     }
-    // No generation bump needed: this effect runs before the pipeline one in
-    // the same commit, so the first build already sees the context
     glRef.current = gl;
 
     // Mobile browsers drop the context when the app is backgrounded; without
@@ -178,31 +190,22 @@ export function ShaderLayer({
   useEffect(() => {
     const canvas = canvasRef.current;
     const gl = glRef.current;
-    if (!canvas || !gl || gl.isContextLost()) return;
+    if (!canvas || !gl || gl.isContextLost() || !spec) return;
 
-    const program = buildProgram(gl, FRAGMENT_SHADERS[preset]);
-    if (!program) return;
-
-    // One triangle big enough to cover the viewport beats a two-triangle quad:
-    // fewer vertices and no seam down the diagonal
-    const buffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([-1, -1, 3, -1, -1, 3]),
-      gl.STATIC_DRAW,
-    );
-    const posLoc = gl.getAttribLocation(program, "a_pos");
-    gl.enableVertexAttribArray(posLoc);
-    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
-    gl.useProgram(program);
-
-    const uRes = gl.getUniformLocation(program, "u_res");
-    const uTime = gl.getUniformLocation(program, "u_time");
-    const uBeat = gl.getUniformLocation(program, "u_beat");
-    const uIntensity = gl.getUniformLocation(program, "u_intensity");
-    const uAccent = gl.getUniformLocation(program, "u_accent");
-    const uGame = gl.getUniformLocation(program, "u_game");
+    let engine: ShaderEngine;
+    try {
+      engine = new ShaderEngine(gl, spec);
+    } catch (err) {
+      if (err instanceof EngineBuildError) {
+        log.error(
+          "theme",
+          `Shader "${spec.id}" pass ${err.passIndex} failed: ${err.message}`,
+        );
+      } else {
+        log.error("theme", `Shader engine failed: ${err}`);
+      }
+      return;
+    }
 
     let width = 0;
     let height = 0;
@@ -219,7 +222,7 @@ export function ShaderLayer({
       height = h;
       canvas.width = w;
       canvas.height = h;
-      gl.viewport(0, 0, w, h);
+      engine.resize(w, h);
     };
     resize();
     window.addEventListener("resize", resize);
@@ -241,16 +244,20 @@ export function ShaderLayer({
         intensity: amount,
         factor: speed,
         bpm: tempo,
-        pulse,
+        pulse: gamePulse,
       } = live.current;
 
-      // The whole game reaction is one pure function (reaction.ts) — this loop
-      // only feeds it the clock and hands the result to the GPU
-      const reacted = reactToGame(pulse, {
+      const wall = Date.now();
+      const pointer = pointerUniform(pointerRef.current, wall);
+      // The whole game reaction is one pure function (reaction.ts) — this
+      // loop only feeds it the clock and hands the result to the engine.
+      // A click rides in as a beat, so EVERY beat-reactive preset punches
+      // on tap without knowing the pointer exists (still-mode zeroes it).
+      const reacted = reactToGame(gamePulse, {
         intensity: amount,
-        beat: beatAt(elapsed, tempo, speed),
+        beat: Math.max(beatAt(elapsed, tempo, speed), pointer[2]),
         accent: hexToRgb(hex),
-        now: Date.now(),
+        now: wall,
         still,
       });
 
@@ -258,30 +265,54 @@ export function ShaderLayer({
       elapsed += dt;
 
       resize();
-      gl.uniform2f(uRes, width, height);
-      gl.uniform1f(uTime, shaderTime);
-      gl.uniform1f(uBeat, reacted.beat);
-      gl.uniform1f(uIntensity, reacted.intensity);
-      gl.uniform3f(uAccent, ...reacted.accent);
-      gl.uniform3f(uGame, ...reacted.game);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      engine.render({
+        time: shaderTime,
+        beat: reacted.beat,
+        intensity: reacted.intensity,
+        accent: reacted.accent,
+        game: reacted.game,
+        pointer,
+      });
 
       if (!still) frame = requestAnimationFrame(draw);
     };
 
     frame = requestAnimationFrame(draw);
 
+    // Dev bridge, same idea as __bitsterStores: lets e2e checks drive a frame
+    // by hand — a hidden preview tab never gets a real animation frame
+    if (__DEV__) {
+      (window as unknown as Record<string, unknown>).__bitsterShaderDebug = {
+        specId: spec.id,
+        canvas,
+        step: (u: {
+          time: number;
+          beat: number;
+          intensity: number;
+          accent: [number, number, number];
+          game: [number, number, number];
+          pointer?: [number, number, number, number];
+        }) => {
+          resize();
+          engine.render({ pointer: [0.5, 0.5, 0, 0], ...u });
+        },
+      };
+    }
+
     return () => {
       if (frame) cancelAnimationFrame(frame);
       window.removeEventListener("resize", resize);
-      // A lost context has already reclaimed everything; touching it warns
-      if (gl.isContextLost()) return;
-      gl.deleteBuffer(buffer);
-      gl.deleteProgram(program);
+      if (__DEV__) {
+        delete (window as unknown as Record<string, unknown>)
+          .__bitsterShaderDebug;
+      }
+      engine.dispose();
     };
-    // Only a different shader — or a context that came back from the dead —
-    // justifies rebuilding the pipeline. Scale and colours ride the live ref.
-  }, [preset, generation]);
+    // A different spec — or a context back from the dead — rebuilds the
+    // pipeline. Scale and colours ride the live ref.
+  }, [spec, generation]);
+
+  if (!spec) return null;
 
   return (
     <canvas
@@ -296,7 +327,9 @@ export function ShaderLayer({
         // Screen-blend so it lights the UI up instead of veiling it — text
         // stays readable even at full intensity
         mixBlendMode: "screen",
-        opacity: 0.25 + intensity * 0.55,
+        // Gentler than it used to be: 100% intensity peaked at 0.8 opacity,
+        // which is exactly the "I can't read the lobby" screenshot
+        opacity: 0.2 + intensity * 0.5,
       }}
     />
   );

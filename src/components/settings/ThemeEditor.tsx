@@ -4,9 +4,20 @@ import { Pressable } from "@/components/ui/Pressable";
 import { Chip } from "@/components/ui/Chip";
 import { Input } from "@/components/ui/Input";
 import { Slider } from "@/components/ui/Slider";
-import { useThemeStore } from "@/theme/store";
-import { ACCENT_PRESETS, normalizeHex, randomFloaties } from "@/theme/customTheme";
-import { SHADER_PRESETS } from "@/theme/shader/presets";
+import {
+  useCurrentLook,
+  useLookTweaked,
+  useThemeStore,
+  type LookIntensityKey,
+} from "@/theme/store";
+import {
+  ACCENT_PRESETS,
+  CUSTOM_THEME_ID,
+  normalizeHex,
+  randomFloaties,
+} from "@/theme/customTheme";
+import { getTripPreset } from "@/theme/shader/advanced";
+import { isShaderPresetId, SHADER_PRESETS } from "@/theme/shader/presets";
 import { createThemedStyles } from "@/theme/themedStyles";
 import { FONT, RADIUS, SPACE, LABEL_STYLE } from "@/utils/constants";
 
@@ -59,8 +70,8 @@ const POINTER_OPTIONS = [
   },
 ] as const;
 
-/** A labelled 0–100% dial, same shape as the melt slider */
-function IntensityRow({
+/** A labelled 0–100% dial, shared by every intensity in the editor */
+export function IntensityRow({
   title,
   low,
   high,
@@ -77,9 +88,9 @@ function IntensityRow({
   return (
     <>
       <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.meltRow}>
-        <Text style={styles.meltEdge}>{low}</Text>
-        <View style={styles.meltTrack}>
+      <View style={styles.dialRow}>
+        <Text style={styles.dialEdge}>{low}</Text>
+        <View style={styles.dialTrack}>
           <Slider
             value={value}
             min={0}
@@ -89,71 +100,85 @@ function IntensityRow({
             label={title}
           />
         </View>
-        <Text style={styles.meltEdge}>{high}</Text>
-        <Text style={styles.meltValue}>{Math.round(value * 100)}%</Text>
+        <Text style={styles.dialEdge}>{high}</Text>
+        <Text style={styles.dialValue}>{Math.round(value * 100)}%</Text>
       </View>
     </>
   );
 }
 
 /**
- * Editor for the user-defined theme: base mode, free accent color and
- * effect toggles. Every change applies (and persists) immediately.
+ * The look editor — for EVERY theme, not just Custom. Themes are presets over
+ * one config space (the same decision the game modes made): tweak any of them,
+ * the tweak is stored per theme, and reset brings the preset back.
  */
-export function CustomThemeEditor() {
+export function ThemeEditor() {
   const styles = useStyles();
-  const custom = useThemeStore((s) => s.custom);
-  const updateCustom = useThemeStore((s) => s.updateCustom);
-  const updateCustomEffects = useThemeStore((s) => s.updateCustomEffects);
-  const meltIntensity = useThemeStore((s) => s.meltIntensity);
-  const setPointerIntensity = useThemeStore((s) => s.setPointerIntensity);
-  const pointerIntensity = {
-    warpIntensity: useThemeStore((s) => s.warpIntensity),
-    flashlightIntensity: useThemeStore((s) => s.flashlightIntensity),
-    clickGlitchIntensity: useThemeStore((s) => s.clickGlitchIntensity),
-  };
-  const setMeltIntensity = useThemeStore((s) => s.setMeltIntensity);
-  const shaderIntensity = useThemeStore((s) => s.shaderIntensity);
-  const setShaderIntensity = useThemeStore((s) => s.setShaderIntensity);
+  const themeId = useThemeStore((s) => s.themeId);
+  const look = useCurrentLook();
+  const tweaked = useLookTweaked();
+  const updateLook = useThemeStore((s) => s.updateLook);
+  const updateLookEffects = useThemeStore((s) => s.updateLookEffects);
+  const setLookIntensity = useThemeStore((s) => s.setLookIntensity);
+  const resetLook = useThemeStore((s) => s.resetLook);
 
-  const [hexDraft, setHexDraft] = useState(custom.accent);
-  const hexValid = normalizeHex(hexDraft) !== null;
+  const accentShown = look.accent ?? "";
+  const [hexDraft, setHexDraft] = useState(accentShown);
+  const hexValid = hexDraft === "" || normalizeHex(hexDraft) !== null;
 
-  // Keep the hex field in sync when a swatch is tapped
+  // Keep the hex field in sync when a swatch is tapped or the theme changes
   useEffect(() => {
-    setHexDraft(custom.accent);
-  }, [custom.accent]);
+    setHexDraft(accentShown);
+  }, [accentShown, themeId]);
 
   const handleHexChange = (value: string) => {
     setHexDraft(value);
     const normalized = normalizeHex(value);
-    if (normalized) updateCustom({ accent: normalized });
+    if (normalized) updateLook({ accent: normalized });
   };
+
+  const setIntensity = (key: LookIntensityKey) => (v: number) =>
+    setLookIntensity(key, v);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.sectionTitle}>Base</Text>
-      <View style={styles.chipRow}>
-        <Chip
-          label="Dark"
-          selected={custom.base === "dark"}
-          onPress={() => updateCustom({ base: "dark" })}
-        />
-        <Chip
-          label="Light"
-          selected={custom.base === "light"}
-          onPress={() => updateCustom({ base: "light" })}
-        />
-      </View>
+      {/* The way back: forget every tweak, let the preset shine through */}
+      {tweaked && (
+        <Pressable
+          onPress={resetLook}
+          label="Reset this theme to its preset"
+          style={styles.resetBtn}
+        >
+          <Text style={styles.resetText}>↺ Reset to preset</Text>
+        </Pressable>
+      )}
+
+      {themeId === CUSTOM_THEME_ID && (
+        <>
+          <Text style={styles.sectionTitle}>Base</Text>
+          <View style={styles.chipRow}>
+            <Chip
+              label="Dark"
+              selected={look.base === "dark"}
+              onPress={() => updateLook({ base: "dark" })}
+            />
+            <Chip
+              label="Light"
+              selected={look.base === "light"}
+              onPress={() => updateLook({ base: "light" })}
+            />
+          </View>
+        </>
+      )}
 
       <Text style={styles.sectionTitle}>Accent color</Text>
       <View style={styles.swatchGrid}>
         {ACCENT_PRESETS.map((hex) => {
-          const selected = hex === custom.accent;
+          const selected = hex === look.accent;
           return (
             <Pressable
               key={hex}
-              onPress={() => updateCustom({ accent: hex })}
+              onPress={() => updateLook({ accent: hex })}
               label={`Accent color ${hex}`}
               style={[
                 styles.swatch,
@@ -171,7 +196,7 @@ export function CustomThemeEditor() {
         })}
       </View>
       <Input
-        placeholder="#ff6fae"
+        placeholder="Preset accent — or your own hex"
         label="Custom accent hex color"
         value={hexDraft}
         onChangeText={handleHexChange}
@@ -187,13 +212,23 @@ export function CustomThemeEditor() {
           <Chip
             key={fx.key}
             label={fx.label}
-            selected={custom.effects[fx.key]}
+            selected={look.effects[fx.key]}
             onPress={() =>
-              updateCustomEffects({ [fx.key]: !custom.effects[fx.key] })
+              updateLookEffects({ [fx.key]: !look.effects[fx.key] })
             }
           />
         ))}
       </View>
+
+      {look.effects.melt && Platform.OS === "web" && (
+        <IntensityRow
+          title="Melt intensity"
+          low="🧊"
+          high="🫠"
+          value={look.meltIntensity}
+          onChange={setIntensity("meltIntensity")}
+        />
+      )}
 
       {/* The shader layer paints its own world per pixel — web only for now */}
       {Platform.OS === "web" && (
@@ -202,26 +237,52 @@ export function CustomThemeEditor() {
           <View style={styles.chipRow}>
             <Chip
               label="Off"
-              selected={custom.effects.shader === ""}
-              onPress={() => updateCustomEffects({ shader: "" })}
+              selected={look.effects.shader === ""}
+              onPress={() => updateLookEffects({ shader: "" })}
             />
             {SHADER_PRESETS.map((preset) => (
               <Chip
                 key={preset.id}
                 label={preset.label}
-                selected={custom.effects.shader === preset.id}
-                onPress={() => updateCustomEffects({ shader: preset.id })}
+                selected={look.effects.shader === preset.id}
+                onPress={() => updateLookEffects({ shader: preset.id })}
               />
             ))}
+            {/* A trip/Studio shader lives on the Trip tab — without this chip
+                the row would show NOTHING selected while one is running */}
+            {look.effects.shader !== "" &&
+              !isShaderPresetId(look.effects.shader) && (
+                <Chip
+                  label={`🚀 ${
+                    getTripPreset(look.effects.shader)?.label ?? "Studio shader"
+                  }`}
+                  selected
+                  onPress={() => {}}
+                />
+              )}
           </View>
-          {custom.effects.shader !== "" && (
-            <IntensityRow
-              title="Shader intensity"
-              low="🫧"
-              high="💥"
-              value={shaderIntensity}
-              onChange={setShaderIntensity}
-            />
+          {look.effects.shader !== "" && (
+            <>
+              <IntensityRow
+                title="Shader intensity"
+                low="🫧"
+                high="💥"
+                value={look.shaderIntensity}
+                onChange={setIntensity("shaderIntensity")}
+              />
+              {/* The answer to "I can't read anything": a tone-map that
+                  compresses the shader's highlights under the UI */}
+              <View style={styles.guardRow}>
+                <Chip
+                  label="🛡️ Keep text readable"
+                  selected={look.shaderGuard}
+                  onPress={() => updateLook({ shaderGuard: !look.shaderGuard })}
+                />
+                {!look.shaderGuard && (
+                  <Text style={styles.guardHint}>raw output — good luck</Text>
+                )}
+              </View>
+            </>
           )}
         </>
       )}
@@ -235,55 +296,31 @@ export function CustomThemeEditor() {
               <Chip
                 key={fx.key}
                 label={fx.label}
-                selected={custom.effects[fx.key]}
+                selected={look.effects[fx.key]}
                 onPress={() =>
-                  updateCustomEffects({ [fx.key]: !custom.effects[fx.key] })
+                  updateLookEffects({ [fx.key]: !look.effects[fx.key] })
                 }
               />
             ))}
           </View>
           {/* One dial per effect, shown only while that effect is on */}
-          {POINTER_OPTIONS.filter((fx) => custom.effects[fx.key]).map((fx) => (
+          {POINTER_OPTIONS.filter((fx) => look.effects[fx.key]).map((fx) => (
             <IntensityRow
               key={fx.key}
               title={fx.dial}
               low={fx.low}
               high={fx.high}
-              value={pointerIntensity[fx.setting]}
-              onChange={(v) => setPointerIntensity(fx.setting, v)}
+              value={look[fx.setting]}
+              onChange={setIntensity(fx.setting)}
             />
           ))}
-        </>
-      )}
-
-      {/* Melt tuning lives right next to its toggle (web-only effect) */}
-      {custom.effects.melt && Platform.OS === "web" && (
-        <>
-          <Text style={styles.sectionTitle}>Melt intensity</Text>
-          <View style={styles.meltRow}>
-            <Text style={styles.meltEdge}>🧊</Text>
-            <View style={styles.meltTrack}>
-              <Slider
-                value={meltIntensity}
-                min={0}
-                max={1}
-                step={0.05}
-                onValueChange={setMeltIntensity}
-                label="Melt intensity"
-              />
-            </View>
-            <Text style={styles.meltEdge}>🫠</Text>
-            <Text style={styles.meltValue}>
-              {Math.round(meltIntensity * 100)}%
-            </Text>
-          </View>
         </>
       )}
 
       <View style={styles.floatieHeader}>
         <Text style={styles.sectionTitle}>Floating emojis</Text>
         <Pressable
-          onPress={() => updateCustomEffects({ floaties: randomFloaties() })}
+          onPress={() => updateLookEffects({ floaties: randomFloaties() })}
           label="Roll a random set of floating emojis"
           style={styles.diceBtn}
         >
@@ -293,8 +330,8 @@ export function CustomThemeEditor() {
       <Input
         placeholder="🎵✨🔥 (empty = none)"
         label="Floating emojis"
-        value={custom.effects.floaties}
-        onChangeText={(value) => updateCustomEffects({ floaties: value })}
+        value={look.effects.floaties}
+        onChangeText={(value) => updateLookEffects({ floaties: value })}
         autoCapitalize="none"
         autoCorrect={false}
         maxLength={16}
@@ -312,6 +349,17 @@ const useStyles = createThemedStyles((COLORS) =>
       borderWidth: 1,
       borderColor: COLORS.border,
       backgroundColor: COLORS.bgElevated,
+    },
+    resetBtn: {
+      alignSelf: "flex-end",
+      minHeight: 32,
+      justifyContent: "center",
+      paddingHorizontal: SPACE.sm,
+    },
+    resetText: {
+      fontSize: FONT.size.sm,
+      color: COLORS.warning,
+      fontWeight: FONT.weight.bold,
     },
     floatieHeader: {
       flexDirection: "row",
@@ -339,6 +387,16 @@ const useStyles = createThemedStyles((COLORS) =>
       flexWrap: "wrap",
       gap: SPACE.sm,
     },
+    guardRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: SPACE.sm,
+    },
+    guardHint: {
+      fontSize: FONT.size.xs,
+      color: COLORS.warning,
+      opacity: 0.9,
+    },
     swatchGrid: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -360,18 +418,18 @@ const useStyles = createThemedStyles((COLORS) =>
       fontSize: FONT.size.lg,
       fontWeight: FONT.weight.bold,
     },
-    meltRow: {
+    dialRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: SPACE.sm,
     },
-    meltTrack: {
+    dialTrack: {
       flex: 1,
     },
-    meltEdge: {
+    dialEdge: {
       fontSize: FONT.size.base,
     },
-    meltValue: {
+    dialValue: {
       width: 44,
       textAlign: "right",
       fontSize: FONT.size.sm,

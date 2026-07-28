@@ -6,6 +6,7 @@ import { useHistoryStore } from "@/history/store";
 import { useP2PStore } from "@/p2p/store";
 import { initSpotify } from "@/streaming/providers/spotify";
 import { useStreamingStore } from "@/streaming/store";
+import { useShaderStudioStore } from "@/theme/shader/studio";
 import { hydrateTheme, useThemeStore } from "@/theme/store";
 import { useTheme } from "@/theme/themedStyles";
 import { ThemeOverlay } from "@/theme/ThemeOverlay";
@@ -25,6 +26,7 @@ export default function RootLayout() {
     interceptConsole();
     initSpotify();
     void hydrateTheme();
+    void useShaderStudioStore.getState().hydrate();
     void useHistoryStore.getState().hydrate();
     log.info("App", "bitster started");
     if (__DEV__) {
@@ -35,6 +37,7 @@ export default function RootLayout() {
         streaming: useStreamingStore,
         history: useHistoryStore,
         theme: useThemeStore,
+        logs: log.getEntries,
       };
     }
     return () => {

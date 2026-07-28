@@ -10,33 +10,44 @@ import {
 import { router } from "expo-router";
 import { Pressable } from "@/components/ui/Pressable";
 import { Divider } from "@/components/ui/Divider";
-import { useThemeStore } from "@/theme/store";
+import { useLookTweaked, useThemeStore } from "@/theme/store";
 import { THEMES } from "@/theme/themes";
-import { CUSTOM_THEME_ID, buildCustomTheme } from "@/theme/customTheme";
+import { resolveTheme } from "@/theme/look";
 import { createThemedStyles, useTheme } from "@/theme/themedStyles";
-import { CustomThemeEditor } from "./CustomThemeEditor";
+import { ThemeEditor } from "./ThemeEditor";
 import { EffectSettings } from "./EffectSettings";
 import { TextSettings } from "./TextSettings";
+import { TripZone } from "./TripZone";
 import { FONT, RADIUS, SPACE, LABEL_STYLE } from "@/utils/constants";
 
+type Tab = "look" | "trip" | "system";
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: "look", label: "🎨 Look" },
+  { id: "trip", label: "🚀 Trip" },
+  { id: "system", label: "⚙️ System" },
+];
+
 /**
- * Always-available settings: a floating gear that opens themes, the custom
- * theme editor and text settings. Everything applies instantly — the sheet
- * stays open so you can flip through the looks live.
+ * Always-available settings behind the floating gear. Three tabs instead of
+ * the old two-column wall: Look (themes as presets + the per-theme editor),
+ * Trip (the gated advanced zone) and System (device-wide dials). Everything
+ * applies instantly — the sheet stays open so you can flip through looks live.
  */
 export function SettingsMenu() {
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<Tab>("look");
   const themeId = useThemeStore((s) => s.themeId);
   const setTheme = useThemeStore((s) => s.setTheme);
-  const custom = useThemeStore((s) => s.custom);
+  const looks = useThemeStore((s) => s.looks);
+  const tweaked = useLookTweaked();
   const theme = useTheme();
   const { width } = useWindowDimensions();
-  // Past this the single column just stretches into empty space
-  const wide = width >= 900;
+  // Past this the sheet floats as a centred panel instead of a bottom sheet
+  const wide = width >= 700;
   const styles = useStyles();
 
-  const customPreview = buildCustomTheme(custom);
-  const allThemes = [...THEMES, customPreview];
+  const allThemes = [...THEMES, resolveTheme("custom", looks["custom"])];
 
   return (
     <>
@@ -58,6 +69,10 @@ export function SettingsMenu() {
           <View style={[styles.sheet, wide && styles.sheetWide]}>
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>Settings</Text>
+              <Text style={styles.sheetHint} numberOfLines={1}>
+                {theme.emoji} {theme.name}
+                {tweaked ? " (tweaked)" : ""}
+              </Text>
               <Pressable
                 onPress={() => setOpen(false)}
                 label="Close settings"
@@ -66,58 +81,75 @@ export function SettingsMenu() {
                 <Text style={styles.closeIcon}>✕</Text>
               </Pressable>
             </View>
-            <Text style={styles.sheetHint}>
-              Current: {theme.emoji} {theme.name} — tap around, it applies live
-            </Text>
 
-            <ScrollView style={styles.list} contentContainerStyle={styles.listInner}>
-              <View style={wide ? styles.columns : undefined}>
-                <View style={wide ? styles.column : undefined}>
-              <Text style={styles.groupTitle}>Theme</Text>
-              {allThemes.map((t) => {
-                const selected = t.id === themeId;
-                return (
-                  <React.Fragment key={t.id}>
-                    <Pressable
-                      onPress={() => setTheme(t.id)}
-                      label={`Switch to ${t.name} theme`}
-                      style={[styles.themeRow, selected && styles.themeRowSelected]}
-                    >
-                      <Text style={styles.themeEmoji}>{t.emoji}</Text>
-                      <View style={styles.themeInfo}>
-                        <Text style={styles.themeName}>{t.name}</Text>
-                        <Text style={styles.themeTagline} numberOfLines={1}>
-                          {t.tagline}
-                        </Text>
-                      </View>
-                      <View style={styles.swatches}>
-                        {[t.colors.bgPrimary, t.colors.accent, t.colors.warning].map(
-                          (c, i) => (
-                            <View
-                              key={i}
-                              style={[styles.swatch, { backgroundColor: c }]}
-                            />
-                          ),
-                        )}
-                      </View>
-                      {selected && <Text style={styles.check}>✓</Text>}
-                    </Pressable>
-                    {t.id === CUSTOM_THEME_ID && themeId === CUSTOM_THEME_ID && (
-                      <CustomThemeEditor />
-                    )}
-                  </React.Fragment>
-                );
-              })}
+            <View style={styles.tabRow}>
+              {TABS.map((t) => (
+                <Pressable
+                  key={t.id}
+                  onPress={() => setTab(t.id)}
+                  label={`Open the ${t.id} settings tab`}
+                  style={[styles.tab, tab === t.id && styles.tabActive]}
+                >
+                  <Text
+                    style={[styles.tabText, tab === t.id && styles.tabTextActive]}
+                  >
+                    {t.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
 
-                </View>
+            <ScrollView
+              style={styles.list}
+              contentContainerStyle={styles.listInner}
+            >
+              {tab === "look" && (
+                <>
+                  <Text style={styles.groupTitle}>
+                    Every theme is a preset — switch, tweak anything below,
+                    reset any time.
+                  </Text>
+                  <View style={styles.themeGrid}>
+                    {allThemes.map((t) => {
+                      const selected = t.id === themeId;
+                      const isTweaked = t.id in looks;
+                      return (
+                        <Pressable
+                          key={t.id}
+                          onPress={() => setTheme(t.id)}
+                          label={`Switch to ${t.name} theme`}
+                          style={[
+                            styles.themeCard,
+                            selected && styles.themeCardSelected,
+                          ]}
+                        >
+                          <Text style={styles.themeEmoji}>{t.emoji}</Text>
+                          <Text style={styles.themeName} numberOfLines={1}>
+                            {t.name}
+                            {isTweaked ? " ·" : ""}
+                          </Text>
+                          <View
+                            style={[
+                              styles.themeDot,
+                              { backgroundColor: t.colors.accent },
+                            ]}
+                          />
+                        </Pressable>
+                      );
+                    })}
+                  </View>
 
-                <View style={wide ? styles.column : undefined}>
-                  {!wide && <Divider />}
+                  <ThemeEditor />
+                </>
+              )}
+
+              {tab === "trip" && <TripZone />}
+
+              {tab === "system" && (
+                <>
                   <EffectSettings />
-
                   <Divider />
                   <TextSettings />
-
                   <Divider />
                   <Pressable
                     onPress={() => {
@@ -129,8 +161,8 @@ export function SettingsMenu() {
                   >
                     <Text style={styles.aboutLink}>ℹ️  Info & Licenses</Text>
                   </Pressable>
-                </View>
-              </View>
+                </>
+              )}
             </ScrollView>
           </View>
         </View>
@@ -167,43 +199,41 @@ const useStyles = createThemedStyles((COLORS) =>
       justifyContent: "flex-end",
     },
     sheet: {
-      maxHeight: "85%",
+      maxHeight: "88%",
       backgroundColor: COLORS.bgPrimary,
       borderTopLeftRadius: RADIUS.xl,
       borderTopRightRadius: RADIUS.xl,
       borderWidth: 1,
       borderColor: COLORS.border,
       padding: SPACE.xl,
-      gap: SPACE.sm,
-      // Wide screens: a centred panel instead of a full-width sheet, or the
-      // rows stretch to 1700px and the eye has nothing to hold on to
+      gap: SPACE.md,
       width: "100%",
-      maxWidth: 1180,
+      // One column with tabs — the old 1180px two-column layout was exactly
+      // the "zu viel leere fläche" complaint
+      maxWidth: 680,
       alignSelf: "center",
     },
     sheetWide: {
       borderRadius: RADIUS.xl,
       marginBottom: SPACE.xl,
-      maxHeight: "90%",
-    },
-    columns: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      gap: SPACE["2xl"],
-    },
-    column: {
-      flex: 1,
-      gap: SPACE.sm,
+      maxHeight: "92%",
     },
     sheetHeader: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
+      gap: SPACE.md,
     },
     sheetTitle: {
       ...LABEL_STYLE,
       color: COLORS.textSecondary,
       fontSize: FONT.size.base,
+    },
+    sheetHint: {
+      flex: 1,
+      fontSize: FONT.size.sm,
+      color: COLORS.textSecondary,
+      opacity: 0.8,
+      textAlign: "right",
     },
     closeBtn: {
       minWidth: 36,
@@ -215,67 +245,78 @@ const useStyles = createThemedStyles((COLORS) =>
       fontSize: FONT.size.lg,
       color: COLORS.textSecondary,
     },
-    sheetHint: {
-      fontSize: FONT.size.sm,
+    tabRow: {
+      flexDirection: "row",
+      gap: SPACE.sm,
+    },
+    tab: {
+      flex: 1,
+      minHeight: 40,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: RADIUS.md,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    tabActive: {
+      borderColor: COLORS.accent,
+      backgroundColor: COLORS.accentLight,
+    },
+    tabText: {
+      ...LABEL_STYLE,
       color: COLORS.textSecondary,
-      opacity: 0.8,
+    },
+    tabTextActive: {
+      color: COLORS.accent,
     },
     list: {
       flexGrow: 0,
     },
     listInner: {
-      gap: SPACE.sm,
+      gap: SPACE.md,
       paddingVertical: SPACE.sm,
     },
     groupTitle: {
-      ...LABEL_STYLE,
+      fontSize: FONT.size.sm,
       color: COLORS.textSecondary,
+      lineHeight: 18,
     },
-    themeRow: {
+    themeGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: SPACE.sm,
+    },
+    themeCard: {
       flexDirection: "row",
       alignItems: "center",
-      gap: SPACE.md,
-      padding: SPACE.md,
+      gap: SPACE.xs,
+      paddingVertical: SPACE.xs,
+      paddingHorizontal: SPACE.sm,
       borderRadius: RADIUS.md,
       borderWidth: 1,
       borderColor: COLORS.border,
       backgroundColor: COLORS.bgCard,
+      minHeight: 40,
     },
-    themeRowSelected: {
+    themeCardSelected: {
       borderColor: COLORS.accent,
       backgroundColor: COLORS.bgElevated,
     },
     themeEmoji: {
-      fontSize: FONT.size["2xl"],
-    },
-    themeInfo: {
-      flex: 1,
-      gap: 1,
+      fontSize: FONT.size.md,
     },
     themeName: {
-      fontSize: FONT.size.md,
+      fontSize: FONT.size.sm,
       fontWeight: FONT.weight.semibold,
       color: COLORS.textPrimary,
+      maxWidth: 90,
     },
-    themeTagline: {
-      fontSize: FONT.size.sm,
-      color: COLORS.textSecondary,
-    },
-    swatches: {
-      flexDirection: "row",
-      gap: 4,
-    },
-    swatch: {
-      width: 16,
-      height: 16,
-      borderRadius: 8,
+    themeDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
       borderWidth: 1,
       borderColor: "rgba(127, 127, 127, 0.4)",
-    },
-    check: {
-      fontSize: FONT.size.lg,
-      color: COLORS.accent,
-      fontWeight: FONT.weight.bold,
     },
     aboutBtn: {
       minHeight: 40,

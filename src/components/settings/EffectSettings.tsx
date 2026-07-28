@@ -11,10 +11,11 @@ import {
   CUSTOM_SPEED_ID,
   EFFECT_SPEEDS,
   getEffectSpeed,
+  MAX_BPM,
   MAX_FACTOR,
+  MIN_BPM,
   MIN_FACTOR,
 } from "@/theme/effectTempo";
-import { CUSTOM_THEME_ID } from "@/theme/customTheme";
 import { SHADER_QUALITIES } from "@/theme/shader/quality";
 import { createThemedStyles, useTheme } from "@/theme/themedStyles";
 import { haptics } from "@/hooks/useHaptics";
@@ -34,11 +35,9 @@ export function EffectSettings() {
   const setShaderQuality = useThemeStore((s) => s.setShaderQuality);
   const bpm = useThemeStore((s) => s.effectBpm);
   const factor = useThemeStore((s) => s.effectFactor);
-  const meltIntensity = useThemeStore((s) => s.meltIntensity);
   const setEffectSpeed = useThemeStore((s) => s.setEffectSpeed);
   const setEffectBpm = useThemeStore((s) => s.setEffectBpm);
   const setEffectFactor = useThemeStore((s) => s.setEffectFactor);
-  const setMeltIntensity = useThemeStore((s) => s.setMeltIntensity);
 
   const taps = useRef<number[]>([]);
   const [tapCount, setTapCount] = useState(0);
@@ -67,9 +66,11 @@ export function EffectSettings() {
   );
 
   const fx = theme.effects;
+  // Quality is a device dial and always shows; the tempo section only
+  // matters while something actually animates
   const animated =
-    fx.rainbow || fx.swirl || fx.pulse || fx.melt || fx.floaties !== null;
-  if (!animated) return null;
+    fx.rainbow || fx.swirl || fx.pulse || fx.melt || fx.floaties !== null ||
+    fx.shader !== null;
 
   const bpmMode = speedId === BPM_SPEED_ID;
   // The slider always shows the effective factor; dragging it switches to
@@ -85,7 +86,6 @@ export function EffectSettings() {
     <View style={styles.container}>
       {Platform.OS === "web" && (
         <>
-          <Divider />
           <Text style={styles.sectionTitle}>Shader quality</Text>
           <View style={styles.chipRow}>
             {SHADER_QUALITIES.map((q) => (
@@ -104,6 +104,8 @@ export function EffectSettings() {
         </>
       )}
 
+      {animated && (
+      <>
       <Divider />
       <Text style={styles.sectionTitle}>Effect speed</Text>
       <View style={styles.chipRow}>
@@ -120,50 +122,33 @@ export function EffectSettings() {
       <View style={styles.sliderRow}>
         <Text style={styles.sliderEdge}>🐌</Text>
         <View style={styles.sliderTrack}>
-          <Slider
-            value={sliderValue}
-            min={MIN_FACTOR}
-            max={MAX_FACTOR}
-            step={0.05}
-            onValueChange={setEffectFactor}
-            label="Effect animation speed"
-          />
+          {/* In BPM mode the slider IS the BPM — dragging it must not silently
+              kick you back into custom-factor mode */}
+          {bpmMode ? (
+            <Slider
+              value={bpm}
+              min={MIN_BPM}
+              max={MAX_BPM}
+              step={1}
+              onValueChange={setEffectBpm}
+              label="Beats per minute"
+            />
+          ) : (
+            <Slider
+              value={sliderValue}
+              min={MIN_FACTOR}
+              max={MAX_FACTOR}
+              step={0.05}
+              onValueChange={setEffectFactor}
+              label="Effect animation speed"
+            />
+          )}
         </View>
         <Text style={styles.sliderEdge}>🚀</Text>
         <Text style={styles.sliderValue}>
-          {sliderValue.toFixed(2).replace(/0$/, "")}×
+          {bpmMode ? `${bpm}` : `${sliderValue.toFixed(2).replace(/0$/, "")}×`}
         </Text>
       </View>
-
-      {/* Melt intensity — web-only; for the custom theme the editor owns it */}
-      {theme.effects.melt &&
-        theme.id !== CUSTOM_THEME_ID &&
-        Platform.OS === "web" && (
-        <>
-          <Text style={styles.sectionTitle}>🫠 Melt</Text>
-          <View style={styles.sliderRow}>
-            <Text style={styles.sliderEdge}>🧊</Text>
-            <View style={styles.sliderTrack}>
-              <Slider
-                value={meltIntensity}
-                min={0}
-                max={1}
-                step={0.05}
-                onValueChange={setMeltIntensity}
-                label="Melt intensity"
-              />
-            </View>
-            <Text style={styles.sliderEdge}>🫠</Text>
-            <Text style={styles.sliderValue}>
-              {Math.round(meltIntensity * 100)}%
-            </Text>
-          </View>
-          <Text style={styles.hint}>
-            Liquefies the whole screen. Not on Safari, not with
-            reduced-motion enabled.
-          </Text>
-        </>
-      )}
 
       {bpmMode && (
         <View style={styles.bpmBox}>
@@ -185,10 +170,12 @@ export function EffectSettings() {
             </Text>
           </Pressable>
           <Text style={styles.hint}>
-            Tap along with the song — rainbow, swirl and pulse lock onto the
-            beat.
+            Tap along with the song — rainbow, swirl, pulse and the shader all
+            lock onto the beat.
           </Text>
         </View>
+      )}
+      </>
       )}
     </View>
   );

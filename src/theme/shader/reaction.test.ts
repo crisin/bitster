@@ -1,6 +1,6 @@
 import type { GamePulse } from "@/hooks/useGamePulse";
 import { describe, expect, it } from "vitest";
-import { FLASH_MS, reactToGame } from "./reaction";
+import { CLICK_MS, FLASH_MS, pointerUniform, reactToGame } from "./reaction";
 
 const NOW = 1_700_000_000_000;
 
@@ -65,6 +65,24 @@ describe("shader reaction", () => {
   it("ignores a verdict that is somehow in the future", () => {
     const out = reactToGame(pulse({ result: -1, resultAt: NOW + 5_000 }), BASE);
     expect(out.accent).toEqual([...BASE.accent]);
+  });
+
+  it("maps the pointer to the uniform contract", () => {
+    const state = { x: 0.2, y: 0.8, clickAt: NOW, active: true };
+    // Fresh click = full impulse
+    expect(pointerUniform(state, NOW)).toEqual([0.2, 0.8, 1, 1]);
+    // Decays over CLICK_MS and stops exactly at the end
+    const mid = pointerUniform(state, NOW + CLICK_MS / 2)[2];
+    expect(mid).toBeGreaterThan(0);
+    expect(mid).toBeLessThan(1);
+    expect(pointerUniform(state, NOW + CLICK_MS)[2]).toBe(0);
+    // Never clicked and future clicks contribute nothing
+    expect(pointerUniform({ ...state, clickAt: 0 }, NOW)[2]).toBe(0);
+    expect(pointerUniform({ ...state, clickAt: NOW + 5000 }, NOW)[2]).toBe(0);
+    // Off-screen pointer flags w = 0 but keeps its last position
+    expect(pointerUniform({ ...state, active: false }, NOW)).toEqual([
+      0.2, 0.8, 1, 0,
+    ]);
   });
 
   it("never animates when the player asked for no motion", () => {

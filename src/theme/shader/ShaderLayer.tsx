@@ -1,14 +1,14 @@
 import type { GamePulse } from "@/hooks/useGamePulse";
-import type { ShaderPresetId } from "./presets";
 
 export interface ShaderLayerProps {
-  preset: ShaderPresetId;
+  preset: string;
   accent: string;
   intensity: number;
   renderScale: number;
   factor: number;
   bpm: number | null;
   pulse: GamePulse;
+  guard: boolean;
 }
 
 /**

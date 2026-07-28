@@ -14,7 +14,7 @@ import { useGamePulse } from "@/hooks/useGamePulse";
 import { ShaderLayer } from "./shader/ShaderLayer";
 import { getShaderScale } from "./shader/quality";
 import { MeltEffect } from "./MeltEffect";
-import { useThemeStore } from "./store";
+import { useCurrentLook, useThemeStore } from "./store";
 import { useTheme } from "./themedStyles";
 
 const NATIVE_DRIVER = Platform.OS !== "web";
@@ -333,11 +333,16 @@ function expandFloaties(floaties: string[]): string[] {
 export function ThemeOverlay() {
   const theme = useTheme();
   const tempo = useEffectTempo();
-  const meltIntensity = useThemeStore((s) => s.meltIntensity);
-  const warpIntensity = useThemeStore((s) => s.warpIntensity);
-  const flashlightIntensity = useThemeStore((s) => s.flashlightIntensity);
-  const clickGlitchIntensity = useThemeStore((s) => s.clickGlitchIntensity);
-  const shaderIntensity = useThemeStore((s) => s.shaderIntensity);
+  // Every dial is part of the per-theme look now — one selector for all
+  const look = useCurrentLook();
+  const {
+    meltIntensity,
+    warpIntensity,
+    flashlightIntensity,
+    clickGlitchIntensity,
+    shaderIntensity,
+    shaderGuard,
+  } = look;
   // The only thing the effect layer knows about the game — three numbers
   const pulse = useGamePulse();
   const shaderQualityId = useThemeStore((s) => s.shaderQualityId);
@@ -381,6 +386,7 @@ export function ThemeOverlay() {
           factor={tempo.factor}
           bpm={tempo.bpm}
           pulse={pulse}
+          guard={shaderGuard}
         />
       )}
       {fx.melt && (

@@ -15,6 +15,43 @@ import type { GamePulse } from "@/hooks/useGamePulse";
 /** How long a right/wrong verdict keeps colouring the screen */
 export const FLASH_MS = 900;
 
+/** How long a click/tap keeps punching the shaders */
+export const CLICK_MS = 600;
+
+/** What the layer tracks about the pointer — written by listeners, read per frame */
+export interface PointerState {
+  /** 0..1 from the left edge */
+  x: number;
+  /** 0..1 from the BOTTOM — GL's convention, so shaders subtract directly */
+  y: number;
+  /** Epoch ms of the last click/tap, 0 = never */
+  clickAt: number;
+  /** Pointer is currently on the screen */
+  active: boolean;
+}
+
+export const IDLE_POINTER: PointerState = {
+  x: 0.5,
+  y: 0.5,
+  clickAt: 0,
+  active: false,
+};
+
+/**
+ * The u_pointer uniform: xy = position, z = click impulse decaying 1→0,
+ * w = 1 while the pointer is on screen. Pure for the same reason the game
+ * reaction is — this is behaviour, and behaviour gets tests.
+ */
+export function pointerUniform(
+  pointer: PointerState,
+  now: number,
+): [number, number, number, number] {
+  const age = pointer.clickAt === 0 ? Infinity : now - pointer.clickAt;
+  const click =
+    age >= CLICK_MS || age < 0 ? 0 : Math.pow(1 - age / CLICK_MS, 2);
+  return [pointer.x, pointer.y, click, pointer.active ? 1 : 0];
+}
+
 const RIGHT_TINT: readonly [number, number, number] = [0.25, 1, 0.55];
 const WRONG_TINT: readonly [number, number, number] = [1, 0.25, 0.3];
 

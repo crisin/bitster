@@ -31,68 +31,9 @@ export function isShaderPresetId(value: unknown): value is ShaderPresetId {
   return SHADER_PRESETS.some((p) => p.id === value);
 }
 
-export const VERTEX_SHADER = `
-attribute vec2 a_pos;
-void main() {
-  gl_Position = vec4(a_pos, 0.0, 1.0);
-}
-`;
-
-/**
- * Shared prelude: uniforms plus value noise and fbm.
- *
- * u_game is reserved for the second stage (phase, countdown, last result) —
- * declared now so adding it later needs no change to the runtime contract.
- */
-const PRELUDE = `
-precision highp float;
-
-uniform vec2  u_res;
-uniform float u_time;
-/** 0..1 sawtooth that resets on every beat — 0 when no tempo is tapped in */
-uniform float u_beat;
-/** 0..1, straight from the intensity dial */
-uniform float u_intensity;
-uniform vec3  u_accent;
-/** Reserved for game state: x = phase, y = urgency, z = last result */
-uniform vec3  u_game;
-
-float hash(vec2 p) {
-  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-}
-
-float noise(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
-  // Smoothstep the cell coordinates — the difference between "organic" and
-  // "a grid of squares"
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(
-    mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
-    mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
-    u.y
-  );
-}
-
-float fbm(vec2 p) {
-  float sum = 0.0;
-  float amp = 0.5;
-  for (int i = 0; i < 4; i++) {
-    sum += amp * noise(p);
-    p *= 2.02;
-    amp *= 0.5;
-  }
-  return sum;
-}
-
-/** Screen-space coordinates centred on 0, aspect-correct */
-vec2 centred() {
-  return (gl_FragCoord.xy - 0.5 * u_res) / min(u_res.x, u_res.y);
-}
-`;
+export { VERTEX_SHADER } from "./prelude";
 
 const KALEIDO = `
-${PRELUDE}
 void main() {
   vec2 uv = centred();
   float r = length(uv);
@@ -120,7 +61,6 @@ void main() {
 `;
 
 const PLASMA = `
-${PRELUDE}
 void main() {
   vec2 p = centred() * (1.2 + u_intensity);
 
@@ -141,7 +81,6 @@ void main() {
 `;
 
 const TUNNEL = `
-${PRELUDE}
 void main() {
   vec2 uv = centred();
   float r = max(length(uv), 0.04);
@@ -170,7 +109,6 @@ void main() {
 `;
 
 const AURORA = `
-${PRELUDE}
 void main() {
   vec2 uv = centred();
   // Vertical curtains that drift and shear sideways
@@ -200,7 +138,6 @@ void main() {
  * schedule, all of them slamming together on the beat.
  */
 const DISCOFLOOR = `
-${PRELUDE}
 void main() {
   vec2 uv = centred();
   float horizon = 0.14;
@@ -242,7 +179,6 @@ void main() {
 
 /** Stars streaking past. Speed is the beat, so the drop feels like a jump. */
 const HYPERSPACE = `
-${PRELUDE}
 void main() {
   vec2 uv = centred();
   float r = length(uv);
@@ -285,7 +221,6 @@ void main() {
  * that answers "how far is the nearest surface from here".
  */
 const BLOBS = `
-${PRELUDE}
 
 float sdSphere(vec3 p, float r) { return length(p) - r; }
 
@@ -363,7 +298,6 @@ void main() {
  * cells — organic in a way noise never manages, because it has structure.
  */
 const CELLS = `
-${PRELUDE}
 void main() {
   vec2 p = centred() * (2.0 + u_intensity * 3.0);
   vec2 base = floor(p);
@@ -401,7 +335,6 @@ void main() {
 
 /** Shockwaves fired on the beat, interfering with each other as they spread */
 const RIPPLE = `
-${PRELUDE}
 void main() {
   vec2 uv = centred();
   float r = length(uv);
@@ -431,7 +364,6 @@ void main() {
 
 /** Chrome sun over an endless grid — the whole 80s in twenty lines */
 const VAPORWAVE = `
-${PRELUDE}
 void main() {
   vec2 uv = centred();
   float horizon = 0.0;
@@ -468,7 +400,6 @@ void main() {
  * burst's age runs 0→1.
  */
 const FIREWORKS = `
-${PRELUDE}
 
 vec3 burst(vec2 uv, float id, float age, float sparks) {
   vec2 centre = vec2(hash(vec2(id, 1.0)) - 0.5, hash(vec2(id, 7.3)) * 0.55 - 0.2);
@@ -511,7 +442,6 @@ void main() {
  * vertical axis at two frequencies — coarse for the path, fine for the crackle.
  */
 const STORM = `
-${PRELUDE}
 
 float bolt(vec2 uv, float seed, float front) {
   float x = uv.x - (hash(vec2(seed, 1.0)) - 0.5) * 1.2;

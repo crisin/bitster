@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useThemeStore } from "./store";
-import { buildCustomTheme, CUSTOM_THEME_ID } from "./customTheme";
-import { getTheme, THEMES, type Theme, type ThemeColors } from "./themes";
+import { resolveTheme } from "./look";
+import type { Theme, ThemeColors } from "./themes";
 import {
   getBrowserFontScale,
   getFontOption,
@@ -9,14 +9,14 @@ import {
   type FontOption,
 } from "./typography";
 
-/** The currently selected theme (reactive, including the custom theme) */
+/**
+ * The currently selected theme (reactive). Every theme resolves through the
+ * same path now — preset plus the user's per-theme look, if any.
+ */
 export function useTheme(): Theme {
   const themeId = useThemeStore((s) => s.themeId);
-  const custom = useThemeStore((s) => s.custom);
-  return useMemo(() => {
-    if (themeId === CUSTOM_THEME_ID) return buildCustomTheme(custom);
-    return getTheme(themeId) ?? THEMES[0];
-  }, [themeId, custom]);
+  const look = useThemeStore((s) => s.looks[s.themeId]);
+  return useMemo(() => resolveTheme(themeId, look), [themeId, look]);
 }
 
 /** Just the palette — for inline color props outside of StyleSheets */
@@ -90,10 +90,12 @@ export function createThemedStyles<T>(
     const fontScaleId = useThemeStore((s) => s.fontScaleId);
     const fontId = useThemeStore((s) => s.fontId);
 
-    const themeKey =
-      theme.id === CUSTOM_THEME_ID
-        ? `${CUSTOM_THEME_ID}:${JSON.stringify(useThemeStore.getState().custom)}`
-        : theme.id;
+    // Any theme can carry a look now, so any theme can change its palette.
+    // Only accent/base move colors — keying on them keeps the cache small.
+    const look = useThemeStore.getState().looks[theme.id];
+    const themeKey = look
+      ? `${theme.id}:${look.accent ?? ""}:${look.base}:${look.effects.glow ? 1 : 0}${look.effects.blur ? 1 : 0}`
+      : theme.id;
     const key = `${themeKey}|${fontScaleId}|${fontId}`;
 
     const cached = cache.get(key);

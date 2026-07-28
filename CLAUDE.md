@@ -88,17 +88,23 @@ src/
     store.ts                  # Zustand – passiver Mirror des GameState-Broadcasts
 
   theme/                      # === Themes + Effekte ===
-    themes.ts                 # Built-in Themes (inkl. Trippy/Tadi), ThemeEffects
-    customTheme.ts            # User-Theme (Basis + Akzent + Effekt-Toggles)
+    themes.ts                 # Built-in Theme-PALETTEN + ThemeEffects (Presets)
+    look.ts                   # ThemeLook: pro Theme einstellbar, presetLookFor/resolveTheme
+    customTheme.ts            # Helfer: Akzent-Swatches, normalizeHex, Floatie-Würfel
     effectTempo.ts            # Effekt-Geschwindigkeit: Presets, Slider-Faktor, Tap-Tempo-BPM
-    store.ts                  # Zustand – Theme/Font/Textgröße/Effect-Speed (persistiert)
+    store.ts                  # Zustand – themeId, looks (pro Theme!), tripMode, Global-Dials
     themedStyles.ts           # createThemedStyles/useTheme/useThemeColors
     ThemeOverlay.tsx          # Effekt-Layer (Rainbow, Swirl, Pulse, Floaties, …)
     PointerEffects.tsx        # Maus-Effekte: Warp-Linse, Taschenlampe, Klick-Glitch (Web)
-    shader/                   # Fullscreen-Fragment-Shader (Web; nativ = Stub)
-      presets.ts              # GLSL: 12 Presets (Kaleidoskop, Plasma, Tunnel, … Fireworks, Storm)
+    shader/                   # Fullscreen-Shader (Web; nativ = Stub)
+      prelude.ts              # Geteiltes GLSL-Substrat (Uniforms, hash/noise/fbm)
+      presets.ts              # 12 Single-Pass-Presets als GLSL-Bodies
+      advanced.ts             # Trip-Presets: Wormhole, Acid (RD), Mandelbulb, Ink Flow
+      engine/                 # Multi-Pass-Engine: types + compile (PUR) + engine.web
+      studio.ts               # Zustand – User-Shader (lokal, NIE über die Leitung)
+      resolve.ts              # Ein Id-Raum: simple | trip | user:<id> → EffectSpec
       reaction.ts             # PUR: Spielzustand → Shader-Uniforms (Countdown, Verdikt)
-      ShaderLayer.web.tsx     # Canvas + WebGL-Runtime, rAF, Context-Loss
+      ShaderLayer.web.tsx     # Canvas, rAF, Context-Loss; treibt die Engine
       quality.ts              # Auflösungsstufen (der große Performance-Hebel)
     typography.ts             # Font-Optionen + Skalierung
 
@@ -112,7 +118,8 @@ src/
       phases/                 # LobbyView, PlayingView, BitsterWindowView, RevealView, FinishedView
     lobby/                    # RoomCode, GameSettings, PlayerSlot
     streaming/                # ConnectButton, DeviceSelector, ConnectionCheck
-    settings/                 # SettingsMenu, CustomThemeEditor, EffectSettings, TextSettings
+    settings/                 # SettingsMenu (Tabs Look/Trip/System), ThemeEditor,
+                              # TripZone (Consent-Modal), ShaderStudio, EffectSettings, TextSettings
 
   hooks/                      # useHaptics, useConnectionStatus, useCurrentPlayer, useGamePulse
   utils/                      # constants.ts (Design-Tokens), roomCode.ts, logger.ts
@@ -224,6 +231,48 @@ Dieses Projekt wird **vollständig KI-gestützt** entwickelt. Keine manuellen Ze
   (keine Component-Tests aktuell)
 - **P2P Messages:** Typisierte Actions mit discriminated unions, Wire-Input IMMER durch `validateAction`
 - **Design-Direktive:** ABFAHRT — Party-App, im Zweifel die verspieltere Variante (Effekte hinter `ThemeEffects`-Flags, Layer bleibt `pointerEvents="none"`)
+
+## Themes & Effekte
+
+**Themes sind Presets** — dieselbe Entscheidung wie bei den Spielmodi: jedes
+Theme ist ein benannter Punkt in einem gemeinsamen Config-Raum (`ThemeLook`),
+und JEDES Theme ist voll einstellbar (Akzent, Effekt-Toggles, Shader,
+Intensitäten). Änderungen landen pro Theme in `store.looks[themeId]`; Reset =
+Eintrag löschen, das Preset scheint wieder durch. Der aktive Look wird über
+`resolveTheme(themeId, look)` aufgelöst — `buildCustomTheme` war nur der
+Spezialfall `custom` und ist darin aufgegangen. Global (bewusst NICHT pro
+Theme): Effekt-Tempo (gehört zum Song), Shader-Quality (gehört zur GPU),
+Font/Textgröße (gehört dem Leser).
+
+**Shader laufen durch EINE Multi-Pass-Engine** (`shader/engine/`):
+Shadertoy-artiges Modell aus Passes mit benannten Buffern, Ping-Pong-Feedback
+(`u_prev`), Iterationen pro Frame und Half-Float-Sim-Buffern (Byte-Fallback).
+Die 12 einfachen Presets sind der Trivialfall (1 Pass → screen). Der pure Teil
+(`compile.ts`: Validierung, GLSL-Assembly, Fehlerzeilen-Mapping) ist getestet;
+`engine.web.ts` führt nur aus. Preset-Quellen sind GLSL-**Bodies** — das
+Prelude (`prelude.ts`) prependet ausschließlich der Assembler, sonst
+Redefinition-Fehler.
+
+**Lesbarkeits-Guard:** `withGuard()` leitet den Screen-Pass in einen Buffer um
+und hängt einen Reinhard-Tonemap an, der Highlights komprimiert — heller
+Shader unter weißem Text war das „ich kann die Lobby nicht lesen"-Problem.
+Pro Theme abschaltbar (`shaderGuard`), Default an.
+
+**Interaktiv:** Alle Passes bekommen `u_pointer` (xy = Maus/Finger 0..1 mit
+GL-y, z = Klick-Impuls 1→0, w = on-screen) — getrackt im Layer per Ref, nie
+über React-State. Ein Klick spiked zusätzlich global `u_beat`, dadurch punchen
+ALLE Beat-reaktiven Presets beim Tap, ohne den Pointer zu kennen. Die vier
+Trip-Presets nutzen die Position direkt (Wormhole-Zentrum folgt, Acid-Klick
+sät Kolonien, Mandelbulb-Kamera dreht mit, Ink-Pointer schreibt).
+
+**Trip-Mode** (`tripMode` im Store) schaltet die Advanced-Presets
+(`advanced.ts`) und das Shader Studio frei — hinter einem Consent-Modal
+(„Kommste mit aufn Trip?" → mimimi/ABFAHRT), wegen Blitz-Effekten und
+GPU-Last. Trip aus = alle Trip-/User-Shader werden aus den Looks entfernt.
+**User-Shader** (Studio) sind lokal, laufen nur auf dem eigenen Gerät und
+gehen NIE über die Leitung — GLSL von Fremden erreicht nie fremde GPUs.
+Live-Compile prüft gegen einen versteckten 1×1-Kontext; Fehlerzeilen zeigen
+auf die Zeilen des Autors (Offset-Mapping in `compile.ts`).
 
 ## Spielablauf
 

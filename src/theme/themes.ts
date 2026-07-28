@@ -1,5 +1,4 @@
 import { COLORS } from "@/utils/constants";
-import type { ShaderPresetId } from "./shader/presets";
 
 /** Same shape as the classic palette — every theme swaps all of these */
 export type ThemeColors = { [K in keyof typeof COLORS]: string };
@@ -33,8 +32,12 @@ export interface ThemeEffects {
   flashlight: boolean;
   /** Tear-bar burst on every click (web only) */
   clickGlitch: boolean;
-  /** Full-screen fragment shader preset, null = none (web only) */
-  shader: ShaderPresetId | null;
+  /**
+   * Full-screen shader id, null = none (web only). A plain string rather than
+   * the preset union: trip presets and user shaders ("user:<id>") flow through
+   * here too, and the layer resolves — unknown ids render nothing.
+   */
+  shader: string | null;
 }
 
 export interface Theme {

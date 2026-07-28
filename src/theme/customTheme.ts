@@ -1,59 +1,10 @@
-import { getTheme, type Theme, type ThemeEffects } from "./themes";
-import { isShaderPresetId } from "./shader/presets";
-
 /**
- * User-defined theme: a dark or light base palette, a free accent color and
- * hand-picked effects. Persisted in the theme store, rendered through the
- * exact same Theme shape as the built-in looks.
+ * Helpers for the user-adjustable side of theming. The actual per-theme
+ * config shape and resolution live in look.ts — since themes became presets,
+ * "custom" is just the one preset without a palette of its own.
  */
-export interface CustomThemeConfig {
-  base: "dark" | "light";
-  /** Hex accent color (#rgb or #rrggbb) */
-  accent: string;
-  effects: {
-    glow: boolean;
-    blur: boolean;
-    pulse: boolean;
-    rainbow: boolean;
-    swirl: boolean;
-    melt: boolean;
-    glitch: boolean;
-    flicker: boolean;
-    scanlines: boolean;
-    vignette: boolean;
-    /** Raw emoji string, split into individual floaties ("" = none) */
-    floaties: string;
-    cursorWarp: boolean;
-    flashlight: boolean;
-    clickGlitch: boolean;
-    /** Shader preset id, "" = none */
-    shader: string;
-  };
-}
 
 export const CUSTOM_THEME_ID = "custom";
-
-export const DEFAULT_CUSTOM_CONFIG: CustomThemeConfig = {
-  base: "dark",
-  accent: "#c9485b",
-  effects: {
-    glow: false,
-    blur: false,
-    pulse: false,
-    rainbow: false,
-    swirl: false,
-    melt: false,
-    glitch: false,
-    flicker: false,
-    scanlines: false,
-    vignette: false,
-    floaties: "",
-    cursorWarp: false,
-    flashlight: false,
-    clickGlitch: false,
-    shader: "",
-  },
-};
 
 /** Accent swatches offered in the editor (free hex input works too) */
 export const ACCENT_PRESETS = [
@@ -80,13 +31,6 @@ export function normalizeHex(input: string): string | null {
     return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
   }
   return null;
-}
-
-function hexToRgba(hex: string, alpha: number): string {
-  const r = Number.parseInt(hex.slice(1, 3), 16);
-  const g = Number.parseInt(hex.slice(3, 5), 16);
-  const b = Number.parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 /**
@@ -122,7 +66,7 @@ export function randomFloaties(): string {
 }
 
 /** Split an emoji string into individual floaties (max 6) */
-function parseFloaties(raw: string): string[] | null {
+export function parseFloaties(raw: string): string[] | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
   let parts: string[];
@@ -135,45 +79,4 @@ function parseFloaties(raw: string): string[] | null {
   }
   const emojis = parts.filter((p) => p.trim().length > 0).slice(0, 6);
   return emojis.length > 0 ? emojis : null;
-}
-
-export function buildCustomTheme(config: CustomThemeConfig): Theme {
-  // Reuse the two most neutral built-ins as base palettes
-  const base = getTheme(config.base === "light" ? "minimal" : "classic")!;
-  const accent = normalizeHex(config.accent) ?? base.colors.accent;
-
-  const effects: ThemeEffects = {
-    glow: config.effects.glow,
-    blur: config.effects.blur,
-    pulse: config.effects.pulse,
-    rainbow: config.effects.rainbow,
-    swirl: config.effects.swirl,
-    melt: config.effects.melt,
-    glitch: config.effects.glitch,
-    flicker: config.effects.flicker,
-    scanlines: config.effects.scanlines,
-    vignette: config.effects.vignette,
-    floaties: parseFloaties(config.effects.floaties),
-    cursorWarp: config.effects.cursorWarp,
-    flashlight: config.effects.flashlight,
-    clickGlitch: config.effects.clickGlitch,
-    shader: isShaderPresetId(config.effects.shader)
-      ? config.effects.shader
-      : null,
-  };
-
-  return {
-    id: CUSTOM_THEME_ID,
-    name: "Custom",
-    emoji: "🎨",
-    tagline: "Your colors, your rules",
-    colors: {
-      ...base.colors,
-      accent,
-      accentLight: hexToRgba(accent, 0.13),
-      borderFocused: accent,
-    },
-    effects,
-    statusBar: base.statusBar,
-  };
 }
