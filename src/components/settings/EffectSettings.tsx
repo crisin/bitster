@@ -15,6 +15,7 @@ import {
   MIN_FACTOR,
 } from "@/theme/effectTempo";
 import { CUSTOM_THEME_ID } from "@/theme/customTheme";
+import { SHADER_QUALITIES } from "@/theme/shader/quality";
 import { createThemedStyles, useTheme } from "@/theme/themedStyles";
 import { haptics } from "@/hooks/useHaptics";
 import { FONT, RADIUS, SPACE, LABEL_STYLE, TOUCH } from "@/utils/constants";
@@ -29,6 +30,8 @@ export function EffectSettings() {
   const styles = useStyles();
   const theme = useTheme();
   const speedId = useThemeStore((s) => s.effectSpeedId);
+  const shaderQualityId = useThemeStore((s) => s.shaderQualityId);
+  const setShaderQuality = useThemeStore((s) => s.setShaderQuality);
   const bpm = useThemeStore((s) => s.effectBpm);
   const factor = useThemeStore((s) => s.effectFactor);
   const meltIntensity = useThemeStore((s) => s.meltIntensity);
@@ -80,6 +83,27 @@ export function EffectSettings() {
 
   return (
     <View style={styles.container}>
+      {Platform.OS === "web" && (
+        <>
+          <Divider />
+          <Text style={styles.sectionTitle}>Shader quality</Text>
+          <View style={styles.chipRow}>
+            {SHADER_QUALITIES.map((q) => (
+              <Chip
+                key={q.id}
+                label={q.label}
+                selected={q.id === shaderQualityId}
+                onPress={() => setShaderQuality(q.id)}
+              />
+            ))}
+          </View>
+          <Text style={styles.hint}>
+            The shader renders at a fraction of your screen and gets scaled up.
+            Drop it if the party stutters.
+          </Text>
+        </>
+      )}
+
       <Divider />
       <Text style={styles.sectionTitle}>Effect speed</Text>
       <View style={styles.chipRow}>

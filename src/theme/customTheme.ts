@@ -1,4 +1,5 @@
 import { getTheme, type Theme, type ThemeEffects } from "./themes";
+import { isShaderPresetId } from "./shader/presets";
 
 /**
  * User-defined theme: a dark or light base palette, a free accent color and
@@ -25,6 +26,8 @@ export interface CustomThemeConfig {
     cursorWarp: boolean;
     flashlight: boolean;
     clickGlitch: boolean;
+    /** Shader preset id, "" = none */
+    shader: string;
   };
 }
 
@@ -48,6 +51,7 @@ export const DEFAULT_CUSTOM_CONFIG: CustomThemeConfig = {
     cursorWarp: false,
     flashlight: false,
     clickGlitch: false,
+    shader: "",
   },
 };
 
@@ -153,6 +157,9 @@ export function buildCustomTheme(config: CustomThemeConfig): Theme {
     cursorWarp: config.effects.cursorWarp,
     flashlight: config.effects.flashlight,
     clickGlitch: config.effects.clickGlitch,
+    shader: isShaderPresetId(config.effects.shader)
+      ? config.effects.shader
+      : null,
   };
 
   return {

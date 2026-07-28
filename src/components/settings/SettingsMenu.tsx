@@ -1,5 +1,12 @@
 import React, { useState } from "react";
-import { View, Text, Modal, ScrollView, StyleSheet } from "react-native";
+import {
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { router } from "expo-router";
 import { Pressable } from "@/components/ui/Pressable";
 import { Divider } from "@/components/ui/Divider";
@@ -23,6 +30,9 @@ export function SettingsMenu() {
   const setTheme = useThemeStore((s) => s.setTheme);
   const custom = useThemeStore((s) => s.custom);
   const theme = useTheme();
+  const { width } = useWindowDimensions();
+  // Past this the single column just stretches into empty space
+  const wide = width >= 900;
   const styles = useStyles();
 
   const customPreview = buildCustomTheme(custom);
@@ -45,7 +55,7 @@ export function SettingsMenu() {
         onRequestClose={() => setOpen(false)}
       >
         <View style={styles.backdrop}>
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, wide && styles.sheetWide]}>
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>Settings</Text>
               <Pressable
@@ -61,6 +71,8 @@ export function SettingsMenu() {
             </Text>
 
             <ScrollView style={styles.list} contentContainerStyle={styles.listInner}>
+              <View style={wide ? styles.columns : undefined}>
+                <View style={wide ? styles.column : undefined}>
               <Text style={styles.groupTitle}>Theme</Text>
               {allThemes.map((t) => {
                 const selected = t.id === themeId;
@@ -97,22 +109,28 @@ export function SettingsMenu() {
                 );
               })}
 
-              <EffectSettings />
+                </View>
 
-              <Divider />
-              <TextSettings />
+                <View style={wide ? styles.column : undefined}>
+                  {!wide && <Divider />}
+                  <EffectSettings />
 
-              <Divider />
-              <Pressable
-                onPress={() => {
-                  setOpen(false);
-                  router.push("/about");
-                }}
-                label="Open info and licenses"
-                style={styles.aboutBtn}
-              >
-                <Text style={styles.aboutLink}>ℹ️  Info & Licenses</Text>
-              </Pressable>
+                  <Divider />
+                  <TextSettings />
+
+                  <Divider />
+                  <Pressable
+                    onPress={() => {
+                      setOpen(false);
+                      router.push("/about");
+                    }}
+                    label="Open info and licenses"
+                    style={styles.aboutBtn}
+                  >
+                    <Text style={styles.aboutLink}>ℹ️  Info & Licenses</Text>
+                  </Pressable>
+                </View>
+              </View>
             </ScrollView>
           </View>
         </View>
@@ -156,6 +174,25 @@ const useStyles = createThemedStyles((COLORS) =>
       borderWidth: 1,
       borderColor: COLORS.border,
       padding: SPACE.xl,
+      gap: SPACE.sm,
+      // Wide screens: a centred panel instead of a full-width sheet, or the
+      // rows stretch to 1700px and the eye has nothing to hold on to
+      width: "100%",
+      maxWidth: 1180,
+      alignSelf: "center",
+    },
+    sheetWide: {
+      borderRadius: RADIUS.xl,
+      marginBottom: SPACE.xl,
+      maxHeight: "90%",
+    },
+    columns: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: SPACE["2xl"],
+    },
+    column: {
+      flex: 1,
       gap: SPACE.sm,
     },
     sheetHeader: {

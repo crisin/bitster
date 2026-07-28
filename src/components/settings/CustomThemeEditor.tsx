@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/Input";
 import { Slider } from "@/components/ui/Slider";
 import { useThemeStore } from "@/theme/store";
 import { ACCENT_PRESETS, normalizeHex, randomFloaties } from "@/theme/customTheme";
+import { SHADER_PRESETS } from "@/theme/shader/presets";
 import { createThemedStyles } from "@/theme/themedStyles";
 import { FONT, RADIUS, SPACE, LABEL_STYLE } from "@/utils/constants";
 
@@ -32,10 +33,68 @@ const EFFECT_OPTIONS = [
 
 /** Cursor-driven effects — a touch screen has no pointer to follow */
 const POINTER_OPTIONS = [
-  { key: "cursorWarp", label: "Warp lens 🔮" },
-  { key: "flashlight", label: "Flashlight 🔦" },
-  { key: "clickGlitch", label: "Click glitch ⚡" },
+  {
+    key: "cursorWarp",
+    label: "Warp lens 🔮",
+    setting: "warpIntensity",
+    dial: "Lens size",
+    low: "🔎",
+    high: "🔮",
+  },
+  {
+    key: "flashlight",
+    label: "Flashlight 🔦",
+    setting: "flashlightIntensity",
+    dial: "Light radius",
+    low: "🕯️",
+    high: "🔦",
+  },
+  {
+    key: "clickGlitch",
+    label: "Click glitch ⚡",
+    setting: "clickGlitchIntensity",
+    dial: "Click punch",
+    low: "😌",
+    high: "⚡",
+  },
 ] as const;
+
+/** A labelled 0–100% dial, same shape as the melt slider */
+function IntensityRow({
+  title,
+  low,
+  high,
+  value,
+  onChange,
+}: {
+  title: string;
+  low: string;
+  high: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  const styles = useStyles();
+  return (
+    <>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.meltRow}>
+        <Text style={styles.meltEdge}>{low}</Text>
+        <View style={styles.meltTrack}>
+          <Slider
+            value={value}
+            min={0}
+            max={1}
+            step={0.05}
+            onValueChange={onChange}
+            label={title}
+          />
+        </View>
+        <Text style={styles.meltEdge}>{high}</Text>
+        <Text style={styles.meltValue}>{Math.round(value * 100)}%</Text>
+      </View>
+    </>
+  );
+}
 
 /**
  * Editor for the user-defined theme: base mode, free accent color and
@@ -47,7 +106,15 @@ export function CustomThemeEditor() {
   const updateCustom = useThemeStore((s) => s.updateCustom);
   const updateCustomEffects = useThemeStore((s) => s.updateCustomEffects);
   const meltIntensity = useThemeStore((s) => s.meltIntensity);
+  const setPointerIntensity = useThemeStore((s) => s.setPointerIntensity);
+  const pointerIntensity = {
+    warpIntensity: useThemeStore((s) => s.warpIntensity),
+    flashlightIntensity: useThemeStore((s) => s.flashlightIntensity),
+    clickGlitchIntensity: useThemeStore((s) => s.clickGlitchIntensity),
+  };
   const setMeltIntensity = useThemeStore((s) => s.setMeltIntensity);
+  const shaderIntensity = useThemeStore((s) => s.shaderIntensity);
+  const setShaderIntensity = useThemeStore((s) => s.setShaderIntensity);
 
   const [hexDraft, setHexDraft] = useState(custom.accent);
   const hexValid = normalizeHex(hexDraft) !== null;
@@ -128,6 +195,37 @@ export function CustomThemeEditor() {
         ))}
       </View>
 
+      {/* The shader layer paints its own world per pixel — web only for now */}
+      {Platform.OS === "web" && (
+        <>
+          <Text style={styles.sectionTitle}>Shader layer</Text>
+          <View style={styles.chipRow}>
+            <Chip
+              label="Off"
+              selected={custom.effects.shader === ""}
+              onPress={() => updateCustomEffects({ shader: "" })}
+            />
+            {SHADER_PRESETS.map((preset) => (
+              <Chip
+                key={preset.id}
+                label={preset.label}
+                selected={custom.effects.shader === preset.id}
+                onPress={() => updateCustomEffects({ shader: preset.id })}
+              />
+            ))}
+          </View>
+          {custom.effects.shader !== "" && (
+            <IntensityRow
+              title="Shader intensity"
+              low="🫧"
+              high="💥"
+              value={shaderIntensity}
+              onChange={setShaderIntensity}
+            />
+          )}
+        </>
+      )}
+
       {/* Cursor effects — pointless without a pointer, so web only */}
       {Platform.OS === "web" && (
         <>
@@ -144,6 +242,17 @@ export function CustomThemeEditor() {
               />
             ))}
           </View>
+          {/* One dial per effect, shown only while that effect is on */}
+          {POINTER_OPTIONS.filter((fx) => custom.effects[fx.key]).map((fx) => (
+            <IntensityRow
+              key={fx.key}
+              title={fx.dial}
+              low={fx.low}
+              high={fx.high}
+              value={pointerIntensity[fx.setting]}
+              onChange={(v) => setPointerIntensity(fx.setting, v)}
+            />
+          ))}
         </>
       )}
 

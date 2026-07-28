@@ -94,6 +94,10 @@ src/
     themedStyles.ts           # createThemedStyles/useTheme/useThemeColors
     ThemeOverlay.tsx          # Effekt-Layer (Rainbow, Swirl, Pulse, Floaties, …)
     PointerEffects.tsx        # Maus-Effekte: Warp-Linse, Taschenlampe, Klick-Glitch (Web)
+    shader/                   # Fullscreen-Fragment-Shader (Web; nativ = Stub)
+      presets.ts              # GLSL: Kaleidoskop, Plasma, Tunnel, Aurora
+      ShaderLayer.web.tsx     # Canvas + WebGL-Runtime, rAF, Context-Loss
+      quality.ts              # Auflösungsstufen (der große Performance-Hebel)
     typography.ts             # Font-Optionen + Skalierung
 
   components/

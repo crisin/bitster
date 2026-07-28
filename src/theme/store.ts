@@ -20,6 +20,10 @@ import {
   DEFAULT_EFFECT_SPEED_ID,
   getEffectSpeed,
 } from "./effectTempo";
+import {
+  DEFAULT_SHADER_QUALITY_ID,
+  SHADER_QUALITIES,
+} from "./shader/quality";
 
 function isValidSpeedId(id: string): boolean {
   return id === CUSTOM_SPEED_ID || getEffectSpeed(id) !== undefined;
@@ -39,6 +43,16 @@ interface ThemeStore {
   effectFactor: number;
   /** How hard the melt effect distorts the UI (0 = off … 1 = full goo) */
   meltIntensity: number;
+  /** Size and bend of the cursor lens (0 = small and subtle … 1 = huge) */
+  warpIntensity: number;
+  /** How wide the flashlight circle opens */
+  flashlightIntensity: number;
+  /** How violent a click burst is */
+  clickGlitchIntensity: number;
+  /** Shader resolution: the single biggest performance lever */
+  shaderQualityId: string;
+  /** How loud the shader layer is mixed over the UI */
+  shaderIntensity: number;
   custom: CustomThemeConfig;
   setTheme: (id: string) => void;
   setFontScale: (id: string) => void;
@@ -47,6 +61,12 @@ interface ThemeStore {
   setEffectBpm: (bpm: number) => void;
   setEffectFactor: (factor: number) => void;
   setMeltIntensity: (intensity: number) => void;
+  setShaderQuality: (id: string) => void;
+  setShaderIntensity: (intensity: number) => void;
+  setPointerIntensity: (
+    key: "warpIntensity" | "flashlightIntensity" | "clickGlitchIntensity",
+    intensity: number,
+  ) => void;
   updateCustom: (patch: Partial<CustomThemeConfig>) => void;
   updateCustomEffects: (
     patch: Partial<CustomThemeConfig["effects"]>,
@@ -62,6 +82,9 @@ function persist(): void {
     effectBpm,
     effectFactor,
     meltIntensity,
+    warpIntensity,
+    flashlightIntensity,
+    clickGlitchIntensity,
     custom,
   } = useThemeStore.getState();
   AsyncStorage.setItem(
@@ -74,6 +97,9 @@ function persist(): void {
       effectBpm,
       effectFactor,
       meltIntensity,
+      warpIntensity,
+      flashlightIntensity,
+      clickGlitchIntensity,
       custom,
     }),
   ).catch(() => {
@@ -104,6 +130,11 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
   effectBpm: DEFAULT_EFFECT_BPM,
   effectFactor: 1,
   meltIntensity: 0.5,
+  warpIntensity: 0.5,
+  flashlightIntensity: 0.5,
+  clickGlitchIntensity: 0.5,
+  shaderQualityId: DEFAULT_SHADER_QUALITY_ID,
+  shaderIntensity: 0.5,
   custom: DEFAULT_CUSTOM_CONFIG,
 
   setTheme: (id) => {
@@ -159,6 +190,23 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
     set({ meltIntensity: clamped });
     persistDebounced();
   },
+  setShaderQuality: (id) => {
+    if (!SHADER_QUALITIES.some((q) => q.id === id)) return;
+    set({ shaderQualityId: id });
+    persist();
+  },
+  setShaderIntensity: (intensity) => {
+    const clamped = Math.min(1, Math.max(0, intensity));
+    if (get().shaderIntensity === clamped) return;
+    set({ shaderIntensity: clamped });
+    persistDebounced();
+  },
+  setPointerIntensity: (key, intensity) => {
+    const clamped = Math.min(1, Math.max(0, intensity));
+    if (get()[key] === clamped) return;
+    set({ [key]: clamped } as Pick<ThemeStore, typeof key>);
+    persistDebounced();
+  },
   updateCustom: (patch) => {
     set({ custom: { ...get().custom, ...patch } });
     persist();
@@ -169,6 +217,13 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
     persist();
   },
 }));
+
+/** Stored intensities are 0..1; anything else falls back to the middle */
+function clamp01(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(1, Math.max(0, value))
+    : 0.5;
+}
 
 /** Restore saved UI settings on app start (called from the root layout) */
 export async function hydrateTheme(): Promise<void> {
@@ -185,6 +240,11 @@ export async function hydrateTheme(): Promise<void> {
           effectBpm: number;
           effectFactor: number;
           meltIntensity: number;
+          warpIntensity: number;
+          flashlightIntensity: number;
+          clickGlitchIntensity: number;
+          shaderQualityId: string;
+          shaderIntensity: number;
           custom: Partial<CustomThemeConfig>;
         }>;
         useThemeStore.setState({
@@ -215,6 +275,15 @@ export async function hydrateTheme(): Promise<void> {
             typeof s.meltIntensity === "number"
               ? Math.min(1, Math.max(0, s.meltIntensity))
               : 0.5,
+          warpIntensity: clamp01(s.warpIntensity),
+          flashlightIntensity: clamp01(s.flashlightIntensity),
+          clickGlitchIntensity: clamp01(s.clickGlitchIntensity),
+          shaderQualityId: SHADER_QUALITIES.some(
+            (q) => q.id === s.shaderQualityId,
+          )
+            ? (s.shaderQualityId as string)
+            : DEFAULT_SHADER_QUALITY_ID,
+          shaderIntensity: clamp01(s.shaderIntensity),
           custom: {
             ...DEFAULT_CUSTOM_CONFIG,
             ...s.custom,

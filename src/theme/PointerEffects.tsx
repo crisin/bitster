@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Animated, Easing, Platform, StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import type { ViewStyle } from "react-native";
+import { GlitchBars, useGlitchBurst } from "./GlitchEffect";
 
 /**
  * Cursor-following effects. Web only, on purpose: they all need a pointer that
@@ -14,17 +15,31 @@ interface PointerEffectsProps {
   warp: boolean;
   /** Everything goes dark except a circle around the cursor */
   flashlight: boolean;
-  /** Short burst of tear bars and colour split on every click */
+  /** Signal drop on every click */
   clickGlitch: boolean;
   accent: string;
   /** Effect speed factor from the theme tempo — higher is faster */
   factor: number;
+  /** 0..1 — lens size and how hard it bends */
+  warpIntensity: number;
+  /** 0..1 — how wide the lit circle is */
+  flashlightIntensity: number;
+  /** 0..1 — how violent a click burst is */
+  clickGlitchIntensity: number;
 }
 
-const WARP_RADIUS = 110;
-const LIGHT_RADIUS = 170;
+/** Lens radius at intensity 0 and 1 */
+const WARP_MIN = 60;
+const WARP_MAX = 220;
+/** Lit radius at intensity 0 and 1 */
+const LIGHT_MIN = 90;
+const LIGHT_MAX = 340;
 /** How long a click burst lasts, before the tempo factor is applied */
-const GLITCH_MS = 420;
+const GLITCH_MS = 260;
+
+function lerp(min: number, max: number, t: number): number {
+  return min + (max - min) * Math.min(1, Math.max(0, t));
+}
 
 interface Point {
   x: number;
@@ -70,30 +85,53 @@ function usePointer(enabled: boolean): Point | null {
 }
 
 /** A circle of bent, over-saturated glass that rides along with the cursor */
-function WarpLens({ point }: { point: Point }) {
+function WarpLens({ point, intensity }: { point: Point; intensity: number }) {
+  const radius = lerp(WARP_MIN, WARP_MAX, intensity);
+  // Scale the distortion with the size too, or a big lens just looks like a
+  // big smudge
+  const strength = 0.4 + intensity * 1.6;
   return (
     <View
       style={[
         styles.lens,
         {
-          left: point.x - WARP_RADIUS,
-          top: point.y - WARP_RADIUS,
+          left: point.x - radius,
+          top: point.y - radius,
+          width: radius * 2,
+          height: radius * 2,
+          borderRadius: radius,
         },
-        warpStyle,
+        Platform.OS === "web"
+          ? ({
+              backdropFilter: warpFilter(strength),
+              WebkitBackdropFilter: warpFilter(strength),
+              boxShadow: `inset 0 0 ${Math.round(radius * 0.4)}px rgba(255,255,255,0.18)`,
+            } as unknown as ViewStyle)
+          : null,
       ]}
     />
   );
 }
 
+function warpFilter(strength: number): string {
+  return (
+    `blur(${(strength * 1.6).toFixed(1)}px) ` +
+    `saturate(${(1 + strength).toFixed(2)}) ` +
+    `hue-rotate(${Math.round(strength * 30)}deg) ` +
+    `contrast(${(1 + strength * 0.25).toFixed(2)})`
+  );
+}
+
 /** Darkness everywhere but a soft circle around the cursor */
-function Flashlight({ point }: { point: Point }) {
+function Flashlight({ point, intensity }: { point: Point; intensity: number }) {
+  const radius = Math.round(lerp(LIGHT_MIN, LIGHT_MAX, intensity));
   return (
     <View
       style={[
         StyleSheet.absoluteFillObject,
         {
           backgroundImage:
-            `radial-gradient(circle ${LIGHT_RADIUS}px at ${point.x}px ${point.y}px, ` +
+            `radial-gradient(circle ${radius}px at ${point.x}px ${point.y}px, ` +
             "rgba(0,0,0,0) 0%, rgba(0,0,0,0.12) 45%, rgba(0,0,0,0.88) 100%)",
         } as unknown as ViewStyle,
       ]}
@@ -101,93 +139,35 @@ function Flashlight({ point }: { point: Point }) {
   );
 }
 
-/** One tear bar of a click burst */
-function TearBar({
-  progress,
-  index,
+/**
+ * A click drops the signal, using the exact same burst as the ambient glitch —
+ * the tear bars, the palette and the screen shake all come from one place, so
+ * a click never looks like a cheaper imitation of the real thing.
+ */
+function ClickGlitch({
   accent,
+  factor,
+  intensity,
 }: {
-  progress: Animated.Value;
-  index: number;
   accent: string;
+  factor: number;
+  intensity: number;
 }) {
-  // Deterministic per index — a burst should look chaotic, not be random work
-  const top: `${number}%` = `${(index * 37) % 90}%`;
-  const height = 6 + ((index * 13) % 22);
-  const shift = ((index % 2 === 0 ? 1 : -1) * (12 + ((index * 7) % 28)));
-
-  return (
-    <Animated.View
-      style={[
-        styles.tear,
-        {
-          top,
-          height,
-          backgroundColor: index % 3 === 0 ? accent : "rgba(255,255,255,0.75)",
-          opacity: progress.interpolate({
-            inputRange: [0, 0.15, 0.6, 1],
-            outputRange: [0, 0.85, 0.5, 0],
-          }),
-          transform: [
-            {
-              translateX: progress.interpolate({
-                inputRange: [0, 1],
-                outputRange: [shift, -shift],
-              }),
-            },
-          ],
-        },
-      ]}
-    />
-  );
-}
-
-/** Full-screen burst fired on every click */
-function ClickGlitch({ accent, factor }: { accent: string; factor: number }) {
-  const progress = useRef(new Animated.Value(0)).current;
-  const [burst, setBurst] = useState(0);
+  const { bars, burst } = useGlitchBurst({ accent, intensity });
+  const burstRef = useRef(burst);
+  burstRef.current = burst;
 
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined") return;
-    const onDown = () => setBurst((n) => n + 1);
+    const onDown = () => {
+      // Short and snappy: a click should punch, not linger like a signal drop
+      burstRef.current(Math.max(90, GLITCH_MS / Math.max(factor, 0.25)));
+    };
     window.addEventListener("pointerdown", onDown, { passive: true });
     return () => window.removeEventListener("pointerdown", onDown);
-  }, []);
+  }, [factor]);
 
-  useEffect(() => {
-    if (burst === 0) return;
-    progress.setValue(0);
-    const animation = Animated.timing(progress, {
-      toValue: 1,
-      duration: Math.max(120, GLITCH_MS / Math.max(factor, 0.25)),
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: false,
-    });
-    animation.start();
-    return () => animation.stop();
-  }, [burst, factor, progress]);
-
-  if (burst === 0) return null;
-
-  return (
-    <Animated.View
-      // Remount per burst so a rapid second click restarts cleanly
-      key={burst}
-      style={[
-        StyleSheet.absoluteFillObject,
-        {
-          opacity: progress.interpolate({
-            inputRange: [0, 0.8, 1],
-            outputRange: [1, 1, 0],
-          }),
-        },
-      ]}
-    >
-      {[0, 1, 2, 3, 4, 5].map((i) => (
-        <TearBar key={i} progress={progress} index={i + burst} accent={accent} />
-      ))}
-    </Animated.View>
-  );
+  return <GlitchBars bars={bars} />;
 }
 
 export function PointerEffects({
@@ -196,6 +176,9 @@ export function PointerEffects({
   clickGlitch,
   accent,
   factor,
+  warpIntensity,
+  flashlightIntensity,
+  clickGlitchIntensity,
 }: PointerEffectsProps) {
   const point = usePointer(warp || flashlight);
   // No pointer to follow (touch device, or the cursor left the window)
@@ -203,36 +186,25 @@ export function PointerEffects({
 
   return (
     <>
-      {flashlight && point && <Flashlight point={point} />}
-      {warp && point && <WarpLens point={point} />}
-      {clickGlitch && <ClickGlitch accent={accent} factor={factor} />}
+      {flashlight && point && (
+        <Flashlight point={point} intensity={flashlightIntensity} />
+      )}
+      {warp && point && <WarpLens point={point} intensity={warpIntensity} />}
+      {clickGlitch && (
+        <ClickGlitch
+          accent={accent}
+          factor={factor}
+          intensity={clickGlitchIntensity}
+        />
+      )}
     </>
   );
 }
 
-// backdrop-filter is a CSS-only trick; RN styles can't express it
-const warpStyle =
-  Platform.OS === "web"
-    ? ({
-        backdropFilter: "blur(2px) saturate(1.8) hue-rotate(25deg) contrast(1.15)",
-        WebkitBackdropFilter:
-          "blur(2px) saturate(1.8) hue-rotate(25deg) contrast(1.15)",
-        boxShadow: "inset 0 0 40px rgba(255,255,255,0.18)",
-      } as unknown as ViewStyle)
-    : null;
-
 const styles = StyleSheet.create({
   lens: {
     position: "absolute",
-    width: WARP_RADIUS * 2,
-    height: WARP_RADIUS * 2,
-    borderRadius: WARP_RADIUS,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.22)",
-  },
-  tear: {
-    position: "absolute",
-    left: 0,
-    right: 0,
   },
 });

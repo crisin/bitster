@@ -1,4 +1,5 @@
 import { COLORS } from "@/utils/constants";
+import type { ShaderPresetId } from "./shader/presets";
 
 /** Same shape as the classic palette — every theme swaps all of these */
 export type ThemeColors = { [K in keyof typeof COLORS]: string };
@@ -32,6 +33,8 @@ export interface ThemeEffects {
   flashlight: boolean;
   /** Tear-bar burst on every click (web only) */
   clickGlitch: boolean;
+  /** Full-screen fragment shader preset, null = none (web only) */
+  shader: ShaderPresetId | null;
 }
 
 export interface Theme {
@@ -62,6 +65,7 @@ const NO_EFFECTS: ThemeEffects = {
   cursorWarp: false,
   flashlight: false,
   clickGlitch: false,
+  shader: null,
 };
 
 export const DEFAULT_THEME_ID = "classic";

@@ -10,6 +10,8 @@ import {
 import { resolveEffectTempo, type EffectTempo } from "./effectTempo";
 import { GlitchEffect } from "./GlitchEffect";
 import { PointerEffects } from "./PointerEffects";
+import { ShaderLayer } from "./shader/ShaderLayer";
+import { getShaderScale } from "./shader/quality";
 import { MeltEffect } from "./MeltEffect";
 import { useThemeStore } from "./store";
 import { useTheme } from "./themedStyles";
@@ -331,6 +333,11 @@ export function ThemeOverlay() {
   const theme = useTheme();
   const tempo = useEffectTempo();
   const meltIntensity = useThemeStore((s) => s.meltIntensity);
+  const warpIntensity = useThemeStore((s) => s.warpIntensity);
+  const flashlightIntensity = useThemeStore((s) => s.flashlightIntensity);
+  const clickGlitchIntensity = useThemeStore((s) => s.clickGlitchIntensity);
+  const shaderIntensity = useThemeStore((s) => s.shaderIntensity);
+  const shaderQualityId = useThemeStore((s) => s.shaderQualityId);
   const { width, height } = useWindowDimensions();
   const fx = theme.effects;
 
@@ -354,11 +361,24 @@ export function ThemeOverlay() {
     fx.floaties ||
     fx.cursorWarp ||
     fx.flashlight ||
-    fx.clickGlitch;
+    fx.clickGlitch ||
+    fx.shader;
   if (!hasAny) return null;
 
   return (
     <Animated.View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+      {/* Bottom of the effect stack: the shader paints its own world and the
+          other layers ride on top of it */}
+      {fx.shader && (
+        <ShaderLayer
+          preset={fx.shader}
+          accent={theme.colors.accent}
+          intensity={shaderIntensity}
+          renderScale={getShaderScale(shaderQualityId)}
+          factor={tempo.factor}
+          bpm={tempo.bpm}
+        />
+      )}
       {fx.melt && (
         <MeltEffect
           intensity={meltIntensity}
@@ -388,6 +408,9 @@ export function ThemeOverlay() {
           clickGlitch={fx.clickGlitch}
           accent={theme.colors.accent}
           factor={tempo.factor}
+          warpIntensity={warpIntensity}
+          flashlightIntensity={flashlightIntensity}
+          clickGlitchIntensity={clickGlitchIntensity}
         />
       )}
       {fx.floaties &&
