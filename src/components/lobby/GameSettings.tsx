@@ -1,6 +1,6 @@
 import { Chip } from "@/components/ui/Chip";
 import { useGameStore } from "@/game/store";
-import { BUZZ_TIMER_OPTIONS } from "@/game/types";
+import { BUZZ_TIMER_OPTIONS, PLACEMENT_TIMER_OPTIONS } from "@/game/types";
 import { dispatch } from "@/p2p/connection";
 import { LABEL_STYLE, SPACE } from "@/utils/constants";
 import React from "react";
@@ -22,6 +22,18 @@ export function GameSettings() {
         rules: {
           ...settings.rules,
           buzz: { ...settings.rules.buzz, timerSeconds: value },
+        },
+      },
+    });
+  };
+
+  const handlePlacementTimer = (value: number | null) => {
+    dispatch({
+      type: "update-settings",
+      payload: {
+        rules: {
+          ...settings.rules,
+          placement: { timerSeconds: value },
         },
       },
     });
@@ -49,6 +61,18 @@ export function GameSettings() {
             label={`${n}s`}
             selected={settings.rules.buzz.timerSeconds === n}
             onPress={() => handleBuzzTimer(n)}
+          />
+        ))}
+      </View>
+
+      <Text style={styles.label}>⚡ Blitz — place within</Text>
+      <View style={styles.row}>
+        {PLACEMENT_TIMER_OPTIONS.map((n) => (
+          <Chip
+            key={n === null ? "off" : n}
+            label={n === null ? "Off" : `${n}s`}
+            selected={settings.rules.placement?.timerSeconds === n}
+            onPress={() => handlePlacementTimer(n)}
           />
         ))}
       </View>

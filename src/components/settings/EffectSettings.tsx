@@ -3,11 +3,16 @@ import { View, Text, StyleSheet } from "react-native";
 import { Chip } from "@/components/ui/Chip";
 import { Divider } from "@/components/ui/Divider";
 import { Pressable } from "@/components/ui/Pressable";
+import { Slider } from "@/components/ui/Slider";
 import { useThemeStore } from "@/theme/store";
 import {
   BPM_SPEED_ID,
   bpmFromTaps,
+  CUSTOM_SPEED_ID,
   EFFECT_SPEEDS,
+  getEffectSpeed,
+  MAX_FACTOR,
+  MIN_FACTOR,
 } from "@/theme/effectTempo";
 import { createThemedStyles, useTheme } from "@/theme/themedStyles";
 import { haptics } from "@/hooks/useHaptics";
@@ -24,8 +29,10 @@ export function EffectSettings() {
   const theme = useTheme();
   const speedId = useThemeStore((s) => s.effectSpeedId);
   const bpm = useThemeStore((s) => s.effectBpm);
+  const factor = useThemeStore((s) => s.effectFactor);
   const setEffectSpeed = useThemeStore((s) => s.setEffectSpeed);
   const setEffectBpm = useThemeStore((s) => s.setEffectBpm);
+  const setEffectFactor = useThemeStore((s) => s.setEffectFactor);
 
   const taps = useRef<number[]>([]);
   const [tapCount, setTapCount] = useState(0);
@@ -58,6 +65,14 @@ export function EffectSettings() {
   if (!animated) return null;
 
   const bpmMode = speedId === BPM_SPEED_ID;
+  // The slider always shows the effective factor; dragging it switches to
+  // custom mode. Presets/BPM move it to their spot as visual feedback.
+  const sliderValue =
+    speedId === CUSTOM_SPEED_ID
+      ? factor
+      : bpmMode
+        ? bpm / 120
+        : (getEffectSpeed(speedId)?.factor ?? 1);
 
   return (
     <View style={styles.container}>
@@ -72,6 +87,24 @@ export function EffectSettings() {
             onPress={() => setEffectSpeed(s.id)}
           />
         ))}
+      </View>
+
+      <View style={styles.sliderRow}>
+        <Text style={styles.sliderEdge}>🐌</Text>
+        <View style={styles.sliderTrack}>
+          <Slider
+            value={sliderValue}
+            min={MIN_FACTOR}
+            max={MAX_FACTOR}
+            step={0.05}
+            onValueChange={setEffectFactor}
+            label="Effect animation speed"
+          />
+        </View>
+        <Text style={styles.sliderEdge}>🚀</Text>
+        <Text style={styles.sliderValue}>
+          {sliderValue.toFixed(2).replace(/0$/, "")}×
+        </Text>
       </View>
 
       {bpmMode && (
@@ -116,6 +149,25 @@ const useStyles = createThemedStyles((COLORS) =>
       flexDirection: "row",
       flexWrap: "wrap",
       gap: SPACE.sm,
+    },
+    sliderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: SPACE.sm,
+    },
+    sliderTrack: {
+      flex: 1,
+    },
+    sliderEdge: {
+      fontSize: FONT.size.base,
+    },
+    sliderValue: {
+      width: 48,
+      textAlign: "right",
+      fontSize: FONT.size.sm,
+      fontWeight: FONT.weight.semibold,
+      color: COLORS.accent,
+      fontVariant: ["tabular-nums"],
     },
     bpmBox: {
       gap: SPACE.sm,

@@ -14,10 +14,16 @@ import {
 } from "./typography";
 import {
   clampBpm,
+  clampFactor,
+  CUSTOM_SPEED_ID,
   DEFAULT_EFFECT_BPM,
   DEFAULT_EFFECT_SPEED_ID,
   getEffectSpeed,
 } from "./effectTempo";
+
+function isValidSpeedId(id: string): boolean {
+  return id === CUSTOM_SPEED_ID || getEffectSpeed(id) !== undefined;
+}
 
 const STORAGE_KEY = "uiSettings";
 /** Pre-customization storage key — migrated on first load */
@@ -29,12 +35,15 @@ interface ThemeStore {
   fontId: string;
   effectSpeedId: string;
   effectBpm: number;
+  /** Slider position for the "custom" effect-speed mode */
+  effectFactor: number;
   custom: CustomThemeConfig;
   setTheme: (id: string) => void;
   setFontScale: (id: string) => void;
   setFont: (id: string) => void;
   setEffectSpeed: (id: string) => void;
   setEffectBpm: (bpm: number) => void;
+  setEffectFactor: (factor: number) => void;
   updateCustom: (patch: Partial<CustomThemeConfig>) => void;
   updateCustomEffects: (
     patch: Partial<CustomThemeConfig["effects"]>,
@@ -42,8 +51,15 @@ interface ThemeStore {
 }
 
 function persist(): void {
-  const { themeId, fontScaleId, fontId, effectSpeedId, effectBpm, custom } =
-    useThemeStore.getState();
+  const {
+    themeId,
+    fontScaleId,
+    fontId,
+    effectSpeedId,
+    effectBpm,
+    effectFactor,
+    custom,
+  } = useThemeStore.getState();
   AsyncStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({
@@ -52,11 +68,23 @@ function persist(): void {
       fontId,
       effectSpeedId,
       effectBpm,
+      effectFactor,
       custom,
     }),
   ).catch(() => {
     /* persistence is best-effort */
   });
+}
+
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Trailing-debounced persist for high-frequency setters (slider drags) */
+function persistDebounced(): void {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    persist();
+  }, 400);
 }
 
 function isValidThemeId(id: string): boolean {
@@ -69,6 +97,7 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
   fontId: DEFAULT_FONT_ID,
   effectSpeedId: DEFAULT_EFFECT_SPEED_ID,
   effectBpm: DEFAULT_EFFECT_BPM,
+  effectFactor: 1,
   custom: DEFAULT_CUSTOM_CONFIG,
 
   setTheme: (id) => {
@@ -94,13 +123,29 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
     persist();
   },
   setEffectSpeed: (id) => {
-    if (!getEffectSpeed(id)) return;
+    if (!isValidSpeedId(id)) return;
     set({ effectSpeedId: id });
     persist();
   },
   setEffectBpm: (bpm) => {
     set({ effectBpm: clampBpm(bpm) });
     persist();
+  },
+  setEffectFactor: (factor) => {
+    const clamped = clampFactor(factor);
+    const state = get();
+    // Slider drags fire often — skip no-op updates entirely
+    if (
+      state.effectFactor === clamped &&
+      state.effectSpeedId === CUSTOM_SPEED_ID
+    ) {
+      return;
+    }
+    // Dragging the slider always means "use MY speed" — switch mode along
+    set({ effectFactor: clamped, effectSpeedId: CUSTOM_SPEED_ID });
+    // Trailing debounce: one storage write per drag, not one per step
+    // (AsyncStorage is synchronous localStorage on web)
+    persistDebounced();
   },
   updateCustom: (patch) => {
     set({ custom: { ...get().custom, ...patch } });
@@ -126,6 +171,7 @@ export async function hydrateTheme(): Promise<void> {
           fontId: string;
           effectSpeedId: string;
           effectBpm: number;
+          effectFactor: number;
           custom: Partial<CustomThemeConfig>;
         }>;
         useThemeStore.setState({
@@ -141,13 +187,17 @@ export async function hydrateTheme(): Promise<void> {
               ? s.fontId
               : DEFAULT_FONT_ID,
           effectSpeedId:
-            s.effectSpeedId && getEffectSpeed(s.effectSpeedId)
+            s.effectSpeedId && isValidSpeedId(s.effectSpeedId)
               ? s.effectSpeedId
               : DEFAULT_EFFECT_SPEED_ID,
           effectBpm:
             typeof s.effectBpm === "number"
               ? clampBpm(s.effectBpm)
               : DEFAULT_EFFECT_BPM,
+          effectFactor:
+            typeof s.effectFactor === "number"
+              ? clampFactor(s.effectFactor)
+              : 1,
           custom: {
             ...DEFAULT_CUSTOM_CONFIG,
             ...s.custom,

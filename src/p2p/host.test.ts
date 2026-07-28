@@ -428,3 +428,163 @@ describe("HostSession — game flow", () => {
     expect(state.playedSongs).toHaveLength(0);
   });
 });
+
+describe("HostSession — new-rules hardening", () => {
+  it("rejects a second guess in the same round and leaks no tokens early", async () => {
+    const session = makeSession();
+    await startDemoGame(session);
+
+    await session.handleAction(
+      { type: "guess-song", payload: { title: "wrong", artist: "wrong" } },
+      "host-1",
+    );
+    // Tokens unchanged in the broadcast — reward (if any) lands at reveal
+    expect(lastBroadcastState().players.map((p) => p.tokens)).toEqual([2, 2]);
+
+    await session.handleAction(
+      { type: "guess-song", payload: { title: "again", artist: "again" } },
+      "host-1",
+    );
+    const error = sent.find((m) => m.action.type === "error");
+    expect(
+      error?.action.type === "error" ? error.action.payload.message : "",
+    ).toMatch(/Already guessed/);
+  });
+
+  it("locks settings once the game is running", async () => {
+    const session = makeSession();
+    await startDemoGame(session);
+
+    await session.handleAction(
+      { type: "update-settings", payload: { winScore: 1 } },
+      "host-1",
+    );
+    expect(lastBroadcastState().settings.winScore).toBe(10);
+    const error = sent.find((m) => m.action.type === "error");
+    expect(
+      error?.action.type === "error" ? error.action.payload.message : "",
+    ).toMatch(/lobby/);
+  });
+
+  it("blitz: forfeits the placement when the timer expires", async () => {
+    vi.useFakeTimers();
+    const session = makeSession();
+    await session.handleAction(
+      { type: "join", payload: { name: "Bob" } },
+      "peer-2",
+    );
+    await session.handleAction(
+      {
+        type: "update-settings",
+        payload: {
+          rules: {
+            buzz: { enabled: true, penalty: "none", timerSeconds: 30 },
+            placement: { timerSeconds: 10 },
+          },
+        },
+      },
+      "host-1",
+    );
+    await session.handleAction(
+      { type: "start-game", payload: { playlistUrl: "" } },
+      "host-1",
+    );
+    expect(lastBroadcastState().placeDeadline).not.toBeNull();
+
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    const state = lastBroadcastState();
+    expect(state.phase).toBe("reveal");
+    expect(state.lastResult?.correct).toBe(false);
+    expect(state.lastResult?.timedOut).toBe(true);
+    // Song went straight to the failed pile, no card on the timeline
+    expect(state.timelines["host-1"]).toHaveLength(0);
+    expect(state.failedTimelines["host-1"]).toHaveLength(1);
+    expect(state.placeDeadline).toBeNull();
+    session.destroy();
+  });
+
+  it("blitz: placing in time disarms the countdown", async () => {
+    vi.useFakeTimers();
+    const session = makeSession();
+    await session.handleAction(
+      { type: "join", payload: { name: "Bob" } },
+      "peer-2",
+    );
+    await session.handleAction(
+      {
+        type: "update-settings",
+        payload: {
+          rules: {
+            buzz: { enabled: true, penalty: "none", timerSeconds: 30 },
+            placement: { timerSeconds: 10 },
+          },
+        },
+      },
+      "host-1",
+    );
+    await session.handleAction(
+      { type: "start-game", payload: { playlistUrl: "" } },
+      "host-1",
+    );
+    await session.handleAction(
+      { type: "place-song", payload: { position: 0 } },
+      "host-1",
+    );
+    expect(lastBroadcastState().phase).toBe("bitster-window");
+
+    // The old countdown must NOT fire into the bitster-window
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(lastBroadcastState().phase).toBe("bitster-window");
+    session.destroy();
+  });
+
+  it("does not double-spend tokens on a concurrent second skip", async () => {
+    const session = makeSession();
+    await startDemoGame(session);
+
+    // Fire two skips without awaiting in between — the second must be a no-op
+    const first = session.handleAction({ type: "skip-song" }, "host-1");
+    const second = session.handleAction({ type: "skip-song" }, "host-1");
+    await Promise.all([first, second]);
+
+    const state = lastBroadcastState();
+    const host = state.players.find((p) => p.id === "host-1");
+    expect(host?.tokens).toBe(1); // 2 - 1, NOT 2 - 2
+    expect(host?.stats.skips).toBe(1);
+  });
+
+  it("rejects an out-of-range buzz-select with feedback", async () => {
+    const session = makeSession();
+    await startDemoGame(session);
+    await session.handleAction(
+      { type: "place-song", payload: { position: 0 } },
+      "host-1",
+    );
+    await session.handleAction({ type: "bitster-buzz" }, "peer-2");
+
+    await session.handleAction(
+      { type: "buzz-select", payload: { position: 99 } },
+      "peer-2",
+    );
+    const error = sent.find(
+      (m) => m.action.type === "error" && m.target === "peer-2",
+    );
+    expect(
+      error?.action.type === "error" ? error.action.payload.message : "",
+    ).toMatch(/Invalid placement/);
+    session.destroy();
+  });
+
+  it("trims and caps player names", async () => {
+    const session = makeSession();
+    await session.handleAction(
+      { type: "join", payload: { name: "  Bob" + "b".repeat(60) + "  " } },
+      "peer-2",
+    );
+    const state = lastBroadcastState();
+    const bob = state.players.find((p) => p.id === "peer-2");
+    expect(bob?.name.length).toBeLessThanOrEqual(24);
+    expect(bob?.name.startsWith("Bob")).toBe(true);
+  });
+});

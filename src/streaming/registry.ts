@@ -10,14 +10,7 @@ export function getProvider(id: string): StreamingProvider | undefined {
   return providers.get(id);
 }
 
+/** For the future ProviderPicker — lists everything that registered */
 export function listProviders(): StreamingProvider[] {
   return Array.from(providers.values());
-}
-
-export function getProviderOrThrow(id: string): StreamingProvider {
-  const provider = providers.get(id);
-  if (!provider) {
-    throw new Error(`Streaming provider "${id}" not registered`);
-  }
-  return provider;
 }

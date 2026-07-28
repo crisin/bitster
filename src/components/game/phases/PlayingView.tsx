@@ -1,4 +1,5 @@
 import { AllPlayerTimelines } from "@/components/game/AllPlayerTimelines";
+import { CountdownPill } from "@/components/game/CountdownPill";
 import { GuessForm } from "@/components/game/GuessForm";
 import { NowPlaying } from "@/components/game/NowPlaying";
 import { PlayedSongs } from "@/components/game/PlayedSongs";
@@ -26,6 +27,7 @@ export function PlayingView({ selectedGap, onGapSelect }: PlayingViewProps) {
   const currentSongId = useGameStore((s) => s.currentSongId);
   const currentPlayerId = useGameStore((s) => s.currentPlayerId);
   const timelines = useGameStore((s) => s.timelines);
+  const placeDeadline = useGameStore((s) => s.placeDeadline);
   const playbackError = useStreamingStore((s) => s.playbackError);
   const { isMyTurn, currentPlayer, actsForCurrent, actingId } =
     useCurrentPlayer();
@@ -43,10 +45,10 @@ export function PlayingView({ selectedGap, onGapSelect }: PlayingViewProps) {
   }, [currentSongId]);
 
   const handleGuess = useCallback(
-    (title: string, artist: string) => {
+    (title: string, artist: string, year?: number) => {
       if (actingId == null) return;
       dispatch(
-        { type: "guess-song", payload: { title, artist } },
+        { type: "guess-song", payload: { title, artist, year } },
         { as: actingId },
       );
       setGuessSubmitted(true);
@@ -71,6 +73,11 @@ export function PlayingView({ selectedGap, onGapSelect }: PlayingViewProps) {
 
   const stage = (
     <Stage title={stageTitle} hot={actsForCurrent}>
+      {/* Blitz mode: the whole table watches the clock run down */}
+      <CountdownPill
+        deadline={placeDeadline}
+        accessibilitySuffix="seconds left to place the song"
+      />
       <NowPlaying error={playbackError} />
       <Timeline
         cards={stageTimeline}

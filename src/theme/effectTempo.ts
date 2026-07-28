@@ -20,6 +20,16 @@ export const BPM_SPEED_ID = "bpm";
 export const MIN_BPM = 40;
 export const MAX_BPM = 220;
 
+/** Free-slider mode — the factor comes from the user's slider position */
+export const CUSTOM_SPEED_ID = "custom";
+export const MIN_FACTOR = 0.25;
+export const MAX_FACTOR = 4;
+
+export function clampFactor(factor: number): number {
+  if (!Number.isFinite(factor)) return 1;
+  return Math.min(MAX_FACTOR, Math.max(MIN_FACTOR, factor));
+}
+
 export const EFFECT_SPEEDS: EffectSpeedOption[] = [
   { id: "slow", name: "🐌 Chill", factor: 0.5 },
   { id: "normal", name: "Normal", factor: 1 },
@@ -43,10 +53,14 @@ export interface EffectTempo {
 export function resolveEffectTempo(
   speedId: string,
   bpm: number,
+  customFactor = 1,
 ): EffectTempo {
   if (speedId === BPM_SPEED_ID) {
     const clamped = clampBpm(bpm);
     return { factor: clamped / DEFAULT_EFFECT_BPM, bpm: clamped };
+  }
+  if (speedId === CUSTOM_SPEED_ID) {
+    return { factor: clampFactor(customFactor), bpm: null };
   }
   return { factor: getEffectSpeed(speedId)?.factor ?? 1, bpm: null };
 }

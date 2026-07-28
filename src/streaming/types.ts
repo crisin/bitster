@@ -43,6 +43,11 @@ export interface Track {
   artist: string;
   year: number;
   imageUrl?: string;
+  durationMs?: number;
+  explicit?: boolean;
+  /** Provider popularity 0-100 — fuels the Deep Cut / Banger reveal badges */
+  popularity?: number;
+  albumName?: string;
 }
 
 export interface StreamingAuth {

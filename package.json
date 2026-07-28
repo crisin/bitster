@@ -12,7 +12,6 @@
     "start": "node server.js",
     "test": "vitest",
     "test:coverage": "vitest --coverage",
-    "lint": "eslint . --fix",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

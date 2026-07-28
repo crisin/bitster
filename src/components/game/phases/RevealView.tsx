@@ -12,7 +12,11 @@ export function RevealView() {
 
   return (
     <View style={styles.container}>
-      <RevealCard correct={lastResult.correct} song={lastResult.song} />
+      <RevealCard
+        correct={lastResult.correct}
+        song={lastResult.song}
+        timedOut={lastResult.timedOut}
+      />
       <AllPlayerTimelines />
     </View>
   );

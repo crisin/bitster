@@ -1,5 +1,6 @@
 import { AllPlayerTimelines } from "@/components/game/AllPlayerTimelines";
 import { BuzzerButton } from "@/components/game/BuzzerButton";
+import { CountdownPill } from "@/components/game/CountdownPill";
 import { NowPlaying } from "@/components/game/NowPlaying";
 import { PlayedSongs } from "@/components/game/PlayedSongs";
 import { Stage } from "@/components/game/Stage";
@@ -24,47 +25,6 @@ import {
 interface BitsterWindowViewProps {
   buzzGap: number | null;
   onBuzzGapSelect: (position: number) => void;
-}
-
-/** Seconds left until the buzz deadline, ticking 4×/s for a smooth countdown */
-function useBuzzCountdown(deadline: number | null): number | null {
-  const [remaining, setRemaining] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (deadline == null) {
-      setRemaining(null);
-      return;
-    }
-    const tick = () => {
-      setRemaining(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
-    };
-    tick();
-    const interval = setInterval(tick, 250);
-    return () => clearInterval(interval);
-  }, [deadline]);
-
-  return remaining;
-}
-
-function BuzzCountdown({ deadline }: { deadline: number | null }) {
-  const styles = useStyles();
-  const remaining = useBuzzCountdown(deadline);
-  if (remaining == null) return null;
-
-  const urgent = remaining <= 5;
-  return (
-    <View
-      style={[styles.countdown, urgent && styles.countdownUrgent]}
-      accessibilityRole="timer"
-      accessibilityLabel={`${remaining} seconds left to place`}
-    >
-      <Text
-        style={[styles.countdownText, urgent && styles.countdownTextUrgent]}
-      >
-        {remaining}s
-      </Text>
-    </View>
-  );
 }
 
 export function BitsterWindowView({
@@ -142,26 +102,32 @@ export function BitsterWindowView({
   return (
     <View style={styles.container}>
       {/* Guess feedback for the active player('s device) */}
-      {guessResult && actsForCurrent && (
-        <View
-          style={[
-            styles.guessResultBanner,
-            guessResult.titleCorrect && guessResult.artistCorrect
-              ? styles.guessResultSuccess
-              : styles.guessResultPartial,
-          ]}
-          accessibilityRole="alert"
-        >
-          <Text style={styles.guessResultText}>
-            {guessResult.titleCorrect ? "✓ Title" : "✗ Title"}
-            {"  "}
-            {guessResult.artistCorrect ? "✓ Artist" : "✗ Artist"}
-            {guessResult.titleCorrect && guessResult.artistCorrect
-              ? "  +1★"
-              : ""}
-          </Text>
-        </View>
-      )}
+      {guessResult && actsForCurrent && (() => {
+        const reward =
+          (guessResult.titleCorrect && guessResult.artistCorrect ? 1 : 0) +
+          (guessResult.yearCorrect === true ? 1 : 0);
+        return (
+          <View
+            style={[
+              styles.guessResultBanner,
+              reward > 0 ? styles.guessResultSuccess : styles.guessResultPartial,
+            ]}
+            accessibilityRole="alert"
+          >
+            <Text style={styles.guessResultText}>
+              {guessResult.titleCorrect ? "✓ Title" : "✗ Title"}
+              {"  "}
+              {guessResult.artistCorrect ? "✓ Artist" : "✗ Artist"}
+              {guessResult.yearCorrect !== null
+                ? guessResult.yearCorrect
+                  ? "  ✓ Year"
+                  : "  ✗ Year"
+                : ""}
+              {reward > 0 ? `  +${reward}★ at reveal` : ""}
+            </Text>
+          </View>
+        );
+      })()}
 
       {/* The mystery card sits in the active player's timeline, year hidden */}
       <Stage title={stageTitle} hot={actsForCurrent}>
@@ -238,7 +204,7 @@ export function BitsterWindowView({
       {buzzerName && !controlsBuzzer && (
         <View style={styles.buzzSection}>
           <BuzzerButton onPress={() => {}} disabled buzzerName={buzzerName} />
-          <BuzzCountdown deadline={buzzDeadline} />
+          <CountdownPill deadline={buzzDeadline} accessibilitySuffix="seconds left to place" />
           <Text style={styles.buzzHint}>
             {buzzerName} is placing the card — hang tight!
           </Text>
@@ -255,7 +221,7 @@ export function BitsterWindowView({
           }
           hot
         >
-          <BuzzCountdown deadline={buzzDeadline} />
+          <CountdownPill deadline={buzzDeadline} accessibilitySuffix="seconds left to place" />
           <Text style={styles.buzzPlaceHint}>
             Tap the gap in {currentPlayer ? `${currentPlayer.name}'s` : "the"}{" "}
             timeline where the song REALLY belongs.{" "}

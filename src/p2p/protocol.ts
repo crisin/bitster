@@ -4,8 +4,10 @@ import type {
   GameState,
   Phase,
   PlacementResult,
+  PlayerStats,
   Song,
 } from "@/game/types";
+import { EMPTY_STATS } from "@/game/types";
 
 export type P2PAction =
   | { type: "join"; payload: { name: string } }
@@ -19,7 +21,7 @@ export type P2PAction =
   | { type: "buzz-select"; payload: { position: number } }
   | { type: "buzz-place"; payload: { position: number } }
   | { type: "set-playlist"; payload: { playlistUrl: string } }
-  | { type: "guess-song"; payload: { title: string; artist: string } }
+  | { type: "guess-song"; payload: { title: string; artist: string; year?: number } }
   | { type: "skip-song" }
   | { type: "next-round" }
   | { type: "reveal-song" }
@@ -27,8 +29,6 @@ export type P2PAction =
   | { type: "update-settings"; payload: Partial<GameSettings> }
   | { type: "rematch" }
   | { type: "error"; payload: { message: string } };
-
-export type P2PActionType = P2PAction["type"];
 
 const PHASES: readonly Phase[] = [
   "lobby",
@@ -80,7 +80,26 @@ function parseSong(v: unknown): Song | null {
     year: v.year,
   };
   if (typeof v.imageUrl === "string") song.imageUrl = v.imageUrl;
+  if (isNonNegativeInt(v.durationMs)) song.durationMs = v.durationMs;
+  if (typeof v.explicit === "boolean") song.explicit = v.explicit;
+  if (isNonNegativeInt(v.popularity) && v.popularity <= 100)
+    song.popularity = v.popularity;
+  if (typeof v.albumName === "string") song.albumName = v.albumName;
   return song;
+}
+
+/** Stats ride along per player; tolerate hosts that don't send them yet */
+function parseStats(v: unknown): PlayerStats | null {
+  if (v === undefined) return { ...EMPTY_STATS };
+  if (!isObject(v)) return null;
+  const out: PlayerStats = { ...EMPTY_STATS };
+  for (const key of Object.keys(EMPTY_STATS) as (keyof PlayerStats)[]) {
+    const value = v[key];
+    if (value === undefined) continue;
+    if (!isNonNegativeInt(value)) return null;
+    out[key] = value;
+  }
+  return out;
 }
 
 function parseSongArray(v: unknown): Song[] | null {
@@ -120,6 +139,8 @@ function parsePlayers(v: unknown): GameState["players"] | null {
     }
     if (item.isLocal !== undefined && typeof item.isLocal !== "boolean")
       return null;
+    const stats = parseStats(item.stats);
+    if (!stats) return null;
     players.push({
       id: item.id,
       name: item.name,
@@ -127,6 +148,7 @@ function parsePlayers(v: unknown): GameState["players"] | null {
       timelineLength: item.timelineLength,
       tokens: item.tokens,
       isLocal: item.isLocal === true,
+      stats,
     });
   }
   return players;
@@ -144,12 +166,22 @@ function parseRules(v: unknown): GameRules | null {
   ) {
     return null;
   }
+
+  // Blitz placement timer — tolerate hosts that don't send it (off)
+  let placementTimer: number | null = null;
+  if (isObject(v.placement) && v.placement.timerSeconds !== undefined) {
+    const t = v.placement.timerSeconds;
+    if (t !== null && (!isFiniteInt(t) || t <= 0)) return null;
+    placementTimer = t as number | null;
+  }
+
   return {
     buzz: {
       enabled,
       penalty,
       timerSeconds: timerSeconds === undefined ? 30 : (timerSeconds as number),
     },
+    placement: { timerSeconds: placementTimer },
   };
 }
 
@@ -185,7 +217,9 @@ function parsePlacementResult(v: unknown): PlacementResult | null {
   if (!isObject(v) || typeof v.correct !== "boolean") return null;
   const song = parseSong(v.song);
   if (!song) return null;
-  return { correct: v.correct, song };
+  const result: PlacementResult = { correct: v.correct, song };
+  if (v.timedOut === true) result.timedOut = true;
+  return result;
 }
 
 function parsePlayedSongs(v: unknown): GameState["playedSongs"] | null {
@@ -219,6 +253,10 @@ export function validateGameState(v: unknown): GameState | null {
   const rawDeadline = v.buzzDeadline ?? null;
   if (rawDeadline !== null && !isFiniteInt(rawDeadline)) return null;
   const buzzDeadline = rawDeadline as number | null;
+
+  const rawPlaceDeadline = v.placeDeadline ?? null;
+  if (rawPlaceDeadline !== null && !isFiniteInt(rawPlaceDeadline)) return null;
+  const placeDeadline = rawPlaceDeadline as number | null;
 
   const rawPassed = v.passedIds ?? [];
   if (!Array.isArray(rawPassed)) return null;
@@ -256,9 +294,13 @@ export function validateGameState(v: unknown): GameState | null {
     ) {
       return null;
     }
+    const rawYear = v.guessResult.yearCorrect;
+    if (rawYear !== undefined && rawYear !== null && typeof rawYear !== "boolean")
+      return null;
     guessResult = {
       titleCorrect: v.guessResult.titleCorrect,
       artistCorrect: v.guessResult.artistCorrect,
+      yearCorrect: typeof rawYear === "boolean" ? rawYear : null,
     };
   }
 
@@ -277,6 +319,7 @@ export function validateGameState(v: unknown): GameState | null {
     playedSongs,
     buzzerId: (v.buzzerId ?? null) as string | null,
     buzzDeadline,
+    placeDeadline,
     passedIds,
     playlistName: (v.playlistName ?? null) as string | null,
     playlistImageUrl: (v.playlistImageUrl ?? null) as string | null,
@@ -335,17 +378,26 @@ export function validateAction(data: unknown): P2PAction | null {
       if (!isObject(p) || typeof p.playlistUrl !== "string") return null;
       return { type: "set-playlist", payload: { playlistUrl: p.playlistUrl } };
 
-    case "guess-song":
+    case "guess-song": {
       if (
         !isObject(p) ||
         typeof p.title !== "string" ||
         typeof p.artist !== "string"
       )
         return null;
-      return {
-        type: "guess-song",
-        payload: { title: p.title, artist: p.artist },
+      // Optional exact-year bonus guess — sanity-bounded, not game-bounded
+      if (
+        p.year !== undefined &&
+        (!isFiniteInt(p.year) || p.year < 1000 || p.year > 9999)
+      )
+        return null;
+      const payload: { title: string; artist: string; year?: number } = {
+        title: p.title,
+        artist: p.artist,
       };
+      if (p.year !== undefined) payload.year = p.year as number;
+      return { type: "guess-song", payload };
+    }
 
     case "skip-song":
       return { type: "skip-song" };

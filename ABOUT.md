@@ -22,17 +22,17 @@ Repeat until someone hits 10. Then rematch, obviously.
 
 ---
 
-## No server, no problem
+## One host, one dumb pipe
 
-bitster runs **peer-to-peer**. There's no server sitting in a data center somewhere. Instead:
+bitster's game brain runs **on the players' devices**, not in the cloud:
 
-- One player is the **host** — their phone runs the game logic and keeps score
-- Everyone else connects directly to the host over the internet
-- When something happens (a song is placed, a round advances), the host tells everyone
+- One player is the **host** — their device runs the game logic and keeps score
+- Everyone else sends their moves to the host and gets the game state back
+- A tiny relay server passes the messages along — it knows rooms, not rules
 
 Think of it like a board game: one person owns the box and keeps track of the rules, but everyone plays together. Except the box is an app. And the board is vibes.
 
-The connection works through **WebRTC** — the same tech that powers video calls — so it's fast, direct, and doesn't need a server to relay messages. Players find each other through a quick handshake, then talk directly device-to-device.
+The connection is a plain **WebSocket** to the same place the app is served from — no accounts, no game database, nothing stored server-side. If the host drops off briefly, the room waits for them to come back.
 
 ---
 
@@ -44,4 +44,4 @@ The connection works through **WebRTC** — the same tech that powers video call
 
 ---
 
-_Built with love, chaos, and an mass amounts of mass amounts of mass amounts of mass amounts of mass amounts of mass amounts of mass amounts of mass amounts of caffeine._
+_Built with love, chaos, and massive amounts of caffeine._

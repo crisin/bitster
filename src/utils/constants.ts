@@ -126,22 +126,6 @@ export const LABEL_STYLE = {
   letterSpacing: FONT.tracking.wider,
 };
 
-// ─── Legacy aliases (backward compat) ───────────────────────────
-export const SIZES = {
-  touchMin: TOUCH.minHeight,
-  gapTouchWidth: 56,
-  gapTouchHeight: 80,
-  buttonHeight: LAYOUT.buttonHeight,
-  headerHeight: LAYOUT.headerHeight,
-  bottomBarHeight: LAYOUT.bottomBarHeight,
-  borderRadius: RADIUS.md,
-  borderRadiusLarge: RADIUS.lg,
-  fontBody: FONT.size.lg,
-  fontSmall: FONT.size.sm,
-  fontTitle: FONT.size["3xl"],
-  fontHuge: FONT.size["5xl"],
-} as const;
-
 // ─── App constants ──────────────────────────────────────────────
 export const MAX_RECONNECT_ATTEMPTS = 10;
 export const RECONNECT_INTERVAL_MS = 3000;

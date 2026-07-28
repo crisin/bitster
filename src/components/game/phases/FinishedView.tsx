@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { View, Text, StyleSheet, Animated, Easing, Platform, useWindowDimensions } from "react-native";
 import { useGameStore } from "@/game/store";
 import { useP2PStore } from "@/p2p/store";
+import { Awards } from "@/components/game/Awards";
 import { ScoreBoard } from "@/components/game/ScoreBoard";
 import { DISPLAY_FONT, SPACE } from "@/utils/constants";
 import { createThemedStyles } from "@/theme/themedStyles";
@@ -73,6 +74,7 @@ export function FinishedView() {
 
       <Text style={styles.gameOverTitle}>GAME OVER</Text>
       <ScoreBoard players={players} myId={myPeerId} />
+      <Awards players={players} />
     </View>
   );
 }

@@ -106,7 +106,11 @@ describe("validateAction", () => {
     expect(action).toEqual({
       type: "update-settings",
       payload: {
-        rules: { buzz: { enabled: true, penalty: "none", timerSeconds: 30 } },
+        rules: {
+          buzz: { enabled: true, penalty: "none", timerSeconds: 30 },
+          // Placement rules default to "off" for senders that don't know them
+          placement: { timerSeconds: null },
+        },
       },
     });
   });

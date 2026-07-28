@@ -1,11 +1,12 @@
 import type {
   GameSettings,
+  GuessResult,
   PlacementResult,
   Player,
   Room,
   Song,
 } from "./types";
-import { DEFAULT_SETTINGS } from "./types";
+import { DEFAULT_RULES, DEFAULT_SETTINGS, EMPTY_STATS } from "./types";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_LENGTH = 6;
@@ -33,9 +34,23 @@ export function createRoom(
     currentPlayerIndex: 0,
     currentSong: null,
     phase: "lobby",
-    settings: { ...DEFAULT_SETTINGS, ...settings },
+    settings: {
+      ...DEFAULT_SETTINGS,
+      ...settings,
+      // Deep-merge rules — a partial rules object must not wipe the defaults
+      rules: {
+        ...DEFAULT_RULES,
+        ...settings?.rules,
+        buzz: { ...DEFAULT_RULES.buzz, ...settings?.rules?.buzz },
+        placement: {
+          ...DEFAULT_RULES.placement,
+          ...settings?.rules?.placement,
+        },
+      },
+    },
     buzzerId: null,
     buzzDeadline: null,
+    placeDeadline: null,
     passedIds: [],
     playlistName: null,
     playlistImageUrl: null,
@@ -47,11 +62,7 @@ export function createRoom(
 
 const STARTING_TOKENS = 2;
 
-export function createPlayer(
-  id: string,
-  name: string,
-  isLocal = false,
-): Player {
+function createPlayer(id: string, name: string, isLocal = false): Player {
   return {
     id,
     name,
@@ -60,7 +71,18 @@ export function createPlayer(
     tokens: STARTING_TOKENS,
     failedSongs: [],
     isLocal,
+    penalties: 0,
+    stats: { ...EMPTY_STATS },
   };
+}
+
+/**
+ * Score = timeline length minus collected buzz penalties. Deriving it in one
+ * place keeps penalties durable — recomputations after placements/undos used
+ * to silently erase them.
+ */
+function scoreOf(timeline: Song[], penalties: number): number {
+  return Math.max(0, timeline.length - penalties);
 }
 
 export function addPlayer(
@@ -217,7 +239,7 @@ export function placeSong(
       ? {
           ...p,
           timeline: updatedTimeline,
-          score: updatedTimeline.length,
+          score: scoreOf(updatedTimeline, p.penalties),
         }
       : p,
   );
@@ -229,8 +251,42 @@ export function placeSong(
       phase: "bitster-window",
       passedIds: [],
       buzzDeadline: null,
+      placeDeadline: null,
     },
     result: { correct, song },
+  };
+}
+
+/**
+ * Blitz mode: the active player ran out of time. No card is placed — the song
+ * goes straight to their failed pile and the round jumps to reveal.
+ */
+export function forfeitPlacement(room: Room): {
+  room: Room;
+  result: PlacementResult;
+} {
+  const player = getCurrentPlayer(room);
+  if (!player) throw new Error("No active player");
+  if (!room.currentSong) throw new Error("No current song");
+
+  const song = room.currentSong;
+  const updatedPlayers = room.players.map((p) =>
+    p.id === player.id
+      ? { ...p, failedSongs: [...p.failedSongs, song] }
+      : p,
+  );
+
+  return {
+    room: {
+      ...room,
+      players: updatedPlayers,
+      phase: "reveal",
+      buzzerId: null,
+      buzzDeadline: null,
+      placeDeadline: null,
+      passedIds: [],
+    },
+    result: { correct: false, song, timedOut: true },
   };
 }
 
@@ -247,7 +303,7 @@ export function undoPlacement(
     return {
       ...p,
       timeline: newTimeline,
-      score: newTimeline.length,
+      score: scoreOf(newTimeline, p.penalties),
       failedSongs: failed ? [...p.failedSongs, failed] : p.failedSongs,
     };
   });
@@ -263,8 +319,38 @@ export function advanceTurn(room: Room): Room {
     phase: "playing",
     buzzerId: null,
     buzzDeadline: null,
+    placeDeadline: null,
     passedIds: [],
   };
+}
+
+/** Award bonus tokens (guess rewards) and count them in the player's stats */
+export function awardTokens(room: Room, playerId: string, count: number): Room {
+  if (count <= 0) return room;
+  const updatedPlayers = room.players.map((p) =>
+    p.id === playerId
+      ? {
+          ...p,
+          tokens: p.tokens + count,
+          stats: { ...p.stats, guessTokens: p.stats.guessTokens + count },
+        }
+      : p,
+  );
+  return { ...room, players: updatedPlayers };
+}
+
+/** Bump one stat counter on one player */
+export function bumpStat(
+  room: Room,
+  playerId: string,
+  stat: keyof Player["stats"],
+): Room {
+  const updatedPlayers = room.players.map((p) =>
+    p.id === playerId
+      ? { ...p, stats: { ...p.stats, [stat]: p.stats[stat] + 1 } }
+      : p,
+  );
+  return { ...room, players: updatedPlayers };
 }
 
 export function checkWinCondition(room: Room): Player | null {
@@ -288,6 +374,8 @@ export function startGame(
     timeline: [],
     tokens: STARTING_TOKENS,
     failedSongs: [],
+    penalties: 0,
+    stats: { ...EMPTY_STATS },
   }));
 
   return {
@@ -300,6 +388,7 @@ export function startGame(
     phase: "playing",
     buzzerId: null,
     buzzDeadline: null,
+    placeDeadline: null,
     passedIds: [],
     playlistName: playlistName ?? room.playlistName,
     playlistId: playlistId ?? null,
@@ -386,12 +475,25 @@ export function resolveBuzz(
     if (p.id !== room.buzzerId) return p;
     if (correct) {
       const newTimeline = insertChronologically(p.timeline, song);
-      return { ...p, timeline: newTimeline, score: newTimeline.length };
+      return {
+        ...p,
+        timeline: newTimeline,
+        score: scoreOf(newTimeline, p.penalties),
+        stats: { ...p.stats, buzzWins: p.stats.buzzWins + 1 },
+      };
     }
-    if (room.settings.rules.buzz.penalty === "lose-point" && p.score > 0) {
-      return { ...p, score: p.score - 1 };
-    }
-    return p;
+    // A penalty is durable: it lives in `penalties` and flows into every
+    // future score recomputation instead of being a one-off decrement.
+    const penalties =
+      room.settings.rules.buzz.penalty === "lose-point"
+        ? p.penalties + 1
+        : p.penalties;
+    return {
+      ...p,
+      penalties,
+      score: scoreOf(p.timeline, penalties),
+      stats: { ...p.stats, buzzFails: p.stats.buzzFails + 1 },
+    };
   });
 
   return {
@@ -537,33 +639,33 @@ function checkArtistMatch(guess: string, actual: string): boolean {
   return false;
 }
 
-export function guessSongInfo(
+/**
+ * Pure guess evaluation — no state change. Token rewards (+1 for title AND
+ * artist, +1 extra for the exact year) are applied by the host AT REVEAL via
+ * awardTokens, so the broadcast token count can't leak the verdict early.
+ */
+export function evaluateGuess(
   room: Room,
-  playerId: string,
   guessTitle: string,
   guessArtist: string,
-): { room: Room; titleCorrect: boolean; artistCorrect: boolean } {
+  guessYear?: number,
+): GuessResult {
   if (!room.currentSong) throw new Error("No current song");
 
   const titleCorrect = checkTitleMatch(guessTitle, room.currentSong.name);
   const artistCorrect = checkArtistMatch(guessArtist, room.currentSong.artist);
+  const yearCorrect =
+    guessYear === undefined ? null : guessYear === room.currentSong.year;
 
-  // Token only awarded when BOTH title and artist are correct
-  const tokensEarned = titleCorrect && artistCorrect ? 1 : 0;
+  return { titleCorrect, artistCorrect, yearCorrect };
+}
 
-  if (tokensEarned === 0) {
-    return { room, titleCorrect, artistCorrect };
-  }
-
-  const updatedPlayers = room.players.map((p) =>
-    p.id === playerId ? { ...p, tokens: p.tokens + tokensEarned } : p,
+/** Tokens a guess result is worth: 1 for title+artist, 1 extra for exact year */
+export function guessReward(result: GuessResult): number {
+  return (
+    (result.titleCorrect && result.artistCorrect ? 1 : 0) +
+    (result.yearCorrect === true ? 1 : 0)
   );
-
-  return {
-    room: { ...room, players: updatedPlayers },
-    titleCorrect,
-    artistCorrect,
-  };
 }
 
 export function skipSong(room: Room, playerId: string): Room {
@@ -572,7 +674,13 @@ export function skipSong(room: Room, playerId: string): Room {
   if (player.tokens <= 0) throw new Error("No tokens to spend");
 
   const updatedPlayers = room.players.map((p) =>
-    p.id === playerId ? { ...p, tokens: p.tokens - 1 } : p,
+    p.id === playerId
+      ? {
+          ...p,
+          tokens: p.tokens - 1,
+          stats: { ...p.stats, skips: p.stats.skips + 1 },
+        }
+      : p,
   );
 
   return { ...room, players: updatedPlayers };
@@ -589,11 +697,22 @@ export function buildGameState(room: Room): import("./types").GameState {
       ? (room.currentSong?.id ?? null)
       : null;
 
+  // Zero the year AND strip metadata that could betray it (album name,
+  // popularity, duration, explicit flag) from the tentatively placed card.
+  const maskSong = (s: Song): Song => ({
+    ...s,
+    year: 0,
+    durationMs: undefined,
+    explicit: undefined,
+    popularity: undefined,
+    albumName: undefined,
+  });
+
   const timelines: Record<string, Song[]> = {};
   const failedTimelines: Record<string, Song[]> = {};
   for (const p of room.players) {
     timelines[p.id] = secretSongId
-      ? p.timeline.map((s) => (s.id === secretSongId ? { ...s, year: 0 } : s))
+      ? p.timeline.map((s) => (s.id === secretSongId ? maskSong(s) : s))
       : p.timeline;
     failedTimelines[p.id] = p.failedSongs;
   }
@@ -608,6 +727,7 @@ export function buildGameState(room: Room): import("./types").GameState {
       timelineLength: p.timeline.length,
       tokens: p.tokens,
       isLocal: p.isLocal,
+      stats: p.stats,
     })),
     currentPlayerId: currentPlayer?.id ?? null,
     currentSongUri: room.currentSong?.uri ?? null,
@@ -626,6 +746,7 @@ export function buildGameState(room: Room): import("./types").GameState {
       })),
     buzzerId: room.buzzerId,
     buzzDeadline: room.buzzDeadline,
+    placeDeadline: room.placeDeadline,
     passedIds: room.passedIds,
     playlistName: room.playlistName,
     playlistImageUrl: room.playlistImageUrl,

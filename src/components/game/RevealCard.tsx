@@ -15,13 +15,30 @@ const COVER_SIZE = 168;
 interface RevealCardProps {
   correct: boolean;
   song: Song;
+  /** Blitz mode: the round ended because the placement timer ran out */
+  timedOut?: boolean;
+}
+
+/** Popularity-based flavor badge — only the extremes get one */
+function popularityBadge(popularity: number | undefined): string | null {
+  if (popularity === undefined) return null;
+  if (popularity <= 33) return "💎 DEEP CUT";
+  if (popularity >= 75) return "🔥 BANGER";
+  return null;
+}
+
+function formatDuration(ms: number): string {
+  const totalSec = Math.round(ms / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return `${min}:${sec.toString().padStart(2, "0")}`;
 }
 
 /**
  * The big moment: the mystery card flips over to reveal the song, then the
  * verdict slams down like a rubber stamp.
  */
-export function RevealCard({ correct, song }: RevealCardProps) {
+export function RevealCard({ correct, song, timedOut }: RevealCardProps) {
   const styles = useStyles();
   const COLORS = useThemeColors();
   const flip = useRef(new Animated.Value(0)).current;
@@ -57,7 +74,12 @@ export function RevealCard({ correct, song }: RevealCardProps) {
   }, [flip, stamp, shake, correct]);
 
   const color = correct ? COLORS.success : COLORS.error;
-  const label = correct ? "CORRECT!" : "WRONG!";
+  const label = timedOut ? "TOO SLOW!" : correct ? "CORRECT!" : "WRONG!";
+  const flavorBadge = popularityBadge(song.popularity);
+  const metaParts = [
+    song.albumName,
+    song.durationMs !== undefined ? formatDuration(song.durationMs) : null,
+  ].filter(Boolean);
 
   const frontRotate = flip.interpolate({
     inputRange: [0, 1],
@@ -108,10 +130,21 @@ export function RevealCard({ correct, song }: RevealCardProps) {
         )}
         <Text style={styles.title} numberOfLines={2}>
           {song.name}
+          {song.explicit === true ? "  🅴" : ""}
         </Text>
         <Text style={styles.artist} numberOfLines={1}>
           {song.artist}
         </Text>
+        {metaParts.length > 0 && (
+          <Text style={styles.meta} numberOfLines={1}>
+            {metaParts.join(" · ")}
+          </Text>
+        )}
+        {flavorBadge != null && (
+          <View style={styles.flavorBadge}>
+            <Text style={styles.flavorText}>{flavorBadge}</Text>
+          </View>
+        )}
         <Text style={styles.year}>{song.year}</Text>
 
         <Animated.View
@@ -203,6 +236,28 @@ const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
     color: COLORS.textSecondary,
     textAlign: "center",
     marginTop: 2,
+  },
+  meta: {
+    fontSize: FONT.size.xs,
+    color: COLORS.textSecondary,
+    opacity: 0.7,
+    textAlign: "center",
+    marginTop: 2,
+  },
+  flavorBadge: {
+    marginTop: SPACE.sm,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: COLORS.warning,
+    backgroundColor: COLORS.warningLight,
+    paddingHorizontal: SPACE.md,
+    paddingVertical: 2,
+  },
+  flavorText: {
+    fontSize: FONT.size.xs,
+    fontWeight: FONT.weight.bold,
+    color: COLORS.warning,
+    letterSpacing: 1,
   },
   year: {
     fontFamily: DISPLAY_FONT,

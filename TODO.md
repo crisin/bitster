@@ -15,7 +15,8 @@ Stand: 20.07.2026 (nach Relay-Migration, Auth-Härtung, Playback-Robustheit und 
 - [ ] **Song-Preview/Timer** — nur 30–60s abspielen statt des ganzen Songs, mit Countdown.
 - [ ] **Error Boundary** um die App (Crash → freundlicher Screen statt weißer Seite).
 - [ ] **Rejoin nach App-Neustart** — Reconnect überlebt Socket-Drops und Screen-Lock (AppState-Listener), aber kein komplettes Neustarten der App (Session-Persistenz für Raumcode + Peer-ID).
-- [ ] **Buzz-Timer** — bitster-Window läuft unbegrenzt; optionaler Auto-Reveal nach X Sekunden.
+- [ ] **No-Buzz-Auto-Reveal** — der Buzz-Lock-in hat einen Timer (host.ts `buzzTimer`), aber das bitster-Window OHNE Buzz läuft unbegrenzt, bis alle passen oder der aktive Spieler revealt; optionaler Auto-Reveal nach X Sekunden.
+- [ ] **🫠 Melt Mode** — Crazy-Effekt-Modus: die ganze Oberfläche verflüssigt sich. Web: animierte SVG-Displacement-Filter (feTurbulence + feDisplacementMap als CSS-Filter auf dem App-Root — schmilzt die ECHTE UI, kein WebGL nötig), Steigerung optional per WebGL-Shader; nativ via react-native-skia Runtime-Shader. Als Effekt-Flag im Theme-System (`ThemeEffects.melt`).
 
 ## Nice to Have
 

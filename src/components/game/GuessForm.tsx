@@ -6,30 +6,33 @@ import { FONT, SPACE, LABEL_STYLE } from "@/utils/constants";
 import { createThemedStyles } from "@/theme/themedStyles";
 
 interface GuessFormProps {
-  onSubmit: (title: string, artist: string) => void;
+  onSubmit: (title: string, artist: string, year?: number) => void;
   disabled: boolean;
+}
+
+/** "1987"-style input → number, anything else → undefined (no year guess) */
+function parseYearGuess(raw: string): number | undefined {
+  const trimmed = raw.trim();
+  if (!/^\d{4}$/.test(trimmed)) return undefined;
+  return Number.parseInt(trimmed, 10);
 }
 
 export function GuessForm({ onSubmit, disabled }: GuessFormProps) {
   const styles = useStyles();
   const [title, setTitle] = useState("");
   const [artist, setArtist] = useState("");
-  const [submitted, setSubmitted] = useState(false);
+  const [year, setYear] = useState("");
   const artistRef = useRef<TextInput>(null);
+  const yearRef = useRef<TextInput>(null);
+
+  const yearGuess = parseYearGuess(year);
+  const canSubmit =
+    title.trim().length > 0 || artist.trim().length > 0 || yearGuess !== undefined;
 
   const handleSubmit = () => {
-    if (!title.trim() && !artist.trim()) return;
-    onSubmit(title.trim(), artist.trim());
-    setSubmitted(true);
+    if (!canSubmit) return;
+    onSubmit(title.trim(), artist.trim(), yearGuess);
   };
-
-  if (submitted) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.submitted}>Guess submitted!</Text>
-      </View>
-    );
-  }
 
   return (
     <View style={styles.container}>
@@ -52,14 +55,28 @@ export function GuessForm({ onSubmit, disabled }: GuessFormProps) {
         onChangeText={setArtist}
         autoCapitalize="none"
         autoCorrect={false}
+        returnKeyType="next"
+        onSubmitEditing={() => yearRef.current?.focus()}
+      />
+      <Input
+        ref={yearRef}
+        placeholder="Exact year (+1★)"
+        label="Guess the exact release year for an extra token"
+        value={year}
+        onChangeText={setYear}
+        keyboardType="number-pad"
+        maxLength={4}
         returnKeyType="go"
         onSubmitEditing={handleSubmit}
       />
+      <Text style={styles.hint}>
+        Title + artist right = +1★ · exact year = +1★ extra
+      </Text>
       <Button
         title="Guess"
         onPress={handleSubmit}
         variant="secondary"
-        disabled={disabled || (!title.trim() && !artist.trim())}
+        disabled={disabled || !canSubmit}
         label="Submit guess"
       />
     </View>
@@ -75,10 +92,9 @@ const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
     ...LABEL_STYLE,
     color: COLORS.textSecondary,
   },
-  submitted: {
-    fontSize: FONT.size.base,
-    color: COLORS.success,
-    textAlign: "center",
-    paddingVertical: SPACE.sm,
+  hint: {
+    fontSize: FONT.size.xs,
+    color: COLORS.textSecondary,
+    opacity: 0.7,
   },
 }));

@@ -25,91 +25,76 @@ funktionieren in jedem Netz, in dem WSS funktioniert.
 
 ## Tech Stack
 
-### Aktuell (wird migriert)
-
-- Client: React 18 + Vite + React Router
-- Server: Express + Socket.IO + spotify-web-api-node
-- Auth: Server-side Spotify OAuth
-- Playback: Spotify Web Playback SDK
-
-### Ziel-Stack
-
-- **App:** React Native (Expo) — iOS, Android, Web
+- **App:** React Native (Expo) — iOS, Android, Web (react-native-web)
 - **Multiplayer:** WebSocket-Relay auf dem Railway-Server (`server.js` + `ws`), Host-Peer als Game Authority
-- **Auth:** Provider-spezifisch, client-only (Spotify PKCE, etc.)
-- **Playback:** Provider-spezifisch (Spotify Remote Control, etc.)
-- **State:** Zustand (ersetzt useReducer + Context)
+- **Auth:** Provider-spezifisch, client-only (Spotify PKCE via expo-auth-session)
+- **Playback:** Provider-spezifisch (Spotify Web API Remote Control)
+- **State:** Zustand (game / streaming / p2p / theme Stores)
 - **Navigation:** Expo Router
-- **Storage:** expo-secure-store (Tokens), AsyncStorage (Preferences)
+- **Storage:** expo-secure-store bzw. localStorage (Tokens), AsyncStorage (UI-Settings)
+- **Styling:** StyleSheet.create + eigenes Theme-System (`src/theme/`), kein CSS-Framework
+- **Tests:** Vitest (`logic.test.ts`, `host.test.ts`, `protocol.test.ts`, `logger.test.ts`)
 
-## Projektstruktur (Ziel)
+## Projektstruktur
 
 ```
+server.js                     # WebSocket-Relay + Static Hosting (Railway), KEINE Spiellogik
 app/                          # Expo Router screens
-  (tabs)/
-    index.tsx                 # Home – Create/Join Room
-    game.tsx                  # Game Screen
-  _layout.tsx                 # Root Layout
-  callback.tsx                # Streaming Auth Callback (Deep Link)
+  _layout.tsx                 # Root Layout (Fonts, Theme, Debug-Bridge __bitsterStores)
+  index.tsx                   # Home – Connect Spotify, Create/Join Room
+  game.tsx                    # Game Screen (Phase-Switch + BottomBar)
+  about.tsx                   # Info & Licenses
+  auth/callback.tsx           # Streaming Auth Callback (Deep Link, Web + nativ)
 
 src/
   streaming/                  # === Streaming Provider Abstraction ===
-    types.ts                  # StreamingProvider Interface + shared types
-    registry.ts               # Provider Registration + aktiven Provider holen
-    store.ts                  # Zustand – Provider State, Tokens, aktives Gerät
-    providers/
-      spotify/
-        auth.ts               # Spotify PKCE Flow
-        player.ts             # Spotify Remote Control (Play/Pause/Seek)
-        playlist.ts           # Spotify Playlist Fetching
-        index.ts              # Exportiert SpotifyProvider (implements StreamingProvider)
-      # apple-music/          # Zukünftig
-      # youtube-music/        # Zukünftig
+    types.ts                  # StreamingProvider Interface + Track/PlaylistMeta
+    registry.ts               # Provider-Registry (registerProvider/getProvider/listProviders)
+    store.ts                  # Zustand – Provider, Auth-Status, Geräte, Account, PlaybackError
+    providers/spotify/
+      auth.ts                 # PKCE Flow, Token-Rotation, Cross-Tab-Sync, fetchWithAuth
+      player.ts               # Remote Control (play/pause/getDevices/setDevice)
+      playlist.ts             # Lazy Track-Fetching (getTrackAtIndex), Playlist-Meta
+      diagnostics.ts          # "Spotify check" (Account, Premium, Devices)
+      errors.ts               # 403-Interpretation (Allowlist/Premium/Dev-Mode)
+      index.ts                # SpotifyProvider (implements StreamingProvider)
 
-  p2p/                        # === Multiplayer Communication Layer ===
-    connection.ts             # WebSocket-Relay-Client + Host/Peer-Logik
-    protocol.ts               # Message Types (discriminated unions)
-    store.ts                  # Zustand – Connection State, Peer List
+  p2p/                        # === Multiplayer Layer ===
+    connection.ts             # Transport: Socket-Lifecycle, Join/Rejoin/Reconnect, dispatch()
+    host.ts                   # HostSession: Authority, Action-Validierung, Buzz-/Blitz-Timer
+    peer.ts                   # Peer-Seite: game-state/play-song/error vom Host anwenden
+    protocol.ts               # P2PAction Types + Wire-Validierung (validateAction/GameState)
+    store.ts                  # Zustand – Connection Status, Peer List, eigene Peer ID
 
   game/                       # === Pure Game Logic (kein UI, kein I/O) ===
-    logic.ts                  # checkPlacement, advanceTurn, checkWin, pickSong
-    types.ts                  # Room, Player, Song, Phase, GameSettings
-    store.ts                  # Zustand – Game State (Phase, Scores, Timelines)
+    logic.ts                  # createRoom, placeSong, resolveBuzz, evaluateGuess, buildGameState …
+    types.ts                  # Room, Player(+stats/penalties), Song, Phase, GameSettings, GameState
+    store.ts                  # Zustand – passiver Mirror des GameState-Broadcasts
 
-  components/                 # === UI Components ===
-    ui/                       # Primitive Bausteine (Button, Input, Badge, BottomSheet)
-      Button.tsx
-      Input.tsx
-      Badge.tsx
-      BottomSheet.tsx
-      StatusDot.tsx
-    game/                     # Game-Phase Components
-      Timeline.tsx
-      TimelineCard.tsx
-      TimelineGap.tsx
-      PlayerList.tsx
-      RevealCard.tsx
-      NowPlaying.tsx
-      ScoreBoard.tsx
-    lobby/                    # Lobby Components
-      RoomCode.tsx
-      GameSettings.tsx
-      PlayerSlot.tsx
-    streaming/                # Streaming-Provider UI
-      ProviderPicker.tsx      # Provider auswählen (Spotify, Apple Music, ...)
-      ConnectButton.tsx       # Login-Button für aktiven Provider
-      DeviceSelector.tsx      # Aktives Gerät auswählen
+  theme/                      # === Themes + Effekte ===
+    themes.ts                 # Built-in Themes (inkl. Trippy/Tadi), ThemeEffects
+    customTheme.ts            # User-Theme (Basis + Akzent + Effekt-Toggles)
+    effectTempo.ts            # Effekt-Geschwindigkeit: Presets, Slider-Faktor, Tap-Tempo-BPM
+    store.ts                  # Zustand – Theme/Font/Textgröße/Effect-Speed (persistiert)
+    themedStyles.ts           # createThemedStyles/useTheme/useThemeColors
+    ThemeOverlay.tsx          # Effekt-Layer (Rainbow, Swirl, Pulse, Floaties, …)
+    typography.ts             # Font-Optionen + Skalierung
 
-  hooks/                      # === Custom Hooks ===
-    useHaptics.ts             # Haptic Feedback (success, error, tap)
-    useConnectionStatus.ts    # P2P Connection State als Hook
-    useCurrentPlayer.ts       # Bin ich dran? Meine Timeline, etc.
+  components/
+    ui/                       # Primitive: Button, Input, Chip, Badge, Card, BottomBar,
+                              # Divider, Pressable, Slider, StatusDot, DevLogButton
+    game/                     # Timeline(+Card/Gap), RevealCard, NowPlaying, ScoreBoard,
+                              # Awards, GuessForm, BuzzerButton, Stage, CountdownPill,
+                              # AllPlayerTimelines, MiniTimeline, PlayedSongs
+      phases/                 # LobbyView, PlayingView, BitsterWindowView, RevealView, FinishedView
+    lobby/                    # RoomCode, GameSettings, PlayerSlot
+    streaming/                # ConnectButton, DeviceSelector, ConnectionCheck
+    settings/                 # SettingsMenu, CustomThemeEditor, EffectSettings, TextSettings
 
-  utils/
-    roomCode.ts               # Code Generation + Validation
-    constants.ts              # App-weite Konstanten
+  hooks/                      # useHaptics, useConnectionStatus, useCurrentPlayer
+  utils/                      # constants.ts (Design-Tokens), roomCode.ts, logger.ts
 
-assets/                       # Icons, Splash Screen, Fonts
+assets/fonts/                 # Bundled Fonts (OFL) — App-Icon/Favicon fehlen noch (TODO)
 ```
 
 ### Streaming Provider Interface
@@ -143,20 +128,33 @@ interface StreamingPlayer {
 }
 
 interface StreamingLibrary {
-  getPlaylistTracks(playlistId: string): Promise<Track[]>;
+  // Lazy: EIN Track pro Runde (offset={index}&limit=1) statt ganze Playlist laden
+  getTrackAtIndex(playlistId: string, index: number): Promise<Track | null>;
   parsePlaylistUrl(url: string): string | null;
   getPlaylistMeta(playlistId: string): Promise<PlaylistMeta>;
 }
 
-// Provider-agnostischer Track — das benutzt die Game Logic
+// Provider-agnostischer Track — das benutzt die Game Logic (Song ist feldidentisch)
 interface Track {
   id: string; // Provider-spezifische ID
   uri: string; // Provider-spezifische URI
   name: string;
-  artist: string;
+  artist: string; // komma-separiert bei mehreren
   year: number;
+  imageUrl?: string;
+  durationMs?: number;
+  explicit?: boolean;
+  popularity?: number; // 0-100 → Deep-Cut/Banger-Badges im Reveal
+  albumName?: string;
 }
 ```
+
+Reale Interfaces haben zusätzlich `icon` und optionales `diagnostics` auf dem
+Provider — `src/streaming/types.ts` ist die Wahrheit. Neue Track-Felder müssen
+an DREI Stellen ergänzt werden: Spotify-`fields`-Param (playlist.ts), `Song`
+(game/types.ts), `parseSong` (p2p/protocol.ts) — sonst fallen sie am
+Peer-Boundary stumm weg. Antwort-verratende Felder zusätzlich in
+`buildGameState()` maskieren.
 
 ### Store-Aufteilung
 
@@ -168,8 +166,10 @@ Drei Stores statt einem monolithischen:
 | `streaming/store.ts` | Aktiver Provider, Auth State, Token, Gerät      | Streaming UI, Host       |
 | `p2p/store.ts`       | Connection Status, Peer List, eigene Peer ID    | Connection UI, Host/Peer |
 
-Stores sind unabhängig — kein Store importiert einen anderen.
-Orchestrierung läuft über `host.ts` / `peer.ts` die alle drei Stores lesen/schreiben.
+Dazu kommt `theme/store.ts` (UI-Settings, persistiert, unabhängig vom Spiel).
+Stores sind unabhängig — kein Store importiert einen anderen. Orchestrierung
+läuft über `p2p/host.ts` / `p2p/peer.ts` (lesen/schreiben alle drei Spiel-Stores);
+`p2p/connection.ts` ist reiner Transport.
 
 ## Arbeitsweise
 
@@ -180,23 +180,35 @@ Dieses Projekt wird **vollständig KI-gestützt** entwickelt. Keine manuellen Ze
 - **Sprache:** Code + Kommentare auf Englisch, Docs auf Deutsch
 - **TypeScript:** Strikt. Keine `any`, keine impliziten Typen
 - **State:** Zustand Stores, kein Context/useReducer für globalen State
-- **Styling:** NativeWind (Tailwind für React Native) oder StyleSheet.create
+- **Styling:** StyleSheet.create über `createThemedStyles` (Theme-System), Design-Tokens aus `utils/constants.ts`
 - **Naming:** camelCase für Variablen/Funktionen, PascalCase für Komponenten/Typen
 - **Dateien:** Komponenten .tsx, Logic .ts, keine .jsx/.js
 - **Imports:** Absolute Imports via `@/` Alias (src/)
-- **Tests:** Vitest für Logic, React Native Testing Library für Components
-- **P2P Messages:** Typisierte Actions mit discriminated unions
+- **Tests:** Vitest für Logic/Host/Protocol (keine Component-Tests aktuell)
+- **P2P Messages:** Typisierte Actions mit discriminated unions, Wire-Input IMMER durch `validateAction`
+- **Design-Direktive:** ABFAHRT — Party-App, im Zweifel die verspieltere Variante (Effekte hinter `ThemeEffects`-Flags, Layer bleibt `pointerEvents="none"`)
 
 ## Spielablauf
 
 1. **Home:** Spieler gibt Namen ein, erstellt oder joint Raum (6-Zeichen-Code)
 2. **Lobby:** Host gibt Spotify-Playlist ein, alle connecten Spotify via PKCE.
+   Settings (Win-Score, bitster-Timer, ⚡Blitz-Timer) sind NUR in der Lobby änderbar.
    Host kann zusätzlich **lokale Spieler** anlegen (Pass-and-Play am Host-Gerät,
    `Player.isLocal`); das Host-Gerät steuert deren Züge/Buzzes via `dispatch(action, { as: localId })`.
-   Online-Peers können keine lokalen Spieler haben.
-3. **Playing:** Song spielt auf allen Geräten, aktiver Spieler platziert in Timeline
-4. **Reveal:** Ergebnis wird gezeigt (richtig/falsch), nächste Runde
-5. **Finished:** Gewinner wird angezeigt, Rematch-Option
+   Online-Peers können keine lokalen Spieler haben. Ohne Playlist-Link startet ein
+   stilles Demo-Spiel (Mock-Songs, kein Playback).
+3. **Playing:** Song spielt auf allen Geräten. Der aktive Spieler kann EINMAL
+   raten (Titel/Artist = +1★, exaktes Jahr = +1★ extra — Belohnung erst beim
+   Reveal, damit der Token-Broadcast nichts verrät), skippen (−1★) oder platziert
+   in seine Timeline. ⚡Blitz-Modus: Countdown (`placeDeadline`) — läuft er ab,
+   ist der Song weg (failedSongs, "TOO SLOW!").
+4. **bitster-window:** Nach dem Platzieren (Jahr noch maskiert) dürfen die anderen
+   buzzen (−1★) und die Karte an die richtige Stelle "klauen" (Timer `buzzDeadline`),
+   oder passen. Falscher Buzz mit `penalty: "lose-point"` gibt eine DAUERHAFTE
+   Strafe (`Player.penalties`, Score = Timeline-Länge − Penalties).
+5. **Reveal:** Ergebnis + Song-Details (Cover, Album, 🅴, Deep-Cut/Banger-Badge),
+   nächste Runde
+6. **Finished:** Gewinner, ScoreBoard, Awards (aus `Player.stats`), Rematch-Option
 
 ## Game State Sync
 
@@ -208,25 +220,29 @@ Relay-Server (server.js, /ws):
   - 30s Grace Period wenn der Host-Socket wegbricht
   - KEINE Spiellogik
 
-Host-Peer (p2p/connection.ts, role="host"):
-  - Hält kompletten GameState (hostRoom)
-  - Validiert Aktionen (place-song, bitster-buzz, ...)
-  - Broadcastet State-Updates an alle Peers
-  - Koordiniert Playback via StreamingProvider Interface
+Host (p2p/host.ts, HostSession — läuft auf dem Host-Gerät):
+  - Hält den kompletten Room-State, validiert JEDE Action (Authority)
+  - Broadcastet buildGameState() an alle Peers
+  - Besitzt die Timer: Buzz-Lock-in (buzzTimer) + Blitz-Placement (placeTimer)
+  - Hält Rundengeheimnisse privat: pendingResult (Platzierungs-Verdikt),
+    pendingGuessResult/-By (Guess + Belohnung, angewendet erst beim Reveal)
+  - Koordiniert Playback via StreamingProvider Interface (mock: URIs = still)
 
-Peers (p2p/connection.ts, role="peer"):
-  - Senden Actions an den Host (via Relay)
-  - Akzeptieren game-state NUR vom Host-Peer
+Peers (p2p/peer.ts):
+  - Senden Actions an den Host (via Relay), akzeptieren game-state NUR vom Host
   - "connected" erst nach erstem game-state vom Host
   - Steuern eigenen StreamingProvider für lokalen Playback
 
-Wichtig: buildGameState() maskiert den aktuellen Song im Broadcast
-(playedSongs + Jahr), solange geraten wird — der Payload IST die Antwort.
+Transport (p2p/connection.ts):
+  - Socket-Lifecycle, Join-Handshake/-Retry, Reconnect-Backoff, dispatch()
+  - dispatch(action, { as: localId }) ersetzt den Sender NUR auf dem Host-Gerät
+    (Pass-and-Play) — Peers können nicht impersonaten
 
-Orchestrierung:
-  connection.ts liest und schreibt in alle drei Stores
-  (game/store, streaming/store, p2p/store).
-  Stores kennen sich gegenseitig nicht.
+Wichtig: buildGameState() maskiert den aktuellen Song im Broadcast, solange
+geraten wird — der Payload IST die Antwort. Maskiert werden: Jahr (=0),
+durationMs/explicit/popularity/albumName (gestrippt) und der Song fliegt aus
+playedSongs. currentSongUri bleibt drin (Peers brauchen sie zum Abspielen) —
+Maskierung schützt in-App, nicht gegen modifizierte Clients.
 ```
 
 ## Commands
@@ -243,33 +259,32 @@ npx expo run:android              # Android Emulator
 eas build --platform ios          # iOS Build
 eas build --platform android      # Android Build
 
-# Tests
-npx vitest                        # Unit Tests
+# Tests + Typecheck (kein ESLint im Projekt)
+npx vitest run                    # Unit Tests
 npx vitest --coverage             # Coverage
-
-# Lint
-npx eslint . --fix
 npx tsc --noEmit                  # Type Check
 ```
 
 ## Wichtige Abhängigkeiten
 
-| Package            | Zweck                                          |
-| ------------------ | ---------------------------------------------- |
-| expo               | App Framework                                  |
-| expo-router        | File-based Navigation                          |
-| expo-secure-store  | Sichere Token-Speicherung                      |
-| expo-auth-session  | Streaming Provider OAuth                       |
-| ws                 | WebSocket-Server für den Relay (nur server.js) |
-| zustand            | State Management                               |
-| nativewind         | Tailwind CSS für RN                            |
-| @expo/vector-icons | Icons                                          |
+| Package                     | Zweck                                          |
+| --------------------------- | ---------------------------------------------- |
+| expo / expo-router          | App Framework + File-based Navigation          |
+| expo-auth-session           | Streaming Provider OAuth (PKCE)                |
+| expo-secure-store           | Token-Speicherung (nativ; Web: localStorage)   |
+| @react-native-async-storage | UI-Settings-Persistenz (Theme, Effekte)        |
+| expo-haptics / -clipboard / -sharing / -file-system | Haptik, Copy, Log-Export |
+| @expo-google-fonts/bebas-neue + assets/fonts | Display- und UI-Fonts (lokal) |
+| ws                          | WebSocket-Server für den Relay (nur server.js) |
+| zustand                     | State Management                               |
 
 ## Architektur-Regeln
 
-- **Game Logic ist provider-agnostisch.** `game/logic.ts` kennt nur `Track`, nie `SpotifyTrack`.
+- **Game Logic ist provider-agnostisch.** `game/logic.ts` kennt nur `Track`/`Song`, nie `SpotifyTrack`.
   Provider-spezifische Daten werden beim Import auf `Track` gemappt.
-- **Stores importieren keine anderen Stores.** Orchestrierung passiert in `p2p/connection.ts`.
+- **Stores importieren keine anderen Stores.** Orchestrierung passiert in `p2p/host.ts` / `p2p/peer.ts`.
+- **`game/logic.ts` bleibt pur.** Room→Room-Funktionen ohne I/O; Phase-Treiber, Timer und
+  Rundengeheimnisse leben in `HostSession`.
 - **Der Relay-Server bleibt dumm.** Keine Spiellogik in `server.js` — nur Räume + Message-Weiterleitung.
 - **Neue Provider = neuer Ordner unter `streaming/providers/`.** Kein bestehender Code muss sich ändern.
   Provider registriert sich in `registry.ts`, fertig.
@@ -301,4 +316,5 @@ npx tsc --noEmit                  # Type Check
 - Das Dockerfile kopiert `node_modules/ws` explizit ins Runtime-Image (kein npm ci dort)
 - iOS: Background Audio läuft über die jeweilige Streaming-App, nicht über die bitster-App
 - Rate Limits: Streaming API Calls bündeln, nicht bei jedem State-Update
-- Neuen Provider hinzufügen: `StreamingProvider` implementieren, in `registry.ts` registrieren, `ProviderPicker` zeigt ihn automatisch
+- Neuen Provider hinzufügen: `StreamingProvider` implementieren, in `registry.ts` registrieren
+  (`listProviders()` existiert schon; ein ProviderPicker-UI fehlt noch — bis dahin hardcodet `app/index.tsx` Spotify)

@@ -20,8 +20,12 @@ interface SpotifyPlaylistItem {
     name: string;
     is_playable?: boolean;
     is_local?: boolean;
+    duration_ms?: number;
+    explicit?: boolean;
+    popularity?: number;
     artists: { name: string }[];
     album: {
+      name?: string;
       release_date: string;
       images?: SpotifyImage[];
     };
@@ -58,8 +62,10 @@ export const spotifyLibrary: StreamingLibrary = {
     // market=from_token relinks region-locked tracks and fills is_playable —
     // without it Spotify happily returns tracks the account cannot play
     // ("Spotify can't play this file"), which then stall the round.
+    // duration/explicit/popularity/album name are free — same request, and
+    // they fuel the reveal badges (Deep Cut / Banger, 🅴) and end-game stats
     const fields =
-      "items(is_local,item(id,uri,name,is_playable,is_local,artists(name),album(release_date,images)))";
+      "items(is_local,item(id,uri,name,is_playable,is_local,duration_ms,explicit,popularity,artists(name),album(name,release_date,images)))";
     const res = await fetchWithAuth(
       `${API}/playlists/${playlistId}/items?fields=${fields}&market=from_token&offset=${index}&limit=1`,
     );
@@ -89,6 +95,10 @@ export const spotifyLibrary: StreamingLibrary = {
       artist: t.artists.map((a) => a.name).join(", "),
       year,
       imageUrl,
+      durationMs: typeof t.duration_ms === "number" ? t.duration_ms : undefined,
+      explicit: typeof t.explicit === "boolean" ? t.explicit : undefined,
+      popularity: typeof t.popularity === "number" ? t.popularity : undefined,
+      albumName: t.album.name || undefined,
     };
   },
 

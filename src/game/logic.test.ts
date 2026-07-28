@@ -6,10 +6,13 @@ import {
   buildGameState,
   checkPlacement,
   checkWinCondition,
+  awardTokens,
   createRoom,
+  evaluateGuess,
+  forfeitPlacement,
   generateRoomCode,
   getCurrentPlayer,
-  guessSongInfo,
+  guessReward,
   handleBuzz,
   pickRandomSong,
   placeSong,
@@ -506,6 +509,7 @@ describe("resolveBuzz — counter-placement in the active player's timeline", ()
         ...room.settings,
         rules: {
           buzz: { enabled: true, penalty: "lose-point", timerSeconds: 30 },
+          placement: { timerSeconds: null },
         },
       },
       players: room.players.map((p) =>
@@ -513,7 +517,35 @@ describe("resolveBuzz — counter-placement in the active player's timeline", ()
       ),
     };
     const { room: resolved } = resolveBuzz(room, 0);
-    expect(resolved.players.find((p) => p.id === "peer-2")!.score).toBe(0);
+    const buzzer = resolved.players.find((p) => p.id === "peer-2")!;
+    expect(buzzer.score).toBe(0);
+    expect(buzzer.penalties).toBe(1);
+  });
+
+  it("keeps the penalty durable across later placements", () => {
+    let room = makeChallengeRoom();
+    room = {
+      ...room,
+      settings: {
+        ...room.settings,
+        rules: {
+          buzz: { enabled: true, penalty: "lose-point", timerSeconds: 30 },
+          placement: { timerSeconds: null },
+        },
+      },
+    };
+    const { room: resolved } = resolveBuzz(room, 0);
+    // Buzzer (1 card, 1 penalty) later places a correct card: the score must
+    // reflect the penalty (2 cards - 1 penalty = 1), not plain length.
+    let next = advanceTurn(resolved);
+    next = { ...next, currentSong: makeSong(2005, "later-song") };
+    // Make peer-2 the acting player for the placement
+    const buzzerIndex = next.players.findIndex((p) => p.id === "peer-2");
+    next = { ...next, currentPlayerIndex: buzzerIndex };
+    const { room: placed } = placeSong(next, "peer-2", 1);
+    const buzzer = placed.players.find((p) => p.id === "peer-2")!;
+    expect(buzzer.timeline).toHaveLength(2);
+    expect(buzzer.score).toBe(1);
   });
 
   it("throws for a position outside the active player's timeline", () => {
@@ -579,7 +611,7 @@ describe("recordPass / allChallengersPassed", () => {
   });
 });
 
-describe("guessSongInfo — fuzzy matching", () => {
+describe("evaluateGuess — fuzzy matching", () => {
   function makeRoomWithSong(name: string, artist: string): Room {
     let room = makeTestRoom();
     room = startGame(room, []);
@@ -590,49 +622,61 @@ describe("guessSongInfo — fuzzy matching", () => {
     return room;
   }
 
-  it("awards 1 token when both title and artist correct", () => {
+  it("is worth 1 token when both title and artist are correct", () => {
     const room = makeRoomWithSong("Blinding Lights", "The Weeknd");
-    const {
-      titleCorrect,
-      artistCorrect,
-      room: updated,
-    } = guessSongInfo(room, "host-1", "Blinding Lights", "The Weeknd");
-    expect(titleCorrect).toBe(true);
-    expect(artistCorrect).toBe(true);
-    expect(updated.players[0].tokens).toBe(3); // 2 starting + 1
+    const result = evaluateGuess(room, "Blinding Lights", "The Weeknd");
+    expect(result.titleCorrect).toBe(true);
+    expect(result.artistCorrect).toBe(true);
+    expect(result.yearCorrect).toBeNull(); // no year guessed
+    expect(guessReward(result)).toBe(1);
+    // Evaluation is pure — tokens move only via awardTokens (at reveal)
+    expect(room.players[0].tokens).toBe(2);
+    const rewarded = awardTokens(room, "host-1", guessReward(result));
+    expect(rewarded.players[0].tokens).toBe(3);
+    expect(rewarded.players[0].stats.guessTokens).toBe(1);
   });
 
-  it("awards 0 tokens when only title correct", () => {
+  it("is worth 0 tokens when only the title is correct", () => {
     const room = makeRoomWithSong("Blinding Lights", "The Weeknd");
-    const {
-      titleCorrect,
-      artistCorrect,
-      room: updated,
-    } = guessSongInfo(room, "host-1", "Blinding Lights", "Drake");
-    expect(titleCorrect).toBe(true);
-    expect(artistCorrect).toBe(false);
-    expect(updated.players[0].tokens).toBe(2); // unchanged
+    const result = evaluateGuess(room, "Blinding Lights", "Drake");
+    expect(result.titleCorrect).toBe(true);
+    expect(result.artistCorrect).toBe(false);
+    expect(guessReward(result)).toBe(0);
+  });
+
+  it("pays an extra token for the exact year", () => {
+    const room = makeRoomWithSong("Blinding Lights", "The Weeknd");
+    const result = evaluateGuess(room, "Blinding Lights", "The Weeknd", 2000);
+    expect(result.yearCorrect).toBe(true);
+    expect(guessReward(result)).toBe(2);
+    // Wrong year: no extra token, everything else unaffected
+    const wrongYear = evaluateGuess(room, "Blinding Lights", "The Weeknd", 1999);
+    expect(wrongYear.yearCorrect).toBe(false);
+    expect(guessReward(wrongYear)).toBe(1);
+    // Year-only sniping works too
+    const yearOnly = evaluateGuess(room, "", "", 2000);
+    expect(guessReward(yearOnly)).toBe(1);
   });
 
   it("matches single artist from multi-artist credit", () => {
     const room = makeRoomWithSong("Song", "Drake, Future, Young Thug");
-    expect(guessSongInfo(room, "host-1", "Song", "Drake").artistCorrect).toBe(
+    expect(evaluateGuess(room, "Song", "Drake").artistCorrect).toBe(
       true,
     );
-    expect(guessSongInfo(room, "host-1", "Song", "Future").artistCorrect).toBe(
+    expect(evaluateGuess(room, "Song", "Future").artistCorrect).toBe(
       true,
     );
     expect(
-      guessSongInfo(room, "host-1", "Song", "Young Thug").artistCorrect,
+      evaluateGuess(room, "Song", "Young Thug").artistCorrect,
     ).toBe(true);
   });
 
   it("matches artist from feat. credit", () => {
     const room = makeRoomWithSong("Song", "Eminem feat. Rihanna");
-    expect(guessSongInfo(room, "host-1", "Song", "Eminem").artistCorrect).toBe(
+    expect(evaluateGuess(room, "Song", "Eminem").artistCorrect).toBe(
       true,
     );
-    expect(guessSongInfo(room, "host-1", "Song", "Rihanna").artistCorrect).toBe(
+    expect(evaluateGuess(room, "Song", "Rihanna").artistCorrect).toBe(
       true,
     );
   });
@@ -641,25 +685,20 @@ describe("guessSongInfo — fuzzy matching", () => {
     const room = makeRoomWithSong("Song", "Eminem ft. Rihanna");
     // "Eminem Rihanna" normalizes to "eminemrihanna" which contains "eminem"
     expect(
-      guessSongInfo(room, "host-1", "Song", "Eminem Rihanna").artistCorrect,
+      evaluateGuess(room, "Song", "Eminem Rihanna").artistCorrect,
     ).toBe(true);
   });
 
   it("matches slash-separated multi-artist guess", () => {
     const room = makeRoomWithSong("Song", "Eminem ft. Rihanna");
     expect(
-      guessSongInfo(room, "host-1", "Song", "eminem/rihanna").artistCorrect,
+      evaluateGuess(room, "Song", "eminem/rihanna").artistCorrect,
     ).toBe(true);
   });
 
   it("is case insensitive", () => {
     const room = makeRoomWithSong("Blinding Lights", "The Weeknd");
-    const result = guessSongInfo(
-      room,
-      "host-1",
-      "blinding lights",
-      "the weeknd",
-    );
+    const result = evaluateGuess(room, "blinding lights", "the weeknd");
     expect(result.titleCorrect).toBe(true);
     expect(result.artistCorrect).toBe(true);
   });
@@ -667,59 +706,59 @@ describe("guessSongInfo — fuzzy matching", () => {
   it("forgives small typos in longer titles", () => {
     const room = makeRoomWithSong("Bohemian Rhapsody", "Queen");
     expect(
-      guessSongInfo(room, "host-1", "Bohemian Rapsody", "Queen").titleCorrect,
+      evaluateGuess(room, "Bohemian Rapsody", "Queen").titleCorrect,
     ).toBe(true);
     expect(
-      guessSongInfo(room, "host-1", "Bohemien Rapsody", "Queen").titleCorrect,
+      evaluateGuess(room, "Bohemien Rapsody", "Queen").titleCorrect,
     ).toBe(true);
   });
 
   it("forgives transposed letters", () => {
     const room = makeRoomWithSong("Blinding Lights", "The Weeknd");
     expect(
-      guessSongInfo(room, "host-1", "Blidning Lights", "Teh Weeknd")
+      evaluateGuess(room, "Blidning Lights", "Teh Weeknd")
         .titleCorrect,
     ).toBe(true);
     expect(
-      guessSongInfo(room, "host-1", "Blidning Lights", "Teh Weeknd")
+      evaluateGuess(room, "Blidning Lights", "Teh Weeknd")
         .artistCorrect,
     ).toBe(true);
   });
 
   it("forgives typos in artist names", () => {
     const room = makeRoomWithSong("Song", "Nirvana");
-    expect(guessSongInfo(room, "host-1", "Song", "Nirvna").artistCorrect).toBe(
+    expect(evaluateGuess(room, "Song", "Nirvna").artistCorrect).toBe(
       true,
     );
     expect(
-      guessSongInfo(room, "host-1", "Song", "Nirvanna").artistCorrect,
+      evaluateGuess(room, "Song", "Nirvanna").artistCorrect,
     ).toBe(true);
   });
 
   it("keeps short titles strict — no tolerance under 5 characters", () => {
     const room = makeRoomWithSong("Yo", "Artist Somebody");
     expect(
-      guessSongInfo(room, "host-1", "No", "Artist Somebody").titleCorrect,
+      evaluateGuess(room, "No", "Artist Somebody").titleCorrect,
     ).toBe(false);
   });
 
   it("does not match a genuinely different title", () => {
     const room = makeRoomWithSong("Hello", "Adele");
-    expect(guessSongInfo(room, "host-1", "Hollow", "Adele").titleCorrect).toBe(
+    expect(evaluateGuess(room, "Hollow", "Adele").titleCorrect).toBe(
       false,
     );
     expect(
-      guessSongInfo(room, "host-1", "Wonderwall", "Adele").titleCorrect,
+      evaluateGuess(room, "Wonderwall", "Adele").titleCorrect,
     ).toBe(false);
   });
 
   it("does not stretch tolerance across large length differences", () => {
     const room = makeRoomWithSong("Smells Like Teen Spirit", "Nirvana");
     expect(
-      guessSongInfo(room, "host-1", "Smells", "Nirvana").titleCorrect,
+      evaluateGuess(room, "Smells", "Nirvana").titleCorrect,
     ).toBe(false);
     expect(
-      guessSongInfo(room, "host-1", "Smels Like Teen Spirit", "Nirvana")
+      evaluateGuess(room, "Smels Like Teen Spirit", "Nirvana")
         .titleCorrect,
     ).toBe(true);
   });
@@ -727,7 +766,7 @@ describe("guessSongInfo — fuzzy matching", () => {
   it("strips remix suffix from title", () => {
     const room = makeRoomWithSong("Blinding Lights (Remix)", "The Weeknd");
     expect(
-      guessSongInfo(room, "host-1", "Blinding Lights", "The Weeknd")
+      evaluateGuess(room, "Blinding Lights", "The Weeknd")
         .titleCorrect,
     ).toBe(true);
   });
@@ -735,13 +774,13 @@ describe("guessSongInfo — fuzzy matching", () => {
   it("strips feat. from title", () => {
     const room = makeRoomWithSong("HUMBLE. (feat. Someone)", "Kendrick Lamar");
     expect(
-      guessSongInfo(room, "host-1", "HUMBLE", "Kendrick Lamar").titleCorrect,
+      evaluateGuess(room, "HUMBLE", "Kendrick Lamar").titleCorrect,
     ).toBe(true);
   });
 
   it("strips dash-suffix from title", () => {
     const room = makeRoomWithSong("Song - Remastered 2021", "Artist");
-    expect(guessSongInfo(room, "host-1", "Song", "Artist").titleCorrect).toBe(
+    expect(evaluateGuess(room, "Song", "Artist").titleCorrect).toBe(
       true,
     );
   });
@@ -749,20 +788,20 @@ describe("guessSongInfo — fuzzy matching", () => {
   it("handles ß vs ss", () => {
     const room = makeRoomWithSong("Straße", "Artist");
     expect(
-      guessSongInfo(room, "host-1", "Strasse", "Artist").titleCorrect,
+      evaluateGuess(room, "Strasse", "Artist").titleCorrect,
     ).toBe(true);
   });
 
   it("handles diacritics", () => {
     const room = makeRoomWithSong("Déjà Vu", "Artist");
     expect(
-      guessSongInfo(room, "host-1", "Deja Vu", "Artist").titleCorrect,
+      evaluateGuess(room, "Deja Vu", "Artist").titleCorrect,
     ).toBe(true);
   });
 
   it("rejects empty guess", () => {
     const room = makeRoomWithSong("Song", "Artist");
-    expect(guessSongInfo(room, "host-1", "", "").titleCorrect).toBe(false);
-    expect(guessSongInfo(room, "host-1", "", "").artistCorrect).toBe(false);
+    expect(evaluateGuess(room, "", "").titleCorrect).toBe(false);
+    expect(evaluateGuess(room, "", "").artistCorrect).toBe(false);
   });
 });

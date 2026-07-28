@@ -1,6 +1,7 @@
 import * as logic from "@/game/logic";
 import { useGameStore } from "@/game/store";
-import type { PlacementResult, Room, Song } from "@/game/types";
+import type { GuessResult, PlacementResult, Room, Song } from "@/game/types";
+import { EMPTY_STATS } from "@/game/types";
 import { getProvider } from "@/streaming/registry";
 import { useStreamingStore } from "@/streaming/store";
 import { log as logger } from "@/utils/logger";
@@ -13,9 +14,13 @@ export type SendFn = (action: P2PAction, target?: string) => void;
 /** Peers that connect but never complete the join handshake get pruned */
 const PLACEHOLDER_TIMEOUT_MS = 10_000;
 
-interface GuessOutcome {
-  titleCorrect: boolean;
-  artistCorrect: boolean;
+/** Player names are user input from the wire — keep them sane */
+const MAX_NAME_LENGTH = 24;
+
+function sanitizeName(raw: string): string {
+  const name = raw.trim().slice(0, MAX_NAME_LENGTH).trim();
+  if (name.length === 0) throw new Error("Name required");
+  return name;
 }
 
 /**
@@ -26,9 +31,15 @@ interface GuessOutcome {
 export class HostSession {
   private room: Room;
   private pendingResult: PlacementResult | null = null;
-  private pendingGuessResult: GuessOutcome | null = null;
+  private pendingGuessResult: GuessResult | null = null;
+  /** Who made the pending guess — their reward is applied at reveal */
+  private pendingGuessBy: string | null = null;
   private placeholderTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private buzzTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Blitz mode: countdown for the active player's placement */
+  private placeTimer: ReturnType<typeof setTimeout> | null = null;
+  /** True while a skip's song swap is in flight — blocks concurrent turn actions */
+  private advancing = false;
   /** Gap the buzzer has provisionally selected — auto-locked in on timeout */
   private pendingBuzzPosition: number | null = null;
 
@@ -47,6 +58,7 @@ export class HostSession {
     }
     this.placeholderTimers.clear();
     this.clearBuzzTimer();
+    this.clearPlaceTimer();
   }
 
   /** A peer's socket connected — track it and show them the room is alive */
@@ -105,7 +117,8 @@ export class HostSession {
 
     // Not enough players to continue
     if (this.room.players.length < 2 && this.room.phase !== "lobby") {
-      this.room = { ...this.room, phase: "finished" };
+      this.clearPlaceTimer();
+      this.room = { ...this.room, phase: "finished", placeDeadline: null };
       this.pendingResult = null;
       this.broadcastState();
       return;
@@ -118,6 +131,10 @@ export class HostSession {
         this.room.phase === "reveal" ||
         this.room.phase === "bitster-window")
     ) {
+      // Their pending guess and placement countdown leave with them
+      this.pendingGuessResult = null;
+      this.pendingGuessBy = null;
+      this.clearPlaceTimer();
       this.room = logic.advanceTurn(this.room);
       void this.pickAndPlayNextSong().then((picked) => {
         if (!picked) {
@@ -145,14 +162,9 @@ export class HostSession {
       switch (action.type) {
         case "join": {
           this.clearPlaceholderTimer(fromPeerId);
-          this.room = logic.addPlayer(
-            this.room,
-            fromPeerId,
-            action.payload.name,
-          );
-          useP2PStore
-            .getState()
-            .updatePeer(fromPeerId, { name: action.payload.name });
+          const joinName = sanitizeName(action.payload.name);
+          this.room = logic.addPlayer(this.room, fromPeerId, joinName);
+          useP2PStore.getState().updatePeer(fromPeerId, { name: joinName });
           this.broadcastState();
           break;
         }
@@ -165,7 +177,7 @@ export class HostSession {
           this.room = logic.addPlayer(
             this.room,
             localId,
-            action.payload.name,
+            sanitizeName(action.payload.name),
             true,
           );
           this.broadcastState();
@@ -238,7 +250,7 @@ export class HostSession {
         }
 
         case "place-song": {
-          if (this.room.phase !== "playing") return;
+          if (this.room.phase !== "playing" || this.advancing) return;
           if (this.room.buzzerId) {
             this.sendError("Wait for buzzer to place", fromPeerId);
             return;
@@ -248,6 +260,7 @@ export class HostSession {
             this.sendError("Not your turn", fromPeerId);
             return;
           }
+          this.clearPlaceTimer();
           const { room: updated, result } = logic.placeSong(
             this.room,
             fromPeerId,
@@ -262,6 +275,7 @@ export class HostSession {
 
         case "guess-song": {
           // Active player guesses BEFORE placing (during playing phase)
+          if (this.advancing) return;
           if (this.room.phase !== "playing") {
             logger.warn(
               "p2p",
@@ -274,36 +288,51 @@ export class HostSession {
             this.sendError("Only the active player can guess", fromPeerId);
             return;
           }
-          const guessResult = logic.guessSongInfo(
+          // One guess per song — otherwise correct answers could be
+          // brute-forced against the fuzzy matcher
+          if (this.pendingGuessResult) {
+            this.sendError("Already guessed this round", fromPeerId);
+            return;
+          }
+          const guessResult = logic.evaluateGuess(
             this.room,
-            fromPeerId,
             action.payload.title,
             action.payload.artist,
+            action.payload.year,
           );
-          this.room = guessResult.room;
           logger.debug(
             "p2p",
-            `guess result: title=${guessResult.titleCorrect}, artist=${guessResult.artistCorrect}`,
+            `guess result: title=${guessResult.titleCorrect}, artist=${guessResult.artistCorrect}, year=${guessResult.yearCorrect}`,
           );
-          // Store result — feedback shown after placing (bitster-window phase)
-          this.pendingGuessResult = {
-            titleCorrect: guessResult.titleCorrect,
-            artistCorrect: guessResult.artistCorrect,
-          };
-          // Broadcast updated tokens but don't reveal guess correctness yet
+          // Store result — feedback AND token reward land at reveal, so the
+          // broadcast token count can't leak the verdict early
+          this.pendingGuessResult = guessResult;
+          this.pendingGuessBy = fromPeerId;
           this.broadcastState();
           break;
         }
 
         case "skip-song": {
-          if (this.room.phase !== "playing") return;
+          // `advancing` blocks the re-entrancy race: without it a second skip
+          // (or a place-song) arriving during the song swap would act on the
+          // fresh song and double-spend tokens
+          if (this.room.phase !== "playing" || this.advancing) return;
+          if (!this.room.currentSong) return;
           const currentForSkip = logic.getCurrentPlayer(this.room);
           if (fromPeerId !== currentForSkip?.id) return;
           this.room = logic.skipSong(this.room, fromPeerId);
           this.pendingGuessResult = null;
-          const skipPicked = await this.pickAndPlayNextSong();
-          if (!skipPicked) {
-            this.room = { ...this.room, phase: "finished" };
+          this.pendingGuessBy = null;
+          this.clearPlaceTimer();
+          this.room = { ...this.room, currentSong: null, placeDeadline: null };
+          this.advancing = true;
+          try {
+            const skipPicked = await this.pickAndPlayNextSong();
+            if (!skipPicked) {
+              this.room = { ...this.room, phase: "finished" };
+            }
+          } finally {
+            this.advancing = false;
           }
           this.broadcastState();
           break;
@@ -318,6 +347,7 @@ export class HostSession {
           )
             return;
           this.pendingGuessResult = null;
+          this.pendingGuessBy = null;
           const winner = logic.checkWinCondition(this.room);
           if (winner) {
             this.room = { ...this.room, phase: "finished" };
@@ -375,6 +405,16 @@ export class HostSession {
           // Buzzer picked a gap (not yet confirmed) — locked in on timeout
           if (this.room.phase !== "bitster-window") return;
           if (this.room.buzzerId !== fromPeerId) return;
+          // Valid gaps refer to the active player's timeline WITHOUT the
+          // disputed card (it is removed before the buzz resolves)
+          const challengeGaps = Math.max(
+            0,
+            (logic.getCurrentPlayer(this.room)?.timeline.length ?? 0) - 1,
+          );
+          if (action.payload.position > challengeGaps) {
+            this.sendError("Invalid placement", fromPeerId);
+            return;
+          }
           this.pendingBuzzPosition = action.payload.position;
           break;
         }
@@ -433,6 +473,12 @@ export class HostSession {
 
         case "update-settings": {
           if (fromPeerId !== this.room.hostId) return;
+          // Mid-game rule changes would silently shift win conditions and
+          // armed timers — settings are a lobby thing
+          if (this.room.phase !== "lobby") {
+            this.sendError("Settings can only be changed in the lobby", fromPeerId);
+            return;
+          }
           this.room = {
             ...this.room,
             settings: { ...this.room.settings, ...action.payload },
@@ -444,8 +490,10 @@ export class HostSession {
         case "rematch": {
           if (fromPeerId !== this.room.hostId) return;
           this.pendingGuessResult = null;
+          this.pendingGuessBy = null;
           this.pendingResult = null;
           this.clearBuzzTimer();
+          this.clearPlaceTimer();
           this.pendingBuzzPosition = null;
           this.room = {
             ...this.room,
@@ -456,6 +504,7 @@ export class HostSession {
             currentPlayerIndex: 0,
             buzzerId: null,
             buzzDeadline: null,
+            placeDeadline: null,
             passedIds: [],
             players: this.room.players.map((p) => ({
               ...p,
@@ -463,6 +512,8 @@ export class HostSession {
               timeline: [],
               tokens: 2,
               failedSongs: [],
+              penalties: 0,
+              stats: { ...EMPTY_STATS },
             })),
           };
           this.broadcastState();
@@ -516,6 +567,15 @@ export class HostSession {
 
     const currentPlayer = logic.getCurrentPlayer(this.room);
 
+    // Placement stats — the verdict is final now
+    if (currentPlayer) {
+      this.room = logic.bumpStat(
+        this.room,
+        currentPlayer.id,
+        this.pendingResult.correct ? "placedCorrect" : "placedWrong",
+      );
+    }
+
     // If active player was wrong, remove the tentatively placed card
     if (!this.pendingResult.correct && currentPlayer) {
       this.room = logic.undoPlacement(
@@ -526,9 +586,15 @@ export class HostSession {
     }
 
     // Handle buzz resolution
-    if (this.room.buzzerId && buzzPosition !== null) {
+    const buzzerId = this.room.buzzerId;
+    if (buzzerId && buzzPosition === null) {
+      // Buzz forfeited (timeout without a pick) — token gone, counts as a fail
+      this.room = logic.bumpStat(this.room, buzzerId, "buzzFails");
+    }
+    if (buzzerId && buzzPosition !== null) {
       if (this.pendingResult.correct) {
         // Active player was right — buzzer challenged incorrectly (token already spent)
+        this.room = logic.bumpStat(this.room, buzzerId, "buzzFails");
         this.room = { ...this.room, buzzerId: null };
       } else {
         // Active player wrong — resolve buzzer's placement
@@ -538,10 +604,13 @@ export class HostSession {
         } catch (err) {
           // Invalid position (e.g. stale provisional pick) — buzz forfeits
           logger.warn("p2p", `Buzz resolution failed: ${err}`);
+          this.room = logic.bumpStat(this.room, buzzerId, "buzzFails");
           this.room = { ...this.room, buzzerId: null };
         }
       }
     }
+
+    this.applyGuessReward();
 
     // Transition to reveal
     this.room = {
@@ -552,6 +621,17 @@ export class HostSession {
     };
     this.broadcastState(this.pendingResult);
     this.pendingResult = null;
+  }
+
+  /**
+   * Guess rewards (+1★ title+artist, +1★ exact year) are held back until the
+   * reveal — awarding them at guess time would leak the verdict through the
+   * broadcast token count.
+   */
+  private applyGuessReward(): void {
+    if (!this.pendingGuessResult || !this.pendingGuessBy) return;
+    const reward = logic.guessReward(this.pendingGuessResult);
+    this.room = logic.awardTokens(this.room, this.pendingGuessBy, reward);
   }
 
   /** The buzzer's countdown ran out — lock in their provisional pick or forfeit */
@@ -569,6 +649,45 @@ export class HostSession {
     if (this.buzzTimer) {
       clearTimeout(this.buzzTimer);
       this.buzzTimer = null;
+    }
+  }
+
+  // -- Blitz mode (placement countdown) --
+
+  /** Arm the placement countdown for the fresh song, if the rule is on */
+  private armPlaceTimer(): void {
+    this.clearPlaceTimer();
+    const seconds = this.room.settings.rules.placement.timerSeconds;
+    if (seconds === null || this.room.phase !== "playing") {
+      this.room = { ...this.room, placeDeadline: null };
+      return;
+    }
+    const timerMs = seconds * 1000;
+    this.room = { ...this.room, placeDeadline: Date.now() + timerMs };
+    this.placeTimer = setTimeout(() => this.handlePlaceTimeout(), timerMs);
+  }
+
+  /** Blitz: time ran out before the active player placed — song is lost */
+  private handlePlaceTimeout(): void {
+    this.placeTimer = null;
+    if (this.room.phase !== "playing" || !this.room.currentSong) return;
+    if (this.room.buzzerId) return;
+    logger.info("p2p", "Placement timer expired — forfeiting the song");
+
+    const currentPlayer = logic.getCurrentPlayer(this.room);
+    const { room: forfeited, result } = logic.forfeitPlacement(this.room);
+    this.room = forfeited;
+    if (currentPlayer) {
+      this.room = logic.bumpStat(this.room, currentPlayer.id, "placedWrong");
+    }
+    this.applyGuessReward();
+    this.broadcastState(result);
+  }
+
+  private clearPlaceTimer(): void {
+    if (this.placeTimer) {
+      clearTimeout(this.placeTimer);
+      this.placeTimer = null;
     }
   }
 
@@ -660,6 +779,8 @@ export class HostSession {
     if (!song) return false;
 
     await this.playSongOnAllDevices(song.uri);
+    // Blitz mode: the countdown starts once the fresh song is rolling
+    this.armPlaceTimer();
     return true;
   }
 

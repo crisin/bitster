@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Easing,
@@ -13,11 +13,27 @@ import { useTheme } from "./themedStyles";
 
 const NATIVE_DRIVER = Platform.OS !== "web";
 
-/** The user's effect tempo (speed preset or BPM), reactive */
+/**
+ * The user's effect tempo (speed preset, slider, or BPM), reactive but
+ * DEBOUNCED: a tempo change restarts every Animated loop, so a slider drag
+ * must land as one restart at the end, not sixty per second.
+ */
 function useEffectTempo(): EffectTempo {
   const speedId = useThemeStore((s) => s.effectSpeedId);
   const bpm = useThemeStore((s) => s.effectBpm);
-  return useMemo(() => resolveEffectTempo(speedId, bpm), [speedId, bpm]);
+  const factor = useThemeStore((s) => s.effectFactor);
+  const tempo = useMemo(
+    () => resolveEffectTempo(speedId, bpm, factor),
+    [speedId, bpm, factor],
+  );
+
+  const [settled, setSettled] = useState(tempo);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(tempo), 200);
+    return () => clearTimeout(timer);
+  }, [tempo]);
+
+  return settled;
 }
 
 /** One emoji drifting up the screen in an endless loop */
@@ -29,6 +45,7 @@ function Floatie({ emoji, index, width, height, factor }: {
   factor: number;
 }) {
   const drift = useRef(new Animated.Value(0)).current;
+  const hasStaggered = useRef(false);
   // Deterministic per-index spread (same trick as the confetti)
   const x = ((index * 173) % 100) / 100;
   const duration = (9000 + ((index * 811) % 6000)) / factor;
@@ -38,11 +55,15 @@ function Floatie({ emoji, index, width, height, factor }: {
 
   useEffect(() => {
     drift.setValue(0);
+    // The stagger delay spreads floaties out ONCE on mount — a tempo change
+    // must not send them all below the screen for many seconds again
+    const delay = hasStaggered.current ? 0 : (index * 900) / factor;
+    hasStaggered.current = true;
     const loop = Animated.loop(
       Animated.timing(drift, {
         toValue: 1,
         duration,
-        delay: (index * 900) / factor,
+        delay,
         easing: Easing.linear,
         useNativeDriver: NATIVE_DRIVER,
       }),

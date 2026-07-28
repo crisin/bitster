@@ -17,6 +17,7 @@ interface GameStore {
   playedSongs: GameState["playedSongs"];
   buzzerId: string | null;
   buzzDeadline: number | null;
+  placeDeadline: number | null;
   passedIds: string[];
   playlistName: string | null;
   playlistImageUrl: string | null;
@@ -43,6 +44,7 @@ const initialState = {
   playedSongs: [] as GameState["playedSongs"],
   buzzerId: null as string | null,
   buzzDeadline: null as number | null,
+  placeDeadline: null as number | null,
   passedIds: [] as string[],
   playlistName: null as string | null,
   playlistImageUrl: null as string | null,
@@ -71,6 +73,7 @@ export const useGameStore = create<GameStore>((set) => ({
       playedSongs: state.playedSongs,
       buzzerId: state.buzzerId,
       buzzDeadline: state.buzzDeadline,
+      placeDeadline: state.placeDeadline,
       passedIds: state.passedIds,
       playlistName: state.playlistName,
       playlistImageUrl: state.playlistImageUrl,
