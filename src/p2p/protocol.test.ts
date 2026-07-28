@@ -1,12 +1,29 @@
-import { addPlayer, buildGameState, createRoom } from "@/game/logic";
-import type { GameState } from "@/game/types";
+import {
+  addPlayer,
+  appendRound,
+  buildGameRecap,
+  buildGameState,
+  createRoom,
+} from "@/game/logic";
+import type { GameRecap, GameState, GameStateMeta } from "@/game/types";
+import { MAX_ROUNDS_PER_GAME } from "@/game/types";
 import { describe, expect, it } from "vitest";
-import { validateAction, validateGameState } from "./protocol";
+import {
+  validateAction,
+  validateGameRecap,
+  validateGameState,
+} from "./protocol";
+
+/** Fixed stamp so states stay comparable across runs */
+const TEST_META: GameStateMeta = {
+  hostNow: 1_700_000_000_000,
+  stateVersion: 7,
+};
 
 function makeValidState(): GameState {
   let room = createRoom("TEST01", "host-1", "Alice");
   room = addPlayer(room, "peer-2", "Bob");
-  return buildGameState(room);
+  return buildGameState(room, TEST_META);
 }
 
 describe("validateAction", () => {
@@ -194,4 +211,194 @@ describe("validateGameState", () => {
     expect(clean).not.toBeNull();
     expect("evil" in (clean as object)).toBe(false);
   });
+});
+
+describe("validateGameRecap", () => {
+  function makeRecap(): GameRecap {
+    let room = createRoom("TEST01", "host-1", "Alice");
+    room = addPlayer(room, "peer-2", "Bob");
+    room = appendRound(room, {
+      song: {
+        id: "s1",
+        uri: "spotify:track:1",
+        name: "Song",
+        artist: "Artist",
+        year: 1985,
+      },
+      activePlayerId: "host-1",
+      activePlayerName: "Alice",
+      outcome: "placed",
+      position: 0,
+      correct: true,
+      placeMs: 1200,
+      guess: null,
+      buzz: null,
+    });
+    return buildGameRecap(room, {
+      startedAt: 1,
+      endedAt: 2,
+      endedReason: "win",
+      demo: false,
+    });
+  }
+
+  it("accepts what buildGameRecap produces", () => {
+    const recap = validateGameRecap(JSON.parse(JSON.stringify(makeRecap())));
+    expect(recap).not.toBeNull();
+    expect(recap?.rounds[0].song.year).toBe(1985);
+  });
+
+  it("round-trips through validateAction", () => {
+    const action = validateAction({
+      type: "game-recap",
+      payload: JSON.parse(JSON.stringify(makeRecap())),
+    });
+    expect(action?.type).toBe("game-recap");
+    expect(validateAction({ type: "game-recap", payload: { junk: 1 } })).toBeNull();
+  });
+
+  it("tolerates a missing demo flag and version", () => {
+    const { demo, version, ...rest } = makeRecap();
+    void demo;
+    void version;
+    const recap = validateGameRecap(rest);
+    expect(recap?.demo).toBe(false);
+    expect(recap?.version).toBe(1);
+  });
+
+  it("rejects an unknown outcome or end reason", () => {
+    const bad = makeRecap();
+    expect(
+      validateGameRecap({ ...bad, endedReason: "vibes" }),
+    ).toBeNull();
+    expect(
+      validateGameRecap({
+        ...bad,
+        rounds: [{ ...bad.rounds[0], outcome: "vanished" }],
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects an unbounded rounds or players array", () => {
+    const bad = makeRecap();
+    expect(
+      validateGameRecap({
+        ...bad,
+        rounds: Array.from({ length: MAX_ROUNDS_PER_GAME + 1 }, () => bad.rounds[0]),
+      }),
+    ).toBeNull();
+    expect(
+      validateGameRecap({
+        ...bad,
+        players: Array.from({ length: 33 }, () => bad.players[0]),
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects a round with a malformed song or a negative number", () => {
+    const bad = makeRecap();
+    expect(
+      validateGameRecap({
+        ...bad,
+        rounds: [{ ...bad.rounds[0], song: { id: "x" } }],
+      }),
+    ).toBeNull();
+    expect(
+      validateGameRecap({
+        ...bad,
+        rounds: [{ ...bad.rounds[0], placeMs: -1 }],
+      }),
+    ).toBeNull();
+    expect(validateGameRecap({ ...bad, startedAt: -1 })).toBeNull();
+  });
+});
+
+describe("validateGameState — host clock and version", () => {
+  it("tolerates an older host that sends neither field", () => {
+    const { hostNow, stateVersion, ...rest } = makeValidState();
+    void hostNow;
+    void stateVersion;
+    const clean = validateGameState(rest);
+    expect(clean?.hostNow).toBeNull();
+    expect(clean?.stateVersion).toBeNull();
+  });
+
+  it("accepts explicit nulls", () => {
+    const state = { ...makeValidState(), hostNow: null, stateVersion: null };
+    const clean = validateGameState(state);
+    expect(clean).not.toBeNull();
+    expect(clean?.hostNow).toBeNull();
+  });
+
+  it("round-trips both values through JSON unchanged", () => {
+    const state = makeValidState();
+    const clean = validateGameState(JSON.parse(JSON.stringify(state)));
+    expect(clean?.hostNow).toBe(TEST_META.hostNow);
+    expect(clean?.stateVersion).toBe(TEST_META.stateVersion);
+  });
+
+  it("accepts a hostNow far in the future (no magnitude clamp)", () => {
+    const state = { ...makeValidState(), hostNow: 7_258_118_400_000 };
+    expect(validateGameState(state)).not.toBeNull();
+  });
+
+  it.each([1.5, "now", NaN, Infinity, 0, -1, true])(
+    "rejects a malformed hostNow: %s",
+    (bad) => {
+      const state = { ...makeValidState(), hostNow: bad };
+      expect(validateGameState(state)).toBeNull();
+    },
+  );
+
+  it.each([-1, 1.5, "seven", NaN])(
+    "rejects a malformed stateVersion: %s",
+    (bad) => {
+      const state = { ...makeValidState(), stateVersion: bad };
+      expect(validateGameState(state)).toBeNull();
+    },
+  );
+});
+
+describe("validateGameState — connection flags", () => {
+  it("defaults connected to true for an older host", () => {
+    const state = makeValidState();
+    const players = state.players.map(({ connected, ...p }) => {
+      void connected;
+      return p;
+    });
+    const clean = validateGameState({ ...state, players });
+    expect(clean?.players.every((p) => p.connected)).toBe(true);
+    expect(clean?.players.every((p) => p.disconnectedUntil === null)).toBe(true);
+  });
+
+  it("carries a disconnected player through", () => {
+    const state = makeValidState();
+    state.players[1] = {
+      ...state.players[1],
+      connected: false,
+      disconnectedUntil: 1_700_000_060_000,
+    };
+    const clean = validateGameState(state);
+    expect(clean?.players[1].connected).toBe(false);
+    expect(clean?.players[1].disconnectedUntil).toBe(1_700_000_060_000);
+  });
+
+  it.each(["true", 0, {}])("rejects a non-boolean connected: %s", (bad) => {
+    const state = makeValidState();
+    const players = state.players.map((p, i) =>
+      i === 0 ? { ...p, connected: bad } : p,
+    );
+    expect(validateGameState({ ...state, players })).toBeNull();
+  });
+
+  it.each(["soon", NaN, Infinity, 1.5])(
+    "rejects a malformed disconnectedUntil: %s",
+    (bad) => {
+      const state = makeValidState();
+      const players = state.players.map((p, i) =>
+        i === 0 ? { ...p, disconnectedUntil: bad } : p,
+      );
+      expect(validateGameState({ ...state, players })).toBeNull();
+    },
+  );
 });

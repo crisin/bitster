@@ -26,6 +26,12 @@ export interface ThemeEffects {
   glitch: boolean;
   /** Emojis floating up the screen, null = none */
   floaties: string[] | null;
+  /** Glass lens that bends whatever is under the cursor (web only) */
+  cursorWarp: boolean;
+  /** Everything goes dark except a circle around the cursor (web only) */
+  flashlight: boolean;
+  /** Tear-bar burst on every click (web only) */
+  clickGlitch: boolean;
 }
 
 export interface Theme {
@@ -53,6 +59,9 @@ const NO_EFFECTS: ThemeEffects = {
   melt: false,
   glitch: false,
   floaties: null,
+  cursorWarp: false,
+  flashlight: false,
+  clickGlitch: false,
 };
 
 export const DEFAULT_THEME_ID = "classic";

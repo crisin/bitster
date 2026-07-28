@@ -5,8 +5,22 @@ Stand: 20.07.2026 (nach Relay-Migration, Auth-Härtung, Playback-Robustheit und 
 ## Vor dem nächsten Game Night
 
 - [ ] **Deploy auf Railway** — aktueller Stand bauen & deployen; danach alle Mitspieler die Seite neu laden lassen (alte Tabs sprechen das Relay-Protokoll nicht).
-- [ ] **Spotify-Accounts allowlisten** — jeder neue Mitspieler muss im Spotify Developer Dashboard unter "User Management" eingetragen werden (Dev Mode, max. 25). Die 2 aktuellen Test-Freunde sind drin.
+- [ ] **Spotify-Accounts allowlisten** — jeder neue Mitspieler muss im Spotify Developer Dashboard unter "User Management" eingetragen werden. **Achtung: der Dev Mode ist inzwischen auf 5 Nutzer dokumentiert, nicht mehr 25** — vor dem nächsten größeren Abend im Dashboard prüfen, wie viele Plätze die App wirklich hat. Die 2 aktuellen Test-Freunde sind drin.
 - [ ] **Real-World-Test Playback-Recovery** — der `NO_ACTIVE_DEVICE`-Transfer-Retry (player.ts) ist nur mit echten Premium-Accounts testbar.
+
+## Vor dem nächsten Deploy beachten
+
+**Das Relay-Protokoll hat sich geändert** (`rejoin` verlangt jetzt ein Token,
+siehe [PLAN.md](PLAN.md)). Nach dem Deploy müssen alle Mitspieler die Seite neu
+laden — alte Tabs können sich nicht mehr wiederverbinden.
+
+## Erledigt: P0–P3 aus [PLAN.md](PLAN.md)
+
+Verbindungs-Resilienz (Reconnect verliert keinen Sitz mehr, Host-Reload überlebt),
+Timer-Offset + State-Versioning, Song-Schema an einer Stelle, Runden-Log/Recap/
+lokale Historie mit Statistik-Screen. Die Jahres-Korrektur bei Remastern (P4)
+liegt dort weiterhin bewusst auf Eis — das Runden-Log liefert jetzt die
+Datenbasis, um das Ausmaß zu beziffern.
 
 ## Offen (Features / Robustheit)
 
@@ -14,7 +28,6 @@ Stand: 20.07.2026 (nach Relay-Migration, Auth-Härtung, Playback-Robustheit und 
 - [ ] **ProviderPicker** — `registry.listProviders()` existiert, aber die UI hardcodet Spotify (`app/index.tsx`). Relevant erst mit einem zweiten Streaming-Provider.
 - [ ] **Song-Preview/Timer** — nur 30–60s abspielen statt des ganzen Songs, mit Countdown.
 - [ ] **Error Boundary** um die App (Crash → freundlicher Screen statt weißer Seite).
-- [ ] **Rejoin nach App-Neustart** — Reconnect überlebt Socket-Drops und Screen-Lock (AppState-Listener), aber kein komplettes Neustarten der App (Session-Persistenz für Raumcode + Peer-ID).
 - [ ] **No-Buzz-Auto-Reveal** — der Buzz-Lock-in hat einen Timer (host.ts `buzzTimer`), aber das bitster-Window OHNE Buzz läuft unbegrenzt, bis alle passen oder der aktive Spieler revealt; optionaler Auto-Reveal nach X Sekunden.
 - [ ] **🫠 Melt Mode v2/v3** — v1 (Live-Melt via SVG-Displacement auf dem App-Root, `ThemeEffects.melt`, Intensitäts-Slider, Tadi + Custom-Editor) ist drin — Web ohne Safari, respektiert prefers-reduced-motion. Offen: v2 WebGL-Frozen-Frame-Melt als Übergang (Reveal/„TOO SLOW!"/GAME OVER — läuft dann auch auf iOS-Web, Doom-Style-Drip), v3 nativ (Android 13+ RenderEffect-RuntimeShader live, iOS via react-native-skia Snapshot + SkSL).
 
@@ -22,7 +35,6 @@ Stand: 20.07.2026 (nach Relay-Migration, Auth-Härtung, Playback-Robustheit und 
 
 - [ ] Sound-Effekte beim Reveal, Animationen (Karte fliegt in Timeline, Confetti)
 - [ ] Spectator Mode / Mid-Game-Join als Zuschauer
-- [ ] Statistiken (Trefferquote, Runden-History)
 - [ ] Mehrere Playlists kombinieren
 - [ ] Chat / Emoji-Reactions
 - [ ] Native Builds (iOS/Android) — WebSocket läuft nativ out of the box; braucht `EXPO_PUBLIC_RELAY_URL` aufs Deployment + `bitster://auth/callback` im Spotify Dashboard

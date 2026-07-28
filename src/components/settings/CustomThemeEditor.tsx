@@ -5,7 +5,7 @@ import { Chip } from "@/components/ui/Chip";
 import { Input } from "@/components/ui/Input";
 import { Slider } from "@/components/ui/Slider";
 import { useThemeStore } from "@/theme/store";
-import { ACCENT_PRESETS, normalizeHex } from "@/theme/customTheme";
+import { ACCENT_PRESETS, normalizeHex, randomFloaties } from "@/theme/customTheme";
 import { createThemedStyles } from "@/theme/themedStyles";
 import { FONT, RADIUS, SPACE, LABEL_STYLE } from "@/utils/constants";
 
@@ -28,6 +28,13 @@ const EFFECT_OPTIONS = [
   { key: "flicker", label: "Flicker" },
   { key: "scanlines", label: "Scanlines" },
   { key: "vignette", label: "Vignette" },
+] as const;
+
+/** Cursor-driven effects — a touch screen has no pointer to follow */
+const POINTER_OPTIONS = [
+  { key: "cursorWarp", label: "Warp lens 🔮" },
+  { key: "flashlight", label: "Flashlight 🔦" },
+  { key: "clickGlitch", label: "Click glitch ⚡" },
 ] as const;
 
 /**
@@ -121,6 +128,25 @@ export function CustomThemeEditor() {
         ))}
       </View>
 
+      {/* Cursor effects — pointless without a pointer, so web only */}
+      {Platform.OS === "web" && (
+        <>
+          <Text style={styles.sectionTitle}>Mouse & clicks</Text>
+          <View style={styles.chipRow}>
+            {POINTER_OPTIONS.map((fx) => (
+              <Chip
+                key={fx.key}
+                label={fx.label}
+                selected={custom.effects[fx.key]}
+                onPress={() =>
+                  updateCustomEffects({ [fx.key]: !custom.effects[fx.key] })
+                }
+              />
+            ))}
+          </View>
+        </>
+      )}
+
       {/* Melt tuning lives right next to its toggle (web-only effect) */}
       {custom.effects.melt && Platform.OS === "web" && (
         <>
@@ -145,7 +171,16 @@ export function CustomThemeEditor() {
         </>
       )}
 
-      <Text style={styles.sectionTitle}>Floating emojis</Text>
+      <View style={styles.floatieHeader}>
+        <Text style={styles.sectionTitle}>Floating emojis</Text>
+        <Pressable
+          onPress={() => updateCustomEffects({ floaties: randomFloaties() })}
+          label="Roll a random set of floating emojis"
+          style={styles.diceBtn}
+        >
+          <Text style={styles.diceText}>🎲 Surprise me</Text>
+        </Pressable>
+      </View>
       <Input
         placeholder="🎵✨🔥 (empty = none)"
         label="Floating emojis"
@@ -168,6 +203,22 @@ const useStyles = createThemedStyles((COLORS) =>
       borderWidth: 1,
       borderColor: COLORS.border,
       backgroundColor: COLORS.bgElevated,
+    },
+    floatieHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: SPACE.sm,
+    },
+    diceBtn: {
+      minHeight: 36,
+      justifyContent: "center",
+      paddingHorizontal: SPACE.sm,
+    },
+    diceText: {
+      fontSize: FONT.size.sm,
+      color: COLORS.accent,
+      fontWeight: FONT.weight.bold,
     },
     sectionTitle: {
       ...LABEL_STYLE,

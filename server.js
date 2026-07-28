@@ -8,9 +8,11 @@ const PORT = process.env.PORT || process.argv[2] || 8080;
 const DIST = path.join(__dirname, "dist");
 
 // How long a room survives after the host's socket drops without a graceful
-// leave — long enough for a network blip, short enough to not strand peers.
-const HOST_GRACE_MS = 30_000;
-const HEARTBEAT_MS = 30_000;
+// leave — long enough for a network blip or a page reload, and matched to the
+// per-player grace the host session keeps for everyone else.
+const HOST_GRACE_MS = 60_000;
+// Shorter than the grace so a silently dead socket is noticed well inside it.
+const HEARTBEAT_MS = 15_000;
 
 const MIME = {
   ".html": "text/html",
@@ -93,11 +95,25 @@ const wss = new WebSocketServer({
   maxPayload: 512 * 1024,
 });
 
-/** roomCode -> { hostId, members: Map<memberId, ws>, graceTimer } */
+/**
+ * roomCode -> { hostId, members: Map<memberId, ws>, tokens: Map<memberId,
+ * token>, graceTimer }
+ */
 const rooms = new Map();
 
 function newId() {
   return crypto.randomBytes(6).toString("base64url");
+}
+
+/**
+ * Secret handed to a member when they first enter a room and required to
+ * resume that membership. Member ids are NOT secret — they are broadcast to
+ * everyone in the room — so without this anybody holding the 6-character room
+ * code could `rejoin` as the host, kick the real host's socket off and become
+ * the routing target for every message.
+ */
+function newToken() {
+  return crypto.randomBytes(16).toString("base64url");
 }
 
 function send(ws, msg) {
@@ -127,6 +143,9 @@ function removeMember(ws, graceful) {
   if (!room || room.members.get(memberId) !== ws) return;
 
   room.members.delete(memberId);
+  // A deliberate leave ends the membership for good; a drop keeps the token so
+  // the same client can resume it.
+  if (graceful) room.tokens.delete(memberId);
 
   if (memberId === room.hostId) {
     if (graceful) {
@@ -167,14 +186,16 @@ function handleMessage(ws, raw) {
         return send(ws, { t: "err", code: "room-exists" });
       }
       const id = newId();
+      const token = newToken();
       meta.roomCode = msg.room;
       meta.memberId = id;
       rooms.set(msg.room, {
         hostId: id,
         members: new Map([[id, ws]]),
+        tokens: new Map([[id, token]]),
         graceTimer: null,
       });
-      send(ws, { t: "created", id, room: msg.room });
+      send(ws, { t: "created", id, token, room: msg.room });
       console.log(
         `[relay] room ${msg.room} created (${rooms.size} rooms open)`,
       );
@@ -185,19 +206,26 @@ function handleMessage(ws, raw) {
       const room = typeof msg.room === "string" ? rooms.get(msg.room) : null;
       if (!room) return send(ws, { t: "err", code: "room-not-found" });
       const id = newId();
+      const token = newToken();
       meta.roomCode = msg.room;
       meta.memberId = id;
       room.members.set(id, ws);
-      send(ws, { t: "joined", id, room: msg.room, hostId: room.hostId });
+      room.tokens.set(id, token);
+      send(ws, { t: "joined", id, token, room: msg.room, hostId: room.hostId });
       send(room.members.get(room.hostId), { t: "peer-joined", id });
       break;
     }
 
     case "rejoin": {
-      // Resume a previous membership (reconnect after a network blip).
+      // Resume a previous membership (reconnect after a network blip or a
+      // page reload). Only the holder of that membership's token may do so.
       const room = typeof msg.room === "string" ? rooms.get(msg.room) : null;
       if (!room || typeof msg.id !== "string") {
         return send(ws, { t: "err", code: "room-not-found" });
+      }
+      const expected = room.tokens.get(msg.id);
+      if (!expected || msg.token !== expected) {
+        return send(ws, { t: "err", code: "bad-session" });
       }
       const old = room.members.get(msg.id);
       if (old && old !== ws) old.close();
@@ -207,8 +235,11 @@ function handleMessage(ws, raw) {
       send(ws, {
         t: "joined",
         id: msg.id,
+        token: expected,
         room: msg.room,
         hostId: room.hostId,
+        // Who is actually still here — lets a resuming host reconcile presence
+        members: [...room.members.keys()],
       });
       if (msg.id === room.hostId) {
         clearTimeout(room.graceTimer);

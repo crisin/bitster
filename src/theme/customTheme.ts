@@ -22,6 +22,9 @@ export interface CustomThemeConfig {
     vignette: boolean;
     /** Raw emoji string, split into individual floaties ("" = none) */
     floaties: string;
+    cursorWarp: boolean;
+    flashlight: boolean;
+    clickGlitch: boolean;
   };
 }
 
@@ -42,6 +45,9 @@ export const DEFAULT_CUSTOM_CONFIG: CustomThemeConfig = {
     scanlines: false,
     vignette: false,
     floaties: "",
+    cursorWarp: false,
+    flashlight: false,
+    clickGlitch: false,
   },
 };
 
@@ -79,6 +85,38 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/**
+ * Pool for the "surprise me" dice. Deliberately all astral-plane emoji with no
+ * zero-width joiners or variation selectors — those count several UTF-16 units
+ * each and would blow past the input's maxLength after two or three picks.
+ */
+const FLOATIE_POOL = [
+  "🎵", "🎸", "🎺", "🥁", "🪩", "💿", "📼", "🎤",
+  "🍄", "👽", "👾", "🛸", "🪐", "🚀", "🌈", "🔥",
+  "💀", "🎃", "🦖", "🐙", "🦄", "🐸", "🧃", "🍕",
+  "🍒", "🌵", "🧿", "🪿", "🫠", "🧊", "🌊", "🍭",
+  "🎲", "🕹", "💣", "🧲", "🪄", "🦩", "🐌", "🌻",
+];
+
+/** How many the dice picks — expandFloaties doubles sets of five for density */
+const RANDOM_FLOATIE_COUNT = 5;
+
+/**
+ * A fresh handful of emoji for the floaties field. Returns the raw string the
+ * editor stores, so the result stays visible and editable rather than being a
+ * hidden "random" mode nobody can pin down.
+ */
+export function randomFloaties(): string {
+  const pool = [...FLOATIE_POOL];
+  const picked: string[] = [];
+  for (let i = 0; i < RANDOM_FLOATIE_COUNT && pool.length > 0; i++) {
+    const index = Math.floor(Math.random() * pool.length);
+    picked.push(pool[index]);
+    pool.splice(index, 1);
+  }
+  return picked.join("");
+}
+
 /** Split an emoji string into individual floaties (max 6) */
 function parseFloaties(raw: string): string[] | null {
   const trimmed = raw.trim();
@@ -112,6 +150,9 @@ export function buildCustomTheme(config: CustomThemeConfig): Theme {
     scanlines: config.effects.scanlines,
     vignette: config.effects.vignette,
     floaties: parseFloaties(config.effects.floaties),
+    cursorWarp: config.effects.cursorWarp,
+    flashlight: config.effects.flashlight,
+    clickGlitch: config.effects.clickGlitch,
   };
 
   return {

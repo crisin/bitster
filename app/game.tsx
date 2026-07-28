@@ -10,7 +10,7 @@ import { useGameStore } from "@/game/store";
 import { useConnectionStatus } from "@/hooks/useConnectionStatus";
 import { useCurrentPlayer } from "@/hooks/useCurrentPlayer";
 import { haptics } from "@/hooks/useHaptics";
-import { dispatch, leave, rejoinRoom } from "@/p2p/connection";
+import { dispatch, leave, resume } from "@/p2p/connection";
 import { useP2PStore } from "@/p2p/store";
 import { useStreamingStore } from "@/streaming/store";
 import { createThemedStyles } from "@/theme/themedStyles";
@@ -43,6 +43,8 @@ export default function GameScreen() {
   const streamingAuthStatus = useStreamingStore((s) => s.authStatus);
   const connectionStatus = useConnectionStatus();
   const connectionError = useP2PStore((s) => s.lastError);
+  const errorTerminal = useP2PStore((s) => s.errorTerminal);
+  const resuming = useP2PStore((s) => s.resuming);
   const {
     isMyTurn,
     isHost,
@@ -62,9 +64,24 @@ export default function GameScreen() {
   const leaveConfirmed = useRef(false);
   const inActiveRoom = connectionStatus !== "error" && phase !== "finished";
 
+  // Reload / cold start: the transport's module state died with the page, so
+  // rebuild it from storage instead of sitting on a lobby that never connects.
+  useEffect(() => {
+    if (!params.code) return;
+    if (useP2PStore.getState().status !== "disconnected") return;
+    void resume({
+      code: params.code,
+      name: params.name ?? "",
+      isHost: params.host === "true",
+    });
+  }, [params.code, params.host, params.name]);
+
   useEffect(() => {
     return () => {
-      leave();
+      // ONLY on a real exit. An unmount from a remount (StrictMode in dev,
+      // router re-mount, font reload) must not send a leave — for the host
+      // that closes the room outright.
+      if (leaveConfirmed.current) leave();
     };
   }, []);
 
@@ -213,12 +230,15 @@ export default function GameScreen() {
   const handleRetry = useCallback(() => {
     // Without a name we can never complete the join handshake — start over
     if (!params.name || !code) {
+      leaveConfirmed.current = true;
       leave();
       router.replace("/");
       return;
     }
-    rejoinRoom(code, params.name);
-  }, [code, params.name]);
+    // Route through resume(): after a reload the transport has no idea what
+    // role we had, and rejoinRoom would then join our own room as a guest.
+    void resume({ code, name: params.name, isHost: params.host === "true" });
+  }, [code, params.name, params.host]);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -236,13 +256,16 @@ export default function GameScreen() {
         <View style={styles.errorBanner} accessibilityRole="alert">
           <Text style={styles.errorBannerText}>{connectionError}</Text>
           <View style={styles.errorButtons}>
-            <Button
-              title="Retry"
-              onPress={handleRetry}
-              variant="secondary"
-              compact
-              label="Retry connection"
-            />
+            {/* Retrying a room that is gone only re-fetches the same answer */}
+            {!errorTerminal && (
+              <Button
+                title="Retry"
+                onPress={handleRetry}
+                variant="secondary"
+                compact
+                label="Retry connection"
+              />
+            )}
             <Button
               title="Home"
               onPress={handleGoHome}
@@ -257,7 +280,13 @@ export default function GameScreen() {
       {/* Connecting indicator */}
       {connectionStatus === "connecting" && (
         <View style={styles.connectingBanner}>
-          <Text style={styles.connectingText}>Connecting to room...</Text>
+          <Text style={styles.connectingText}>
+            {resuming === "self"
+              ? "Reconnecting — your cards are safe..."
+              : resuming === "host"
+                ? "Host is reconnecting..."
+                : "Connecting to room..."}
+          </Text>
         </View>
       )}
 

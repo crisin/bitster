@@ -3,6 +3,8 @@ import { View, Text, Image, StyleSheet } from "react-native";
 import { useGameStore } from "@/game/store";
 import { useCurrentPlayer } from "@/hooks/useCurrentPlayer";
 import { dispatch } from "@/p2p/connection";
+import { useP2PStore } from "@/p2p/store";
+import { DEFAULT_RANDOM_POOL } from "@/game/types";
 import { getProvider } from "@/streaming/registry";
 import { useStreamingStore } from "@/streaming/store";
 import { Button } from "@/components/ui/Button";
@@ -24,6 +26,7 @@ interface LobbyViewProps {
 }
 
 type PlaylistCheck = "idle" | "checking" | "valid" | "invalid";
+type SourceMode = "link" | "random";
 
 const CHECK_DEBOUNCE_MS = 700;
 
@@ -40,10 +43,20 @@ export function LobbyView({
   const playlistName = useGameStore((s) => s.playlistName);
   const playlistImageUrl = useGameStore((s) => s.playlistImageUrl);
   const playlistTrackCount = useGameStore((s) => s.playlistTrackCount);
+  const probe = useStreamingStore((s) => s.playlistProbe);
   const { isHost } = useCurrentPlayer();
 
   const [checkState, setCheckState] = useState<PlaylistCheck>("idle");
   const [localName, setLocalName] = useState("");
+  const [sourceMode, setSourceMode] = useState<SourceMode>("link");
+  const hostTask = useP2PStore((s) => s.hostTask);
+
+  const handleRollTheDice = () => {
+    dispatch({
+      type: "set-random-pool",
+      payload: { target: DEFAULT_RANDOM_POOL },
+    });
+  };
 
   const localPlayers = players.filter((p) => p.isLocal);
 
@@ -60,7 +73,7 @@ export function LobbyView({
 
   // Host: check the pasted URL (debounced) and share the playlist with everyone
   useEffect(() => {
-    if (!isHost) return;
+    if (!isHost || sourceMode !== "link") return;
     const url = playlistUrl.trim();
     if (!url) {
       setCheckState("idle");
@@ -98,7 +111,7 @@ export function LobbyView({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [playlistUrl, isHost]);
+  }, [playlistUrl, isHost, sourceMode]);
 
   const showPlaylistCard =
     playlistName != null && (!isHost || checkState === "valid" || checkState === "idle");
@@ -115,7 +128,7 @@ export function LobbyView({
             name={p.name}
             isHost={p.id === hostId}
             isLocal={p.isLocal}
-            connectionStatus="connected"
+            connectionStatus={p.connected ? "connected" : "connecting"}
             onRemove={
               isHost && p.isLocal ? () => handleRemoveLocal(p.id) : undefined
             }
@@ -163,24 +176,83 @@ export function LobbyView({
 
       {isHost && (
         <View style={styles.section}>
-          <Input
-            placeholder="Spotify playlist URL"
-            label="Enter Spotify playlist URL"
-            value={playlistUrl}
-            onChangeText={onPlaylistUrlChange}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="go"
-            onSubmitEditing={onStartGame}
-          />
-          {checkState === "checking" && (
-            <Text style={styles.checkingHint}>Checking playlist…</Text>
-          )}
-          {checkState === "invalid" && (
-            <Text style={styles.invalidHint}>
-              ✗ Couldn't load that playlist — check the link and your streaming
-              connection.
-            </Text>
+          <View style={styles.sourceRow}>
+            <Pressable
+              onPress={() => setSourceMode("link")}
+              label="Use a playlist link"
+              style={[
+                styles.sourceTab,
+                sourceMode === "link" && styles.sourceTabActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.sourceTabText,
+                  sourceMode === "link" && styles.sourceTabTextActive,
+                ]}
+              >
+                PLAYLIST LINK
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setSourceMode("random")}
+              label="Use random songs from your own playlists"
+              style={[
+                styles.sourceTab,
+                sourceMode === "random" && styles.sourceTabActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.sourceTabText,
+                  sourceMode === "random" && styles.sourceTabTextActive,
+                ]}
+              >
+                🎲 SURPRISE ME
+              </Text>
+            </Pressable>
+          </View>
+
+          {sourceMode === "link" ? (
+            <>
+              <Input
+                placeholder="Spotify playlist URL"
+                label="Enter Spotify playlist URL"
+                value={playlistUrl}
+                onChangeText={onPlaylistUrlChange}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="go"
+                onSubmitEditing={onStartGame}
+              />
+              {checkState === "checking" && (
+                <Text style={styles.checkingHint}>Checking playlist…</Text>
+              )}
+              {checkState === "invalid" && (
+                <Text style={styles.invalidHint}>
+                  ✗ Couldn't load that playlist — check the link and your
+                  streaming connection.
+                </Text>
+              )}
+            </>
+          ) : (
+            <>
+              <Button
+                title={
+                  hostTask
+                    ? `COLLECTING… ${hostTask.done}/${hostTask.total}`
+                    : "ROLL THE DICE"
+                }
+                onPress={handleRollTheDice}
+                disabled={hostTask !== null}
+                loading={hostTask !== null}
+                label="Collect random songs from your own playlists"
+              />
+              <Text style={styles.localHint}>
+                {DEFAULT_RANDOM_POOL} songs pulled at random from playlists you
+                own. It's your music — so everyone else is playing your taste.
+              </Text>
+            </>
           )}
         </View>
       )}
@@ -204,6 +276,20 @@ export function LobbyView({
             </Text>
             {playlistTrackCount > 0 && (
               <Text style={styles.playlistMeta}>{playlistTrackCount} songs</Text>
+            )}
+            {/* Measured on the HOST's account only, so only the host is told */}
+            {isHost && probe && probe.checked > 0 && (
+              <Text
+                style={[
+                  styles.playlistMeta,
+                  probe.usable < probe.checked && styles.playlistWarn,
+                ]}
+              >
+                {probe.usable === probe.checked
+                  ? `First ${probe.checked} all playable for you`
+                  : `${probe.usable}/${probe.checked} of the first tracks playable for you`}
+                {probe.availabilityUnknown ? " · availability unknown" : ""}
+              </Text>
             )}
           </View>
           <Text style={styles.playlistCheck}>✓</Text>
@@ -301,6 +387,33 @@ const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   playlistMeta: {
     fontSize: FONT.size.sm,
     color: COLORS.textSecondary,
+  },
+  playlistWarn: {
+    color: COLORS.warning,
+  },
+  sourceRow: {
+    flexDirection: "row",
+    gap: SPACE.sm,
+  },
+  sourceTab: {
+    flex: 1,
+    minHeight: 40,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  sourceTabActive: {
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.accentLight,
+  },
+  sourceTabText: {
+    ...LABEL_STYLE,
+    color: COLORS.textSecondary,
+  },
+  sourceTabTextActive: {
+    color: COLORS.accent,
   },
   playlistCheck: {
     fontSize: FONT.size.xl,

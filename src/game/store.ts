@@ -21,6 +21,7 @@ interface GameStore {
   passedIds: string[];
   playlistName: string | null;
   playlistImageUrl: string | null;
+  playlistUrl: string | null;
   playlistTrackCount: number;
   guessResult: GameState["guessResult"];
 
@@ -48,6 +49,7 @@ const initialState = {
   passedIds: [] as string[],
   playlistName: null as string | null,
   playlistImageUrl: null as string | null,
+  playlistUrl: null as string | null,
   playlistTrackCount: 0,
   guessResult: null as GameState["guessResult"],
 };
@@ -77,6 +79,7 @@ export const useGameStore = create<GameStore>((set) => ({
       passedIds: state.passedIds,
       playlistName: state.playlistName,
       playlistImageUrl: state.playlistImageUrl,
+      playlistUrl: state.playlistUrl,
       playlistTrackCount: state.playlistTrackCount,
       guessResult: state.guessResult,
     }),

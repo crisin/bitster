@@ -1,6 +1,8 @@
 import { SettingsMenu } from "@/components/settings/SettingsMenu";
 import { DevLogButton } from "@/components/ui/DevLogButton";
 import { useGameStore } from "@/game/store";
+import { accountIdentity } from "@/history/identity";
+import { useHistoryStore } from "@/history/store";
 import { useP2PStore } from "@/p2p/store";
 import { initSpotify } from "@/streaming/providers/spotify";
 import { useStreamingStore } from "@/streaming/store";
@@ -23,6 +25,7 @@ export default function RootLayout() {
     interceptConsole();
     initSpotify();
     void hydrateTheme();
+    void useHistoryStore.getState().hydrate();
     log.info("App", "bitster started");
     if (__DEV__) {
       // Debug bridge: poke the stores from the browser console / e2e checks
@@ -30,11 +33,31 @@ export default function RootLayout() {
         game: useGameStore,
         p2p: useP2PStore,
         streaming: useStreamingStore,
+        history: useHistoryStore,
       };
     }
     return () => {
       log.info("App", "bitster unmounted");
     };
+  }, []);
+
+  // History is keyed by the streaming account so it follows the player across
+  // devices — but the id stays here. Orchestrating in the layout keeps the two
+  // stores from having to know about each other.
+  useEffect(() => {
+    const adopt = (account: { id: string } | null, providerId: string | null) => {
+      if (!account || !providerId) return;
+      useHistoryStore
+        .getState()
+        .adoptIdentity(accountIdentity(providerId, account.id));
+    };
+    adopt(
+      useStreamingStore.getState().account,
+      useStreamingStore.getState().activeProviderId,
+    );
+    return useStreamingStore.subscribe((state) =>
+      adopt(state.account, state.activeProviderId),
+    );
   }, []);
 
   const isDev = __DEV__;

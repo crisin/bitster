@@ -14,6 +14,11 @@ interface TimelineProps {
   highlightedIndex?: number | null;
   highlightColor?: string;
   hiddenYearSongId?: string | null;
+  /**
+   * Gap the active player dropped the disputed card into. Rendered as the
+   * mystery card instead of an empty slot, and not selectable.
+   */
+  disputedGap?: number | null;
 }
 
 /**
@@ -29,6 +34,7 @@ export function Timeline({
   highlightedIndex = null,
   highlightColor,
   hiddenYearSongId,
+  disputedGap = null,
 }: TimelineProps) {
   const styles = useStyles();
   const handleGapPress = useCallback(
@@ -71,14 +77,20 @@ export function Timeline({
         <TimelineGap
           onPress={() => handleGapPress(0)}
           selected={selectedGap === 0}
+          disputed={disputedGap === 0}
         />
       )}
 
       {cards.map((song, index) => {
         const nextSong = cards[index + 1];
-        // Group same-year cards: don't show a gap between them
+        const gap = index + 1;
+        // Group same-year cards: don't show a gap between them — unless the
+        // disputed card sits there, which the challenger has to see
         const sameYearAsNext =
-          interactive && nextSong !== undefined && song.year === nextSong.year;
+          interactive &&
+          nextSong !== undefined &&
+          song.year === nextSong.year &&
+          disputedGap !== gap;
 
         return (
           <React.Fragment key={song.id}>
@@ -90,8 +102,9 @@ export function Timeline({
             />
             {interactive && !sameYearAsNext && (
               <TimelineGap
-                onPress={() => handleGapPress(index + 1)}
-                selected={selectedGap === index + 1}
+                onPress={() => handleGapPress(gap)}
+                selected={selectedGap === gap}
+                disputed={disputedGap === gap}
               />
             )}
           </React.Fragment>

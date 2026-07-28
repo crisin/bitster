@@ -1,40 +1,20 @@
-import type { StreamingLibrary, Track, PlaylistMeta } from "@/streaming/types";
+import type {
+  StreamingLibrary,
+  Track,
+  PlaylistMeta,
+  PlaylistProbe,
+} from "@/streaming/types";
+import { StreamingFetchError } from "@/streaming/types";
 import { fetchWithAuth } from "./auth";
+import { buildRandomPool } from "./randomPool";
+import type { SpotifyImage, SpotifyPlaylistItem } from "./songMapping";
+import {
+  getFieldPresence,
+  PLAYLIST_ITEMS_FIELDS,
+  trackFromItem,
+} from "./songMapping";
 
 const API = "https://api.spotify.com/v1";
-
-interface SpotifyImage {
-  url: string;
-  height: number | null;
-  width: number | null;
-}
-
-// Feb 2026 Web API migration: /playlists/{id}/tracks became /playlists/{id}/items,
-// each entry wraps the track as `item` (was `track`) and carries `is_local` itself.
-// The old endpoint answers with a bare 403 since March 9, 2026.
-interface SpotifyPlaylistItem {
-  is_local?: boolean;
-  item: {
-    id: string;
-    uri: string;
-    name: string;
-    is_playable?: boolean;
-    is_local?: boolean;
-    duration_ms?: number;
-    explicit?: boolean;
-    popularity?: number;
-    artists: { name: string }[];
-    album: {
-      name?: string;
-      release_date: string;
-      images?: SpotifyImage[];
-    };
-  } | null;
-}
-
-function extractYear(releaseDate: string): number {
-  return parseInt(releaseDate.substring(0, 4), 10);
-}
 
 /** Look a playlist up in the user's own library (first 50 — cosmetic only) */
 async function findOwnPlaylist(
@@ -58,47 +38,57 @@ async function findOwnPlaylist(
 }
 
 export const spotifyLibrary: StreamingLibrary = {
+  buildRandomPool,
+
   async getTrackAtIndex(playlistId: string, index: number): Promise<Track | null> {
-    // market=from_token relinks region-locked tracks and fills is_playable —
-    // without it Spotify happily returns tracks the account cannot play
-    // ("Spotify can't play this file"), which then stall the round.
-    // duration/explicit/popularity/album name are free — same request, and
-    // they fuel the reveal badges (Deep Cut / Banger, 🅴) and end-game stats
-    const fields =
-      "items(is_local,item(id,uri,name,is_playable,is_local,duration_ms,explicit,popularity,artists(name),album(name,release_date,images)))";
+    // `market` decides whether Spotify relinks region-locked tracks and whether
+    // it fills is_playable at all. `from_token` still appears on Spotify's
+    // track-relinking page but is no longer listed as an accepted value on this
+    // endpoint's reference — and with a user token the account's country is
+    // applied anyway. Whether the flag actually arrives is measured rather than
+    // assumed: see getFieldPresence() in songMapping.ts.
     const res = await fetchWithAuth(
-      `${API}/playlists/${playlistId}/items?fields=${fields}&market=from_token&offset=${index}&limit=1`,
+      `${API}/playlists/${playlistId}/items?fields=${PLAYLIST_ITEMS_FIELDS}&market=from_token&offset=${index}&limit=1`,
     );
-    if (!res.ok) throw new Error(`Fetch track at index ${index} failed: ${res.status}`);
+    if (!res.ok) {
+      // A failed REQUEST is not an empty slot. Telling the two apart is what
+      // keeps a rate limit from eating playlist entries until the game thinks
+      // the playlist ran out.
+      throw new StreamingFetchError(
+        `Fetch track at index ${index} failed: ${res.status}`,
+        res.status === 429 || res.status >= 500,
+        res.status,
+      );
+    }
 
     const data = await res.json();
     const items = data.items as SpotifyPlaylistItem[];
-    if (items.length === 0 || !items[0].item || !items[0].item.id) return null;
+    if (items.length === 0) return null;
+    return trackFromItem(items[0]);
+  },
 
-    const t = items[0].item;
-    if (items[0].is_local === true || t.is_local === true || t.is_playable === false)
-      return null;
-    const year = extractYear(t.album.release_date);
-    if (isNaN(year)) return null;
+  async probePlaylist(playlistId: string): Promise<PlaylistProbe | null> {
+    const before = getFieldPresence();
+    const res = await fetchWithAuth(
+      `${API}/playlists/${playlistId}/items?fields=${PLAYLIST_ITEMS_FIELDS}&market=from_token&offset=0&limit=50`,
+    );
+    if (!res.ok) return null;
 
-    const images = t.album.images;
-    const imageUrl = images?.length
-      ? images.reduce((s, i) =>
-          (i.height ?? Infinity) < (s.height ?? Infinity) ? i : s
-        ).url
-      : undefined;
+    const data = await res.json();
+    const items = (data.items ?? []) as SpotifyPlaylistItem[];
+    let usable = 0;
+    for (const item of items) {
+      if (trackFromItem(item)) usable++;
+    }
 
+    const after = getFieldPresence();
+    const inspected = after.tracksSeen - before.tracksSeen;
     return {
-      id: t.id,
-      uri: t.uri,
-      name: t.name,
-      artist: t.artists.map((a) => a.name).join(", "),
-      year,
-      imageUrl,
-      durationMs: typeof t.duration_ms === "number" ? t.duration_ms : undefined,
-      explicit: typeof t.explicit === "boolean" ? t.explicit : undefined,
-      popularity: typeof t.popularity === "number" ? t.popularity : undefined,
-      albumName: t.album.name || undefined,
+      checked: items.length,
+      usable,
+      // Not one of the tracks carried an availability flag → the filter is blind
+      availabilityUnknown:
+        inspected > 0 && after.withIsPlayable === before.withIsPlayable,
     };
   },
 
@@ -117,6 +107,11 @@ export const spotifyLibrary: StreamingLibrary = {
     if (/^[a-zA-Z0-9]{22}$/.test(url.trim())) return url.trim();
 
     return null;
+  },
+
+  buildPlaylistUrl(playlistId: string): string {
+    // Canonical form on purpose — the pasted link often carries ?si= tracking
+    return `https://open.spotify.com/playlist/${playlistId}`;
   },
 
   async getPlaylistMeta(playlistId: string): Promise<PlaylistMeta> {

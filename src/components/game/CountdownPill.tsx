@@ -1,3 +1,4 @@
+import { useP2PStore } from "@/p2p/store";
 import { createThemedStyles } from "@/theme/themedStyles";
 import { DISPLAY_FONT, FONT, RADIUS, SPACE } from "@/utils/constants";
 import React, { useEffect, useState } from "react";
@@ -6,25 +7,30 @@ import { StyleSheet, Text, View } from "react-native";
 /** Seconds left until the deadline, ticking 4×/s for a smooth countdown */
 export function useCountdown(deadline: number | null): number | null {
   const [remaining, setRemaining] = useState<number | null>(null);
+  // Deadlines are stamped with the HOST's clock. Without translating them into
+  // ours, a device whose clock is off shows a wrong — possibly already
+  // expired — countdown. The host's own offset is 0 by construction.
+  const offset = useP2PStore((s) => s.clockOffsetMs);
 
   useEffect(() => {
     if (deadline == null) {
       setRemaining(null);
       return;
     }
+    const localDeadline = deadline - offset;
     const tick = () => {
-      setRemaining(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
+      setRemaining(Math.max(0, Math.ceil((localDeadline - Date.now()) / 1000)));
     };
     tick();
     const interval = setInterval(tick, 250);
     return () => clearInterval(interval);
-  }, [deadline]);
+  }, [deadline, offset]);
 
   return remaining;
 }
 
 interface CountdownPillProps {
-  /** Epoch-ms deadline (host clock) — null hides the pill */
+  /** Epoch-ms deadline (host clock) — corrected by clockOffsetMs; null hides the pill */
   deadline: number | null;
   /** Screen-reader phrasing, gets the remaining seconds prefixed */
   accessibilitySuffix?: string;

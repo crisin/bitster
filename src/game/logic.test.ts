@@ -1,7 +1,12 @@
+import type { GameStateMeta } from "@/game/types";
+import { MAX_GUESS_TEXT, MAX_ROUNDS_PER_GAME } from "@/game/types";
 import { describe, expect, it } from "vitest";
 import {
   addPlayer,
   advanceTurn,
+  appendRound,
+  buildGameRecap,
+  canBeChallenged,
   allChallengersPassed,
   buildGameState,
   checkPlacement,
@@ -14,6 +19,8 @@ import {
   getCurrentPlayer,
   guessReward,
   handleBuzz,
+  hasLiveChallengers,
+  setPlayerConnected,
   pickRandomSong,
   placeSong,
   recordPass,
@@ -23,6 +30,12 @@ import {
   undoPlacement,
 } from "./logic";
 import type { Room, Song } from "./types";
+
+/** Fixed stamp — buildGameState must copy it verbatim and read no clock */
+const TEST_META: GameStateMeta = {
+  hostNow: 1_700_000_000_000,
+  stateVersion: 7,
+};
 
 function makeSong(year: number, id?: string): Song {
   return {
@@ -140,7 +153,7 @@ describe("local players", () => {
   it("carries isLocal into the broadcast state", () => {
     let room = makeTestRoom();
     room = addPlayer(room, "local-abc", "Karl", true);
-    const state = buildGameState(room);
+    const state = buildGameState(room, TEST_META);
     expect(state.players.find((p) => p.id === "local-abc")?.isLocal).toBe(true);
     expect(state.players.find((p) => p.id === "host-1")?.isLocal).toBe(false);
   });
@@ -331,7 +344,7 @@ describe("getCurrentPlayer", () => {
 describe("buildGameState", () => {
   it("builds serializable game state", () => {
     const room = makeTestRoom();
-    const state = buildGameState(room);
+    const state = buildGameState(room, TEST_META);
     expect(state.roomCode).toBe("TEST01");
     expect(state.players).toHaveLength(2);
     expect(state.phase).toBe("lobby");
@@ -348,7 +361,7 @@ describe("buildGameState", () => {
       currentSong: song,
       playedSongs: [makeSong(1980, "old"), song],
     };
-    const state = buildGameState(room);
+    const state = buildGameState(room, TEST_META);
     expect(state.playedSongs).toHaveLength(1);
     expect(state.playedSongs[0].name).toBe("Song 1980");
   });
@@ -366,7 +379,7 @@ describe("buildGameState", () => {
           : p,
       ),
     };
-    const state = buildGameState(room);
+    const state = buildGameState(room, TEST_META);
     const years = state.timelines["host-1"].map((s) => s.year);
     expect(years).toEqual([1980, 0]);
     // playedSongs must not contain it either
@@ -382,7 +395,7 @@ describe("buildGameState", () => {
       currentSong: song,
       playedSongs: [song],
     };
-    const state = buildGameState(room);
+    const state = buildGameState(room, TEST_META);
     expect(state.playedSongs).toHaveLength(1);
     expect(state.playedSongs[0].year).toBe(1999);
   });
@@ -422,7 +435,17 @@ describe("handleBuzz", () => {
   function makeBuzzRoom(): Room {
     let room = makeTestRoom();
     room = startGame(room, [makeSong(2000)]);
-    room = { ...room, phase: "bitster-window", currentSong: makeSong(2000) };
+    // The active player needs a card of their own PLUS the disputed one —
+    // a placement into an empty timeline can't be wrong, so it can't be
+    // challenged either.
+    room = {
+      ...room,
+      phase: "bitster-window",
+      currentSong: makeSong(2000),
+      players: room.players.map((p, i) =>
+        i === 0 ? { ...p, timeline: [makeSong(1990), makeSong(2000)] } : p,
+      ),
+    };
     return room;
   }
 
@@ -435,6 +458,26 @@ describe("handleBuzz", () => {
   it("rejects the active player", () => {
     const room = handleBuzz(makeBuzzRoom(), "host-1");
     expect(room.buzzerId).toBeNull();
+  });
+
+  it("rejects a buzz against an opening card, which cannot be wrong", () => {
+    const base = makeBuzzRoom();
+    // Only the disputed card in the timeline = it was placed into an empty one
+    const openingCard: Room = {
+      ...base,
+      players: base.players.map((p, i) =>
+        i === 0 ? { ...p, timeline: [makeSong(2000)] } : p,
+      ),
+    };
+    expect(canBeChallenged(openingCard)).toBe(false);
+    const room = handleBuzz(openingCard, "peer-2");
+    expect(room.buzzerId).toBeNull();
+    // ...and it costs nothing
+    expect(room.players[1].tokens).toBe(2);
+  });
+
+  it("allows a buzz as soon as there is a card to compare against", () => {
+    expect(canBeChallenged(makeBuzzRoom())).toBe(true);
   });
 
   it("rejects a player who already passed", () => {
@@ -803,5 +846,221 @@ describe("evaluateGuess — fuzzy matching", () => {
     const room = makeRoomWithSong("Song", "Artist");
     expect(evaluateGuess(room, "", "").titleCorrect).toBe(false);
     expect(evaluateGuess(room, "", "").artistCorrect).toBe(false);
+  });
+});
+
+describe("round log", () => {
+  const BASE = {
+    song: makeSong(1985),
+    activePlayerId: "host-1",
+    activePlayerName: "Alice",
+    outcome: "placed" as const,
+    position: 0,
+    correct: true,
+    placeMs: 1200,
+    guess: null,
+    buzz: null,
+  };
+
+  it("stamps sequential round numbers regardless of the caller", () => {
+    let room = makeTestRoom();
+    room = appendRound(room, BASE);
+    room = appendRound(room, BASE);
+    room = appendRound(room, BASE);
+    expect(room.rounds.map((r) => r.round)).toEqual([1, 2, 3]);
+  });
+
+  it("stops appending at the hard limit", () => {
+    let room = makeTestRoom();
+    for (let i = 0; i < MAX_ROUNDS_PER_GAME + 5; i++) {
+      room = appendRound(room, BASE);
+    }
+    expect(room.rounds).toHaveLength(MAX_ROUNDS_PER_GAME);
+  });
+
+  it("caps guess text and rejects a nonsensical duration", () => {
+    let room = makeTestRoom();
+    room = appendRound(room, {
+      ...BASE,
+      placeMs: -5,
+      guess: {
+        title: "x".repeat(200),
+        artist: "  Artist  ",
+        year: 1985,
+        titleCorrect: false,
+        artistCorrect: true,
+        yearCorrect: true,
+        tokens: 1,
+      },
+    });
+    expect(room.rounds[0].guess?.title.length).toBe(MAX_GUESS_TEXT);
+    expect(room.rounds[0].guess?.artist).toBe("Artist");
+    expect(room.rounds[0].placeMs).toBeNull();
+  });
+
+  it("starts a new game with an empty log", () => {
+    let room = makeTestRoom();
+    room = appendRound(room, BASE);
+    room = startGame(room, [makeSong(1990)], "Playlist");
+    expect(room.rounds).toEqual([]);
+  });
+});
+
+describe("buildGameRecap", () => {
+  const OPTS = {
+    startedAt: 1,
+    endedAt: 2,
+    endedReason: "win" as const,
+    demo: false,
+  };
+
+  it("names the winner for a win", () => {
+    let room = makeTestRoom();
+    room = { ...room, settings: { ...room.settings, winScore: 1 } };
+    room = {
+      ...room,
+      players: room.players.map((p) =>
+        p.id === "peer-2" ? { ...p, score: 1 } : p,
+      ),
+    };
+    expect(buildGameRecap(room, OPTS).winnerId).toBe("peer-2");
+  });
+
+  it("names nobody for an abandoned game, even with a player at the win score", () => {
+    let room = makeTestRoom();
+    room = { ...room, settings: { ...room.settings, winScore: 1 } };
+    room = {
+      ...room,
+      players: room.players.map((p) =>
+        p.id === "peer-2" ? { ...p, score: 5 } : p,
+      ),
+    };
+    const recap = buildGameRecap(room, { ...OPTS, endedReason: "abandoned" });
+    expect(recap.winnerId).toBeNull();
+    expect(recap.endedReason).toBe("abandoned");
+  });
+
+  it("gives an exhausted playlist to the sole top scorer, nobody on a tie", () => {
+    let room = makeTestRoom();
+    room = {
+      ...room,
+      players: room.players.map((p) => ({ ...p, score: 3 })),
+    };
+    expect(
+      buildGameRecap(room, { ...OPTS, endedReason: "playlist-exhausted" })
+        .winnerId,
+    ).toBeNull();
+
+    room = {
+      ...room,
+      players: room.players.map((p) =>
+        p.id === "host-1" ? { ...p, score: 4 } : p,
+      ),
+    };
+    expect(
+      buildGameRecap(room, { ...OPTS, endedReason: "playlist-exhausted" })
+        .winnerId,
+    ).toBe("host-1");
+  });
+
+  it("never carries timelines or failed piles into the recap", () => {
+    let room = makeTestRoom();
+    room = { ...room, currentSong: makeSong(1985) };
+    const { room: placed } = placeSong(room, "host-1", 0);
+    const recap = buildGameRecap(placed, OPTS);
+    for (const player of recap.players) {
+      expect(player).not.toHaveProperty("timeline");
+      expect(player).not.toHaveProperty("failedSongs");
+    }
+    expect(recap.players[0].timelineLength).toBe(1);
+  });
+});
+
+describe("connection state", () => {
+  it("starts every player connected", () => {
+    const room = makeTestRoom();
+    expect(room.players.every((p) => p.connected)).toBe(true);
+    expect(room.players.every((p) => p.disconnectedUntil === null)).toBe(true);
+  });
+
+  it("clears the grace when the same id returns", () => {
+    let room = makeTestRoom();
+    room = setPlayerConnected(room, "peer-2", false, 1_700_000_060_000);
+    expect(room.players[1].connected).toBe(false);
+
+    room = addPlayer(room, "peer-2", "Bob");
+    expect(room.players[1].connected).toBe(true);
+    expect(room.players[1].disconnectedUntil).toBeNull();
+  });
+
+  it("ignores local players and unknown ids", () => {
+    let room = makeTestRoom();
+    room = addPlayer(room, "local-1", "Karl", true);
+    const withLocal = setPlayerConnected(room, "local-1", false, 1_000);
+    expect(withLocal.players.find((p) => p.id === "local-1")?.connected).toBe(
+      true,
+    );
+    expect(setPlayerConnected(room, "nobody", false, 1_000)).toBe(room);
+  });
+
+  it("does not wait for a pass from a disconnected challenger", () => {
+    let room = makeTestRoom();
+    room = addPlayer(room, "peer-3", "Cleo");
+    room = { ...room, phase: "bitster-window" };
+    room = recordPass(room, "peer-2");
+    // Cleo has not passed yet, so the window is still open
+    expect(allChallengersPassed(room)).toBe(false);
+
+    room = setPlayerConnected(room, "peer-3", false, 1_700_000_060_000);
+    expect(allChallengersPassed(room)).toBe(true);
+  });
+
+  it("reports no live challengers when everyone else is offline or broke", () => {
+    let room = makeTestRoom();
+    expect(hasLiveChallengers(room)).toBe(true);
+
+    room = setPlayerConnected(room, "peer-2", false, 1_700_000_060_000);
+    expect(hasLiveChallengers(room)).toBe(false);
+
+    room = setPlayerConnected(room, "peer-2", true, null);
+    room = {
+      ...room,
+      players: room.players.map((p) =>
+        p.id === "peer-2" ? { ...p, tokens: 0 } : p,
+      ),
+    };
+    expect(hasLiveChallengers(room)).toBe(false);
+  });
+
+  it("carries the connection state into the broadcast", () => {
+    let room = makeTestRoom();
+    room = setPlayerConnected(room, "peer-2", false, 1_700_000_060_000);
+    const state = buildGameState(room, TEST_META);
+    const bob = state.players.find((p) => p.id === "peer-2");
+    expect(bob?.connected).toBe(false);
+    expect(bob?.disconnectedUntil).toBe(1_700_000_060_000);
+  });
+
+  it("never puts the round log into the broadcast", () => {
+    const room = makeTestRoom();
+    const withRounds: Room = {
+      ...room,
+      rounds: [
+        {
+          round: 1,
+          song: makeSong(1975),
+          activePlayerId: "host-1",
+          activePlayerName: "Alice",
+          outcome: "placed",
+          position: 0,
+          correct: true,
+          placeMs: 1200,
+          guess: null,
+          buzz: null,
+        },
+      ],
+    };
+    const state = buildGameState(withRounds, TEST_META);
+    expect("rounds" in (state as object)).toBe(false);
   });
 });

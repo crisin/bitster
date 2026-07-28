@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { StreamingAccount, StreamingDevice } from "./types";
+import type { PlaylistProbe, StreamingAccount, StreamingDevice } from "./types";
 
 type AuthStatus = "unauthenticated" | "loading" | "authenticated";
 
@@ -13,6 +13,12 @@ interface StreamingStore {
   account: StreamingAccount | null;
   /** Last playback failure on THIS client (each player sees their own) */
   playbackError: string | null;
+  /**
+   * How much of the chosen playlist looks usable — measured on the HOST's
+   * account only, so it stays host-local instead of being broadcast. Telling a
+   * peer "47 of 50 playable" about somebody else's account would be a lie.
+   */
+  playlistProbe: PlaylistProbe | null;
 
   setActiveProvider: (id: string | null) => void;
   setAuthStatus: (status: AuthStatus) => void;
@@ -21,6 +27,7 @@ interface StreamingStore {
   setAvailableDevices: (devices: StreamingDevice[]) => void;
   setAccount: (account: StreamingAccount | null) => void;
   setPlaybackError: (error: string | null) => void;
+  setPlaylistProbe: (probe: PlaylistProbe | null) => void;
   reset: () => void;
 }
 
@@ -32,6 +39,7 @@ const initialState = {
   availableDevices: [] as StreamingDevice[],
   account: null as StreamingAccount | null,
   playbackError: null as string | null,
+  playlistProbe: null as PlaylistProbe | null,
 };
 
 export const useStreamingStore = create<StreamingStore>((set) => ({
@@ -44,5 +52,6 @@ export const useStreamingStore = create<StreamingStore>((set) => ({
   setAvailableDevices: (devices) => set({ availableDevices: devices }),
   setAccount: (account) => set({ account }),
   setPlaybackError: (error) => set({ playbackError: error }),
+  setPlaylistProbe: (probe) => set({ playlistProbe: probe }),
   reset: () => set(initialState),
 }));

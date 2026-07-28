@@ -1,12 +1,26 @@
 import type {
+  GameRecap,
   GameSettings,
+  GameState,
+  GameStateMeta,
   GuessResult,
   PlacementResult,
   Player,
+  RecapReason,
   Room,
+  RoundGuess,
+  RoundRecord,
   Song,
 } from "./types";
-import { DEFAULT_RULES, DEFAULT_SETTINGS, EMPTY_STATS } from "./types";
+import { maskSecrets } from "@/schema/song";
+import {
+  DEFAULT_RULES,
+  DEFAULT_SETTINGS,
+  EMPTY_STATS,
+  MAX_GUESS_TEXT,
+  MAX_ROUNDS_PER_GAME,
+  RECAP_VERSION,
+} from "./types";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_LENGTH = 6;
@@ -54,9 +68,12 @@ export function createRoom(
     passedIds: [],
     playlistName: null,
     playlistImageUrl: null,
+    playlistUrl: null,
     playlistId: null,
     playlistTrackCount: 0,
     playedIndices: [],
+    songSource: "demo",
+    rounds: [],
   };
 }
 
@@ -73,6 +90,8 @@ function createPlayer(id: string, name: string, isLocal = false): Player {
     isLocal,
     penalties: 0,
     stats: { ...EMPTY_STATS },
+    connected: true,
+    disconnectedUntil: null,
   };
 }
 
@@ -91,12 +110,17 @@ export function addPlayer(
   name: string,
   isLocal = false,
 ): Room {
-  // Same peer ID reconnecting — update name only
+  // Same peer ID reconnecting — keep their seat, refresh the name and clear the
+  // disconnect grace. This is the seat-recovery path after a dropped socket.
   const existingById = room.players.find((p) => p.id === id);
   if (existingById) {
     return {
       ...room,
-      players: room.players.map((p) => (p.id === id ? { ...p, name } : p)),
+      players: room.players.map((p) =>
+        p.id === id
+          ? { ...p, name, connected: true, disconnectedUntil: null }
+          : p,
+      ),
     };
   }
 
@@ -115,6 +139,41 @@ export function addPlayer(
     ...room,
     players: [...room.players, createPlayer(id, name, isLocal)],
   };
+}
+
+/**
+ * Flag a player's socket as alive or inside the disconnect grace. Local
+ * (pass-and-play) players have no socket of their own and are always connected;
+ * unknown ids are a no-op.
+ */
+export function setPlayerConnected(
+  room: Room,
+  playerId: string,
+  connected: boolean,
+  until: number | null,
+): Room {
+  const player = room.players.find((p) => p.id === playerId);
+  if (!player || player.isLocal) return room;
+  return {
+    ...room,
+    players: room.players.map((p) =>
+      p.id === playerId
+        ? { ...p, connected, disconnectedUntil: connected ? null : until }
+        : p,
+    ),
+  };
+}
+
+/**
+ * True when somebody other than the active player could still buzz. Without a
+ * live challenger the bitster-window would hang: allChallengersPassed is false
+ * as long as nobody has passed, and nothing else resolves the phase.
+ */
+export function hasLiveChallengers(room: Room): boolean {
+  const currentId = getCurrentPlayer(room)?.id;
+  return room.players.some(
+    (p) => p.id !== currentId && p.connected && p.tokens > 0,
+  );
 }
 
 export function removePlayer(room: Room, playerId: string): Room {
@@ -353,6 +412,98 @@ export function bumpStat(
   return { ...room, players: updatedPlayers };
 }
 
+/**
+ * Append one finished round to the log. The round NUMBER is stamped here so
+ * callers cannot drift it, and the user-supplied text is capped here so no
+ * caller can forget to.
+ */
+export function appendRound(
+  room: Room,
+  record: Omit<RoundRecord, "round">,
+): Room {
+  // A pathological game must not grow the room state without bound
+  if (room.rounds.length >= MAX_ROUNDS_PER_GAME) return room;
+
+  const guess: RoundGuess | null = record.guess
+    ? {
+        ...record.guess,
+        title: record.guess.title.trim().slice(0, MAX_GUESS_TEXT),
+        artist: record.guess.artist.trim().slice(0, MAX_GUESS_TEXT),
+      }
+    : null;
+
+  const placeMs =
+    record.placeMs !== null &&
+    Number.isFinite(record.placeMs) &&
+    record.placeMs >= 0
+      ? Math.round(record.placeMs)
+      : null;
+
+  const stamped: RoundRecord = {
+    ...record,
+    round: room.rounds.length + 1,
+    activePlayerName: record.activePlayerName.slice(0, 24),
+    guess,
+    placeMs,
+    buzz: record.buzz
+      ? { ...record.buzz, playerName: record.buzz.playerName.slice(0, 24) }
+      : null,
+  };
+
+  return { ...room, rounds: [...room.rounds, stamped] };
+}
+
+/**
+ * The end-of-game payload. `endedReason` is INJECTED rather than derived: only
+ * the caller knows why the phase flipped, and a game that ended because
+ * everyone left can still contain a player at or above the win score.
+ */
+export function buildGameRecap(
+  room: Room,
+  opts: {
+    startedAt: number;
+    endedAt: number;
+    endedReason: RecapReason;
+    demo: boolean;
+  },
+): GameRecap {
+  let winnerId: string | null = null;
+  if (opts.endedReason === "win") {
+    winnerId = checkWinCondition(room)?.id ?? null;
+  } else if (opts.endedReason === "playlist-exhausted") {
+    // Highest score takes it — unless it is a tie, which nobody wins
+    const ranked = [...room.players].sort((a, b) => b.score - a.score);
+    if (ranked.length > 0 && (ranked.length === 1 || ranked[0].score > ranked[1].score)) {
+      winnerId = ranked[0].id;
+    }
+  }
+
+  return {
+    version: RECAP_VERSION,
+    roomCode: room.code,
+    hostId: room.hostId,
+    startedAt: opts.startedAt,
+    endedAt: opts.endedAt,
+    endedReason: opts.endedReason,
+    winnerId,
+    playlistName: room.playlistName,
+    demo: opts.demo,
+    settings: room.settings,
+    // Timelines and failed piles stay out — the round log already holds every
+    // song, and a recap travels to every device.
+    players: room.players.map((p) => ({
+      id: p.id,
+      name: p.name,
+      score: p.score,
+      timelineLength: p.timeline.length,
+      penalties: p.penalties,
+      isLocal: p.isLocal,
+      stats: p.stats,
+    })),
+    rounds: room.rounds,
+  };
+}
+
 export function checkWinCondition(room: Room): Player | null {
   return room.players.find((p) => p.score >= room.settings.winScore) ?? null;
 }
@@ -394,11 +545,24 @@ export function startGame(
     playlistId: playlistId ?? null,
     playlistTrackCount: playlistTrackCount ?? 0,
     playedIndices: [],
+    rounds: [],
   };
+}
+
+/**
+ * Is there anything to challenge at all? A card dropped into an EMPTY timeline
+ * is correct by definition (checkPlacement returns true), so a buzz against it
+ * can never win — it would only burn a token. The disputed card is already in
+ * the timeline at this point, so "at least two" means "they had one before".
+ */
+export function canBeChallenged(room: Room): boolean {
+  const current = getCurrentPlayer(room);
+  return (current?.timeline.length ?? 0) >= 2;
 }
 
 export function handleBuzz(room: Room, buzzerId: string): Room {
   if (!room.settings.rules.buzz.enabled) return room;
+  if (!canBeChallenged(room)) return room;
   if (room.buzzerId) return room;
   const currentPlayer = getCurrentPlayer(room);
   if (currentPlayer?.id === buzzerId) return room;
@@ -427,15 +591,17 @@ export function recordPass(room: Room, playerId: string): Room {
 
 /**
  * True when every player who could still buzz has explicitly passed.
- * Players without tokens can't challenge anyway; requires at least one
- * actual pass so an all-broke lobby doesn't skip the window instantly.
+ * Players without tokens can't challenge anyway, and neither can players whose
+ * socket is gone — the window must not wait for a pass that can never arrive.
+ * Requires at least one actual pass so an all-broke lobby doesn't skip the
+ * window instantly.
  */
 export function allChallengersPassed(room: Room): boolean {
   if (room.buzzerId) return false;
   if (room.passedIds.length === 0) return false;
   const currentId = getCurrentPlayer(room)?.id;
   const eligible = room.players.filter(
-    (p) => p.id !== currentId && p.tokens > 0,
+    (p) => p.id !== currentId && p.tokens > 0 && p.connected,
   );
   return eligible.every((p) => room.passedIds.includes(p.id));
 }
@@ -686,37 +852,30 @@ export function skipSong(room: Room, playerId: string): Room {
   return { ...room, players: updatedPlayers };
 }
 
-export function buildGameState(room: Room): import("./types").GameState {
+export function buildGameState(room: Room, meta: GameStateMeta): GameState {
   const currentPlayer = getCurrentPlayer(room);
 
   // While the current song is still being guessed/challenged, its metadata must
   // not reach the peers: it IS the answer (title/artist for the guess, year for
   // the placement). It appears in playedSongs and timelines only from reveal on.
+  // Which fields betray it is declared in src/schema/song.ts, not here.
   const secretSongId =
     room.phase === "playing" || room.phase === "bitster-window"
       ? (room.currentSong?.id ?? null)
       : null;
 
-  // Zero the year AND strip metadata that could betray it (album name,
-  // popularity, duration, explicit flag) from the tentatively placed card.
-  const maskSong = (s: Song): Song => ({
-    ...s,
-    year: 0,
-    durationMs: undefined,
-    explicit: undefined,
-    popularity: undefined,
-    albumName: undefined,
-  });
-
   const timelines: Record<string, Song[]> = {};
   const failedTimelines: Record<string, Song[]> = {};
   for (const p of room.players) {
     timelines[p.id] = secretSongId
-      ? p.timeline.map((s) => (s.id === secretSongId ? maskSong(s) : s))
+      ? p.timeline.map((s) => (s.id === secretSongId ? maskSecrets(s) : s))
       : p.timeline;
     failedTimelines[p.id] = p.failedSongs;
   }
 
+  // NOTE: room.rounds is deliberately absent from the broadcast. It holds the
+  // real year of every song played so far, including skipped and timed-out ones
+  // that were never revealed — spreading the room in here would leak the answers.
   return {
     roomCode: room.code,
     phase: room.phase,
@@ -728,6 +887,8 @@ export function buildGameState(room: Room): import("./types").GameState {
       tokens: p.tokens,
       isLocal: p.isLocal,
       stats: p.stats,
+      connected: p.connected,
+      disconnectedUntil: p.disconnectedUntil,
     })),
     currentPlayerId: currentPlayer?.id ?? null,
     currentSongUri: room.currentSong?.uri ?? null,
@@ -750,7 +911,10 @@ export function buildGameState(room: Room): import("./types").GameState {
     passedIds: room.passedIds,
     playlistName: room.playlistName,
     playlistImageUrl: room.playlistImageUrl,
+    playlistUrl: room.playlistUrl,
     playlistTrackCount: room.playlistTrackCount,
     guessResult: null,
+    hostNow: meta.hostNow,
+    stateVersion: meta.stateVersion,
   };
 }

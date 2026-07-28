@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/Input";
 import { Pressable } from "@/components/ui/Pressable";
 import { generateRoomCode } from "@/game/logic";
 import { useGameStore } from "@/game/store";
+import { useHistoryStore } from "@/history/store";
 import * as p2p from "@/p2p/connection";
 import { getProvider } from "@/streaming/registry";
 import { useStreamingStore } from "@/streaming/store";
@@ -39,6 +40,7 @@ export default function HomeScreen() {
   const setRoomCodeStore = useGameStore((s) => s.setRoomCode);
   const authStatus = useStreamingStore((s) => s.authStatus);
   const isAuthenticated = authStatus === "authenticated";
+  const hasHistory = useHistoryStore((s) => s.games.length > 0);
 
   useEffect(() => {
     AsyncStorage.getItem("playerName").then((stored) => {
@@ -219,13 +221,24 @@ export default function HomeScreen() {
             )}
           </View>
 
-          <Pressable
-            onPress={() => router.push("/about")}
-            label="Open info and licenses"
-            style={styles.aboutBtn}
-          >
-            <Text style={styles.aboutLink}>Info & Licenses</Text>
-          </Pressable>
+          <View style={styles.footerRow}>
+            {hasHistory && (
+              <Pressable
+                onPress={() => router.push("/stats")}
+                label="Open your all-time stats"
+                style={styles.aboutBtn}
+              >
+                <Text style={styles.aboutLink}>📊 Stats</Text>
+              </Pressable>
+            )}
+            <Pressable
+              onPress={() => router.push("/about")}
+              label="Open info and licenses"
+              style={styles.aboutBtn}
+            >
+              <Text style={styles.aboutLink}>Info & Licenses</Text>
+            </Pressable>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -285,10 +298,14 @@ const useStyles = createThemedStyles((COLORS) =>
     joinSection: {
       gap: SPACE.md,
     },
+    footerRow: {
+      flexDirection: "row",
+      gap: SPACE.xl,
+      marginTop: SPACE["2xl"],
+    },
     aboutBtn: {
       minHeight: 36,
       justifyContent: "center",
-      marginTop: SPACE["2xl"],
     },
     aboutLink: {
       fontSize: FONT.size.sm,

@@ -12,6 +12,13 @@ interface TimelineGapProps {
   selected?: boolean;
   disabled?: boolean;
   label?: string;
+  /**
+   * This is the slot the active player chose. Shown as the mystery card so a
+   * challenger can see what they are actually disagreeing with — and it is not
+   * selectable, because picking the same slot is judged by the same rule and
+   * would therefore lose every single time.
+   */
+  disputed?: boolean;
 }
 
 /** A vertical drop slot between two cards in the horizontal timeline */
@@ -20,6 +27,7 @@ export function TimelineGap({
   selected = false,
   disabled = false,
   label,
+  disputed = false,
 }: TimelineGapProps) {
   const styles = useStyles();
   const pulse = useRef(new Animated.Value(0)).current;
@@ -50,6 +58,20 @@ export function TimelineGap({
   }, [selected, pulse]);
 
   const wide = label != null;
+
+  if (disputed) {
+    return (
+      <Pressable
+        onPress={() => {}}
+        disabled
+        label="The card the active player placed here"
+        style={[styles.slot, styles.disputedSlot]}
+      >
+        <Text style={styles.disputedIcon}>?</Text>
+        <Text style={styles.disputedLabel}>placed{"\n"}here</Text>
+      </Pressable>
+    );
+  }
 
   return (
     <Pressable
@@ -112,6 +134,26 @@ const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   },
   disabled: {
     opacity: 0.15,
+  },
+  disputedSlot: {
+    width: 62,
+    opacity: 1,
+    borderStyle: "solid",
+    borderWidth: 2,
+    borderColor: COLORS.warning,
+    backgroundColor: COLORS.warningLight,
+  },
+  disputedIcon: {
+    fontFamily: DISPLAY_FONT,
+    fontSize: FONT.size["3xl"],
+    color: COLORS.warning,
+  },
+  disputedLabel: {
+    fontSize: FONT.size.xs,
+    color: COLORS.warning,
+    textAlign: "center",
+    textTransform: "uppercase",
+    letterSpacing: FONT.tracking.wide,
   },
   icon: {
     fontFamily: DISPLAY_FONT,

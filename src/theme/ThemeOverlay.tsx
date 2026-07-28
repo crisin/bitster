@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { resolveEffectTempo, type EffectTempo } from "./effectTempo";
 import { GlitchEffect } from "./GlitchEffect";
+import { PointerEffects } from "./PointerEffects";
 import { MeltEffect } from "./MeltEffect";
 import { useThemeStore } from "./store";
 import { useTheme } from "./themedStyles";
@@ -350,7 +351,10 @@ export function ThemeOverlay() {
     fx.flicker ||
     fx.scanlines ||
     fx.vignette ||
-    fx.floaties;
+    fx.floaties ||
+    fx.cursorWarp ||
+    fx.flashlight ||
+    fx.clickGlitch;
   if (!hasAny) return null;
 
   return (
@@ -376,6 +380,15 @@ export function ThemeOverlay() {
       )}
       {fx.vignette && vignetteStyle && (
         <Animated.View style={[StyleSheet.absoluteFillObject, vignetteStyle]} />
+      )}
+      {(fx.cursorWarp || fx.flashlight || fx.clickGlitch) && (
+        <PointerEffects
+          warp={fx.cursorWarp}
+          flashlight={fx.flashlight}
+          clickGlitch={fx.clickGlitch}
+          accent={theme.colors.accent}
+          factor={tempo.factor}
+        />
       )}
       {fx.floaties &&
         expandFloaties(fx.floaties).map((emoji, i) => (

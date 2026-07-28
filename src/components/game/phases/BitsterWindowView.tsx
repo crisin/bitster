@@ -95,6 +95,11 @@ export function BitsterWindowView({
   const challengeTimeline = activeTimeline.filter(
     (s) => s.id !== currentSongId,
   );
+  // Where they dropped it. Removing one entry from the full timeline turns its
+  // index into exactly the gap index of the shortened list, so this doubles as
+  // the slot to mark.
+  const disputedIndex = activeTimeline.findIndex((s) => s.id === currentSongId);
+  const disputedGap = disputedIndex === -1 ? null : disputedIndex;
   const stageTitle = isMyTurn
     ? "Placed! Survive the challenge…"
     : `${currentPlayer?.name ?? "???"} placed the card`;
@@ -223,8 +228,8 @@ export function BitsterWindowView({
         >
           <CountdownPill deadline={buzzDeadline} accessibilitySuffix="seconds left to place" />
           <Text style={styles.buzzPlaceHint}>
-            Tap the gap in {currentPlayer ? `${currentPlayer.name}'s` : "the"}{" "}
-            timeline where the song REALLY belongs.{" "}
+            The ? slot is where {currentPlayer?.name ?? "they"} put it. Tap a
+            DIFFERENT gap — where the song REALLY belongs.{" "}
             {isBuzzer
               ? "If you're right, the card is yours!"
               : "Right = the card goes to them!"}
@@ -234,6 +239,7 @@ export function BitsterWindowView({
             interactive
             selectedGap={buzzGap}
             onGapSelect={onBuzzGapSelect}
+            disputedGap={disputedGap}
           />
         </Stage>
       )}

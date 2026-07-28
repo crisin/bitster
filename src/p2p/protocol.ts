@@ -1,13 +1,29 @@
 import type {
+  GameRecap,
   GameRules,
   GameSettings,
   GameState,
   Phase,
   PlacementResult,
+  Player,
   PlayerStats,
+  RecapPlayer,
+  RecapReason,
+  Room,
+  RoundBuzz,
+  RoundGuess,
+  RoundOutcome,
+  RoundRecord,
   Song,
 } from "@/game/types";
-import { EMPTY_STATS } from "@/game/types";
+import {
+  EMPTY_STATS,
+  MAX_RANDOM_POOL,
+  MAX_ROUNDS_PER_GAME,
+  MIN_RANDOM_POOL,
+  RECAP_VERSION,
+} from "@/game/types";
+import { buildSong } from "@/schema/song";
 
 export type P2PAction =
   | { type: "join"; payload: { name: string } }
@@ -21,6 +37,7 @@ export type P2PAction =
   | { type: "buzz-select"; payload: { position: number } }
   | { type: "buzz-place"; payload: { position: number } }
   | { type: "set-playlist"; payload: { playlistUrl: string } }
+  | { type: "set-random-pool"; payload: { target: number } }
   | { type: "guess-song"; payload: { title: string; artist: string; year?: number } }
   | { type: "skip-song" }
   | { type: "next-round" }
@@ -28,6 +45,7 @@ export type P2PAction =
   | { type: "play-song"; payload: { uri: string } }
   | { type: "update-settings"; payload: Partial<GameSettings> }
   | { type: "rematch" }
+  | { type: "game-recap"; payload: GameRecap }
   | { type: "error"; payload: { message: string } };
 
 const PHASES: readonly Phase[] = [
@@ -68,24 +86,9 @@ function isPhase(v: unknown): v is Phase {
 
 function parseSong(v: unknown): Song | null {
   if (!isObject(v)) return null;
-  if (!isNonEmptyString(v.id) || !isNonEmptyString(v.uri)) return null;
-  if (typeof v.name !== "string" || typeof v.artist !== "string") return null;
-  // year 0 = masked by the host during the guessing window
-  if (!isNonNegativeInt(v.year)) return null;
-  const song: Song = {
-    id: v.id,
-    uri: v.uri,
-    name: v.name,
-    artist: v.artist,
-    year: v.year,
-  };
-  if (typeof v.imageUrl === "string") song.imageUrl = v.imageUrl;
-  if (isNonNegativeInt(v.durationMs)) song.durationMs = v.durationMs;
-  if (typeof v.explicit === "boolean") song.explicit = v.explicit;
-  if (isNonNegativeInt(v.popularity) && v.popularity <= 100)
-    song.popularity = v.popularity;
-  if (typeof v.albumName === "string") song.albumName = v.albumName;
-  return song;
+  // Field kinds, bounds and required-ness live in src/schema/song.ts, so a new
+  // field cannot silently fall off here. Unknown keys are dropped as before.
+  return buildSong((name) => v[name]);
 }
 
 /** Stats ride along per player; tolerate hosts that don't send them yet */
@@ -139,6 +142,11 @@ function parsePlayers(v: unknown): GameState["players"] | null {
     }
     if (item.isLocal !== undefined && typeof item.isLocal !== "boolean")
       return null;
+    // Connection flags — tolerate older hosts that don't send them (= online)
+    if (item.connected !== undefined && typeof item.connected !== "boolean")
+      return null;
+    const until = item.disconnectedUntil ?? null;
+    if (until !== null && !isFiniteInt(until)) return null;
     const stats = parseStats(item.stats);
     if (!stats) return null;
     players.push({
@@ -149,6 +157,8 @@ function parsePlayers(v: unknown): GameState["players"] | null {
       tokens: item.tokens,
       isLocal: item.isLocal === true,
       stats,
+      connected: item.connected !== false,
+      disconnectedUntil: until,
     });
   }
   return players;
@@ -219,6 +229,11 @@ function parsePlacementResult(v: unknown): PlacementResult | null {
   if (!song) return null;
   const result: PlacementResult = { correct: v.correct, song };
   if (v.timedOut === true) result.timedOut = true;
+  // Optional — an older host simply doesn't say who got the card
+  if (v.awardedTo !== undefined) {
+    if (!isStringOrNull(v.awardedTo)) return null;
+    result.awardedTo = v.awardedTo;
+  }
   return result;
 }
 
@@ -235,6 +250,319 @@ function parsePlayedSongs(v: unknown): GameState["playedSongs"] | null {
   return out;
 }
 
+// -- Round log --
+
+const ROUND_OUTCOMES: readonly RoundOutcome[] = [
+  "placed",
+  "timeout",
+  "skipped",
+  "abandoned",
+];
+
+function isIntOrNull(v: unknown): v is number | null {
+  return v === null || isNonNegativeInt(v);
+}
+
+function parseRoundGuess(v: unknown): RoundGuess | null {
+  if (!isObject(v)) return null;
+  if (typeof v.title !== "string" || typeof v.artist !== "string") return null;
+  if (v.title.length > 1000 || v.artist.length > 1000) return null;
+  if (v.year !== null && v.year !== undefined && !isFiniteInt(v.year))
+    return null;
+  if (
+    typeof v.titleCorrect !== "boolean" ||
+    typeof v.artistCorrect !== "boolean"
+  )
+    return null;
+  if (
+    v.yearCorrect !== null &&
+    v.yearCorrect !== undefined &&
+    typeof v.yearCorrect !== "boolean"
+  )
+    return null;
+  if (!isNonNegativeInt(v.tokens) || v.tokens > 4) return null;
+  return {
+    title: v.title,
+    artist: v.artist,
+    year: typeof v.year === "number" ? v.year : null,
+    titleCorrect: v.titleCorrect,
+    artistCorrect: v.artistCorrect,
+    yearCorrect: typeof v.yearCorrect === "boolean" ? v.yearCorrect : null,
+    tokens: v.tokens,
+  };
+}
+
+function parseRoundBuzz(v: unknown): RoundBuzz | null {
+  if (!isObject(v)) return null;
+  if (!isNonEmptyString(v.playerId) || typeof v.playerName !== "string")
+    return null;
+  const position = v.position ?? null;
+  if (!isIntOrNull(position)) return null;
+  if (typeof v.stolen !== "boolean" || typeof v.penalty !== "boolean")
+    return null;
+  return {
+    playerId: v.playerId,
+    playerName: v.playerName,
+    position,
+    stolen: v.stolen,
+    penalty: v.penalty,
+  };
+}
+
+export function parseRoundRecord(v: unknown): RoundRecord | null {
+  if (!isObject(v)) return null;
+  if (!isNonNegativeInt(v.round)) return null;
+  const song = parseSong(v.song);
+  if (!song) return null;
+  if (!isNonEmptyString(v.activePlayerId)) return null;
+  if (typeof v.activePlayerName !== "string") return null;
+  if (
+    typeof v.outcome !== "string" ||
+    !(ROUND_OUTCOMES as readonly string[]).includes(v.outcome)
+  )
+    return null;
+  const position = v.position ?? null;
+  if (!isIntOrNull(position)) return null;
+  if (v.correct !== null && v.correct !== undefined && typeof v.correct !== "boolean")
+    return null;
+  const placeMs = v.placeMs ?? null;
+  if (!isIntOrNull(placeMs)) return null;
+
+  let guess: RoundGuess | null = null;
+  if (v.guess !== null && v.guess !== undefined) {
+    guess = parseRoundGuess(v.guess);
+    if (!guess) return null;
+  }
+  let buzz: RoundBuzz | null = null;
+  if (v.buzz !== null && v.buzz !== undefined) {
+    buzz = parseRoundBuzz(v.buzz);
+    if (!buzz) return null;
+  }
+
+  return {
+    round: v.round,
+    song,
+    activePlayerId: v.activePlayerId,
+    activePlayerName: v.activePlayerName,
+    outcome: v.outcome as RoundOutcome,
+    position,
+    correct: typeof v.correct === "boolean" ? v.correct : null,
+    placeMs,
+    guess,
+    buzz,
+  };
+}
+
+export function parseRoundRecords(v: unknown): RoundRecord[] | null {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || v.length > MAX_ROUNDS_PER_GAME) return null;
+  const rounds: RoundRecord[] = [];
+  for (const item of v) {
+    const round = parseRoundRecord(item);
+    if (!round) return null;
+    rounds.push(round);
+  }
+  return rounds;
+}
+
+// -- Game recap --
+// Travels to every device at the end of a game and is written to local
+// storage there, so the bounds below are the only thing between a hostile
+// host and an unbounded write on somebody else's phone.
+
+const RECAP_REASONS: readonly RecapReason[] = [
+  "win",
+  "playlist-exhausted",
+  "abandoned",
+];
+
+/** A recap with more players than any room could ever hold is not a recap */
+const MAX_RECAP_PLAYERS = 32;
+
+function parseRecapPlayer(v: unknown): RecapPlayer | null {
+  if (!isObject(v)) return null;
+  if (!isNonEmptyString(v.id) || !isNonEmptyString(v.name)) return null;
+  if (!isNonNegativeInt(v.score) || !isNonNegativeInt(v.timelineLength))
+    return null;
+  if (!isNonNegativeInt(v.penalties)) return null;
+  if (v.isLocal !== undefined && typeof v.isLocal !== "boolean") return null;
+  const stats = parseStats(v.stats);
+  if (!stats) return null;
+  return {
+    id: v.id,
+    name: v.name,
+    score: v.score,
+    timelineLength: v.timelineLength,
+    penalties: v.penalties,
+    isLocal: v.isLocal === true,
+    stats,
+  };
+}
+
+export function validateGameRecap(v: unknown): GameRecap | null {
+  if (!isObject(v)) return null;
+  if (!isNonEmptyString(v.roomCode) || !isNonEmptyString(v.hostId)) return null;
+  if (!isNonNegativeInt(v.startedAt) || !isNonNegativeInt(v.endedAt))
+    return null;
+  if (
+    typeof v.endedReason !== "string" ||
+    !(RECAP_REASONS as readonly string[]).includes(v.endedReason)
+  )
+    return null;
+  if (!isStringOrNull(v.winnerId ?? null)) return null;
+  if (!isStringOrNull(v.playlistName ?? null)) return null;
+  if (v.demo !== undefined && typeof v.demo !== "boolean") return null;
+  if (v.version !== undefined && (!isFiniteInt(v.version) || v.version < 1))
+    return null;
+
+  const settings = parseSettings(v.settings);
+  const rounds = parseRoundRecords(v.rounds);
+  if (!settings || !rounds) return null;
+
+  if (!Array.isArray(v.players) || v.players.length > MAX_RECAP_PLAYERS)
+    return null;
+  const players: RecapPlayer[] = [];
+  for (const item of v.players) {
+    const player = parseRecapPlayer(item);
+    if (!player) return null;
+    players.push(player);
+  }
+
+  return {
+    version: typeof v.version === "number" ? v.version : RECAP_VERSION,
+    roomCode: v.roomCode,
+    hostId: v.hostId,
+    startedAt: v.startedAt,
+    endedAt: v.endedAt,
+    endedReason: v.endedReason as RecapReason,
+    winnerId: (v.winnerId ?? null) as string | null,
+    playlistName: (v.playlistName ?? null) as string | null,
+    demo: v.demo === true,
+    settings,
+    players,
+    rounds,
+  };
+}
+
+// -- Room (snapshot input only) --
+// Unlike a GameState this legitimately carries the answers — it is the host's
+// own state, restored from local storage after a reload, never wire input.
+
+/** The UNMASKED player, as it lives in Room (not the broadcast PlayerState) */
+export function parsePlayerFull(v: unknown): Player | null {
+  if (!isObject(v)) return null;
+  if (!isNonEmptyString(v.id) || !isNonEmptyString(v.name)) return null;
+  if (!isNonNegativeInt(v.score) || !isNonNegativeInt(v.tokens)) return null;
+  if (!isNonNegativeInt(v.penalties)) return null;
+  if (v.isLocal !== undefined && typeof v.isLocal !== "boolean") return null;
+  if (v.connected !== undefined && typeof v.connected !== "boolean") return null;
+  const until = v.disconnectedUntil ?? null;
+  if (until !== null && !isFiniteInt(until)) return null;
+  const timeline = parseSongArray(v.timeline);
+  const failedSongs = parseSongArray(v.failedSongs ?? []);
+  const stats = parseStats(v.stats);
+  if (!timeline || !failedSongs || !stats) return null;
+  return {
+    id: v.id,
+    name: v.name,
+    score: v.score,
+    timeline,
+    tokens: v.tokens,
+    failedSongs,
+    isLocal: v.isLocal === true,
+    penalties: v.penalties,
+    stats,
+    connected: v.connected !== false,
+    disconnectedUntil: until,
+  };
+}
+
+export function validateRoom(v: unknown): Room | null {
+  if (!isObject(v)) return null;
+  if (!isNonEmptyString(v.code) || !isNonEmptyString(v.hostId)) return null;
+  if (!isPhase(v.phase)) return null;
+  if (!Array.isArray(v.players)) return null;
+
+  const players: Player[] = [];
+  for (const item of v.players) {
+    const player = parsePlayerFull(item);
+    if (!player) return null;
+    players.push(player);
+  }
+
+  const playlist = parseSongArray(v.playlist ?? []);
+  const playedSongs = parseSongArray(v.playedSongs ?? []);
+  const settings = parseSettings(v.settings);
+  const rounds = parseRoundRecords(v.rounds);
+  if (!playlist || !playedSongs || !settings || !rounds) return null;
+
+  if (!isNonNegativeInt(v.currentPlayerIndex)) return null;
+  if (!isNonNegativeInt(v.playlistTrackCount ?? 0)) return null;
+
+  let currentSong: Song | null = null;
+  if (v.currentSong !== null && v.currentSong !== undefined) {
+    currentSong = parseSong(v.currentSong);
+    if (!currentSong) return null;
+  }
+
+  for (const key of ["buzzDeadline", "placeDeadline"] as const) {
+    const raw = v[key] ?? null;
+    if (raw !== null && !isFiniteInt(raw)) return null;
+  }
+  if (!isStringOrNull(v.buzzerId ?? null)) return null;
+  if (!isStringOrNull(v.playlistName ?? null)) return null;
+  if (!isStringOrNull(v.playlistImageUrl ?? null)) return null;
+  if (!isStringOrNull(v.playlistId ?? null)) return null;
+  if (!isStringOrNull(v.playlistUrl ?? null)) return null;
+
+  if (!Array.isArray(v.passedIds)) return null;
+  const passedIds: string[] = [];
+  for (const id of v.passedIds) {
+    if (!isNonEmptyString(id)) return null;
+    passedIds.push(id);
+  }
+
+  if (!Array.isArray(v.playedIndices)) return null;
+  const playedIndices: number[] = [];
+  for (const index of v.playedIndices) {
+    if (!isNonNegativeInt(index)) return null;
+    playedIndices.push(index);
+  }
+
+  return {
+    code: v.code,
+    hostId: v.hostId,
+    players,
+    playlist,
+    playedSongs,
+    currentPlayerIndex: v.currentPlayerIndex,
+    currentSong,
+    phase: v.phase,
+    settings,
+    buzzerId: (v.buzzerId ?? null) as string | null,
+    buzzDeadline: (v.buzzDeadline ?? null) as number | null,
+    placeDeadline: (v.placeDeadline ?? null) as number | null,
+    passedIds,
+    playlistName: (v.playlistName ?? null) as string | null,
+    playlistImageUrl: (v.playlistImageUrl ?? null) as string | null,
+    playlistUrl: (v.playlistUrl ?? null) as string | null,
+    playlistId: (v.playlistId ?? null) as string | null,
+    playlistTrackCount: (v.playlistTrackCount ?? 0) as number,
+    playedIndices,
+    // Snapshots written before the random-pool feature carry no songSource —
+    // derive it so an in-flight game survives the upgrade
+    songSource:
+      v.songSource === "playlist" ||
+      v.songSource === "random" ||
+      v.songSource === "demo"
+        ? v.songSource
+        : v.playlistId
+          ? "playlist"
+          : "demo",
+    rounds,
+  };
+}
+
 export function validateGameState(v: unknown): GameState | null {
   if (!isObject(v)) return null;
   if (!isNonEmptyString(v.roomCode) || !isPhase(v.phase)) return null;
@@ -245,7 +573,8 @@ export function validateGameState(v: unknown): GameState | null {
     !isStringOrNull(v.currentSongId ?? null) ||
     !isStringOrNull(v.buzzerId ?? null) ||
     !isStringOrNull(v.playlistName ?? null) ||
-    !isStringOrNull(v.playlistImageUrl ?? null)
+    !isStringOrNull(v.playlistImageUrl ?? null) ||
+    !isStringOrNull(v.playlistUrl ?? null)
   ) {
     return null;
   }
@@ -257,6 +586,24 @@ export function validateGameState(v: unknown): GameState | null {
   const rawPlaceDeadline = v.placeDeadline ?? null;
   if (rawPlaceDeadline !== null && !isFiniteInt(rawPlaceDeadline)) return null;
   const placeDeadline = rawPlaceDeadline as number | null;
+
+  // Host clock stamp — tolerate older hosts that don't send it (offset stays 0).
+  // Deliberately NOT bounded by magnitude: a device with a dead battery can be
+  // off by years, and that is exactly the case the offset exists to fix.
+  const rawHostNow = v.hostNow ?? null;
+  if (rawHostNow !== null && (!isFiniteInt(rawHostNow) || rawHostNow <= 0))
+    return null;
+  const hostNow = rawHostNow as number | null;
+
+  // Broadcast sequence number — tolerate older hosts (peers then can't order
+  // states and apply everything, exactly as before)
+  const rawStateVersion = v.stateVersion ?? null;
+  if (
+    rawStateVersion !== null &&
+    (!isFiniteInt(rawStateVersion) || rawStateVersion < 0)
+  )
+    return null;
+  const stateVersion = rawStateVersion as number | null;
 
   const rawPassed = v.passedIds ?? [];
   if (!Array.isArray(rawPassed)) return null;
@@ -323,8 +670,11 @@ export function validateGameState(v: unknown): GameState | null {
     passedIds,
     playlistName: (v.playlistName ?? null) as string | null,
     playlistImageUrl: (v.playlistImageUrl ?? null) as string | null,
+    playlistUrl: (v.playlistUrl ?? null) as string | null,
     playlistTrackCount,
     guessResult,
+    hostNow,
+    stateVersion,
   };
 }
 
@@ -378,6 +728,14 @@ export function validateAction(data: unknown): P2PAction | null {
       if (!isObject(p) || typeof p.playlistUrl !== "string") return null;
       return { type: "set-playlist", payload: { playlistUrl: p.playlistUrl } };
 
+    case "set-random-pool": {
+      // Bounded: the pool rides in the host's room snapshot, which is written
+      // to storage on every broadcast
+      if (!isObject(p) || !isNonNegativeInt(p.target)) return null;
+      if (p.target < MIN_RANDOM_POOL || p.target > MAX_RANDOM_POOL) return null;
+      return { type: "set-random-pool", payload: { target: p.target } };
+    }
+
     case "guess-song": {
       if (
         !isObject(p) ||
@@ -420,6 +778,12 @@ export function validateAction(data: unknown): P2PAction | null {
 
     case "rematch":
       return { type: "rematch" };
+
+    case "game-recap": {
+      const recap = validateGameRecap(p);
+      if (!recap) return null;
+      return { type: "game-recap", payload: recap };
+    }
 
     case "error":
       if (!isObject(p) || typeof p.message !== "string") return null;

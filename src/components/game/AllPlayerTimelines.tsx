@@ -55,6 +55,11 @@ export function AllPlayerTimelines({
                   {p.name}
                   {p.id === myPeerId ? " (you)" : p.isLocal ? " (local)" : ""}
                 </Text>
+                {!p.connected && (
+                  <Text style={styles.offline} numberOfLines={1}>
+                    · reconnecting
+                  </Text>
+                )}
               </View>
               <View style={styles.railRight}>
                 {p.tokens > 0 && (
@@ -138,6 +143,12 @@ const useStyles = createThemedStyles((COLORS) =>
     },
     nameCurrent: {
       color: COLORS.accent,
+    },
+    offline: {
+      fontSize: FONT.size.xs,
+      color: COLORS.textSecondary,
+      opacity: 0.6,
+      flexShrink: 0,
     },
     tokens: {
       fontSize: FONT.size.sm,
