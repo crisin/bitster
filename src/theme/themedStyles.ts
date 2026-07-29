@@ -91,10 +91,10 @@ export function createThemedStyles<T>(
     const fontId = useThemeStore((s) => s.fontId);
 
     // Any theme can carry a look now, so any theme can change its palette.
-    // Only accent/base move colors — keying on them keeps the cache small.
+    // Key on exactly the fields that move colors — keeps the cache small.
     const look = useThemeStore.getState().looks[theme.id];
     const themeKey = look
-      ? `${theme.id}:${look.accent ?? ""}:${look.base}:${look.effects.glow ? 1 : 0}${look.effects.blur ? 1 : 0}`
+      ? `${theme.id}:${look.accent ?? ""}:${look.background ?? ""}:${look.textColor ?? ""}:${look.base}:${look.effects.glow ? 1 : 0}${look.effects.blur ? 1 : 0}`
       : theme.id;
     const key = `${themeKey}|${fontScaleId}|${fontId}`;
 

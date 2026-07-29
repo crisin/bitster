@@ -309,6 +309,317 @@ void main() {
   ],
 };
 
+/**
+ * Cyclic cellular automaton (rock-paper-scissors with 12 states): every state
+ * is eaten by its successor, and out of pure noise, spiral galaxies condense.
+ * The wave fronts surge on the beat; a click sows fresh chaos that new
+ * spirals nucleate around.
+ */
+const CYCLIC: EffectSpec = {
+  id: "cyclic",
+  passes: [
+    {
+      target: "ca",
+      feedback: true,
+      iterations: 3,
+      scale: 0.5,
+      precision: "high",
+      source: `
+const float STATES = 14.0;
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_res;
+  vec2 px = 1.0 / u_res;
+  if (u_frame < 1.0) {
+    // Pure noise — the spirals assemble themselves out of this
+    float s = floor(hash(floor(gl_FragCoord.xy)) * STATES);
+    gl_FragColor = vec4(s / STATES, 0.0, 0.0, 1.0);
+    return;
+  }
+
+  float here = floor(texture2D(u_prev, uv).r * STATES + 0.5);
+  // The state that EATS this one
+  float hunter = mod(here + 1.0, STATES);
+
+  float count = 0.0;
+  for (int dy = -1; dy <= 1; dy++) {
+    for (int dx = -1; dx <= 1; dx++) {
+      if (dx == 0 && dy == 0) continue;
+      float n = floor(
+        texture2D(u_prev, uv + vec2(float(dx), float(dy)) * px).r * STATES + 0.5
+      );
+      if (abs(n - hunter) < 0.5) count += 1.0;
+    }
+  }
+
+  // Threshold 1 — with 14 states a cell sees its hunter among 8 neighbours
+  // only about half the time, and exactly that scarcity is what winds the
+  // wave fronts into spirals. Threshold 3 freezes the whole dish solid.
+  float next = count >= 1.0 ? hunter : here;
+
+  // A click sows raw noise — chaos that fresh spirals condense around
+  vec2 pd = (uv - u_pointer.xy) * vec2(u_res.x / u_res.y, 1.0);
+  if (u_pointer.z > 0.4 && dot(pd, pd) < 0.02) {
+    next = floor(hash(floor(gl_FragCoord.xy) + u_time) * STATES);
+  }
+
+  gl_FragColor = vec4(next / STATES, 0.0, 0.0, 1.0);
+}
+`,
+    },
+    {
+      target: "screen",
+      inputs: ["ca"],
+      source: `
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_res;
+  vec2 px = 1.0 / u_res;
+  float s = texture2D(u_ca, uv).r * (14.0 / 13.0);
+
+  // Cosine palette around the state cycle, pulled toward the accent
+  vec3 pal = 0.5 + 0.5 * cos(6.2831853 * (s + vec3(0.0, 0.33, 0.67)));
+  float tone = dot(pal, vec3(0.299, 0.587, 0.114));
+  vec3 col = mix(pal * 0.45, u_accent * (0.4 + tone), 0.5);
+
+  // State borders are the spiral fronts — light them up
+  float n1 = texture2D(u_ca, uv + vec2(px.x, 0.0)).r;
+  float n2 = texture2D(u_ca, uv + vec2(0.0, px.y)).r;
+  float edge = step(0.01, abs(s * (13.0/14.0) - n1) + abs(s * (13.0/14.0) - n2));
+  col += mix(u_accent, vec3(1.0), 0.45) * edge * 0.3;
+
+  col *= 0.75 + 0.4 * u_beat;
+  gl_FragColor = vec4(col, 1.0);
+}
+`,
+    },
+  ],
+};
+
+/**
+ * The kaliset: z = |z| / (z·z) − c, iterated. One line of maths that the
+ * demoscene has lived off for a decade — folds space into glowing cathedral
+ * vaults. The pointer steers the parameter c directly: you are bending the
+ * fractal by hand.
+ */
+const KALISET: EffectSpec = {
+  id: "kaliset",
+  passes: [
+    {
+      target: "screen",
+      source: `
+void main() {
+  vec2 uv = centred();
+  vec2 z = uv * (1.4 + 0.3 * sin(u_time * 0.06));
+
+  // c drifts on its own; the pointer takes the wheel while on screen
+  vec2 drift = vec2(
+    0.84 + 0.06 * sin(u_time * 0.043),
+    0.58 + 0.05 * cos(u_time * 0.057)
+  );
+  vec2 steer = vec2(0.45 + 0.65 * u_pointer.x, 0.35 + 0.5 * u_pointer.y);
+  vec2 c = mix(drift, steer, u_pointer.w * 0.65);
+
+  float acc = 0.0;
+  float trap = 1e9;
+  for (int i = 0; i < 17; i++) {
+    z = abs(z) / max(dot(z, z), 1e-6) - c;
+    acc += exp(-length(z) * 1.6);
+    trap = min(trap, abs(z.x) + abs(z.y));
+  }
+  acc /= 17.0;
+
+  vec3 col = u_accent * acc * 2.2;
+  // The orbit trap draws the luminous ribs through the vaults
+  float glow = exp(-trap * 7.0);
+  col += mix(u_accent, vec3(1.0), 0.7) * glow * (0.45 + 0.65 * u_beat);
+  // Slow channel drift keeps the palette breathing
+  col = mix(col, col.bgr, 0.25 + 0.25 * sin(u_time * 0.11));
+  col *= smoothstep(1.7, 0.3, length(uv));
+  gl_FragColor = vec4(col, 1.0);
+}
+`,
+    },
+  ],
+};
+
+/**
+ * SmoothLife (Rafler): Conway's Game of Life generalised to continuous space
+ * and time. Inner disc and outer ring get sampled per pixel, a sigmoid decides
+ * birth and death — and the soup grows amoebas that crawl, split and merge.
+ * A click feeds the soup; a dead dish can always be revived by hand.
+ */
+const SMOOTHLIFE: EffectSpec = {
+  id: "smoothlife",
+  passes: [
+    {
+      target: "life",
+      feedback: true,
+      iterations: 2,
+      scale: 0.4,
+      precision: "high",
+      source: `
+const float PI2 = 6.2831853;
+
+float sigmaf(float x, float a, float alpha) {
+  return 1.0 / (1.0 + exp(-(x - a) * 4.0 / alpha));
+}
+
+/** The classic smooth-glider rule set (b 0.278..0.365, d 0.267..0.445) */
+float rule(float n, float m) {
+  float wake = sigmaf(m, 0.5, 0.147);
+  float lo = mix(0.278, 0.267, wake);
+  float hi = mix(0.365, 0.445, wake);
+  return sigmaf(n, lo, 0.028) * (1.0 - sigmaf(n, hi, 0.028));
+}
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_res;
+  vec2 px = 1.0 / u_res;
+  if (u_frame < 1.0) {
+    gl_FragColor = vec4(smoothstep(0.55, 0.8, fbm(uv * 7.0 + 3.7)), 0.0, 0.0, 1.0);
+    return;
+  }
+
+  float here = texture2D(u_prev, uv).r;
+
+  // Inner filling m: centre + one ring (the "cell body")
+  float msum = here;
+  for (int i = 0; i < 8; i++) {
+    float a = float(i) / 8.0 * PI2;
+    msum += texture2D(u_prev, uv + vec2(cos(a), sin(a)) * 2.6 * px).r;
+  }
+  float m = msum / 9.0;
+
+  // Outer filling n: two rings (the "neighbourhood")
+  float nsum = 0.0;
+  for (int i = 0; i < 10; i++) {
+    float a = (float(i) + 0.5) / 10.0 * PI2;
+    nsum += texture2D(u_prev, uv + vec2(cos(a), sin(a)) * 6.0 * px).r * 0.8;
+  }
+  for (int i = 0; i < 14; i++) {
+    float a = float(i) / 14.0 * PI2;
+    nsum += texture2D(u_prev, uv + vec2(cos(a), sin(a)) * 9.5 * px).r * 1.2;
+  }
+  float n = nsum / 24.8;
+
+  // Smooth time stepping — life speeds up on the downbeat
+  float dt = 0.28 + 0.1 * u_beat;
+  float next = clamp(here + dt * (2.0 * rule(n, m) - 1.0), 0.0, 1.0);
+
+  // The click is the feeding hand
+  vec2 pd = (uv - u_pointer.xy) * vec2(u_res.x / u_res.y, 1.0);
+  next = max(next, u_pointer.z * exp(-dot(pd, pd) * 500.0));
+
+  gl_FragColor = vec4(next, 0.0, 0.0, 1.0);
+}
+`,
+    },
+    {
+      target: "screen",
+      inputs: ["life"],
+      source: `
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_res;
+  float f = texture2D(u_life, uv).r;
+  // Membrane shading: the rim of every amoeba glows
+  float rim = f * (1.0 - f) * 4.0;
+  vec3 col = mix(u_accent * 0.06, u_accent, smoothstep(0.1, 0.65, f));
+  col += mix(u_accent, vec3(1.0), 0.7) * rim * rim * (0.5 + 0.5 * u_beat);
+  gl_FragColor = vec4(col, 1.0);
+}
+`,
+    },
+  ],
+};
+
+/**
+ * Lenia (Bert Chan): continuous Life with a smooth ring kernel and a bell
+ * growth curve — the crown of the cellular-automata family. Nothing here is
+ * drawn; colonies breathe, pulse and reorganise entirely on their own.
+ * A click adds living mass under the cursor.
+ */
+const LENIA: EffectSpec = {
+  id: "lenia",
+  passes: [
+    {
+      target: "world",
+      feedback: true,
+      iterations: 2,
+      scale: 0.4,
+      precision: "high",
+      source: `
+const float PI2 = 6.2831853;
+
+float bell(float x, float mu, float s) {
+  float d = (x - mu) / s;
+  return exp(-d * d * 0.5);
+}
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_res;
+  vec2 px = 1.0 / u_res;
+  if (u_frame < 1.0) {
+    // Patchy soup at mid concentration — Lenia's favourite starting point
+    float f0 = smoothstep(0.5, 0.85, fbm(uv * 5.0)) *
+      (0.4 + 0.4 * noise(uv * 30.0));
+    gl_FragColor = vec4(f0, 0.0, 0.0, 1.0);
+    return;
+  }
+
+  float here = texture2D(u_prev, uv).r;
+
+  // The ring kernel, sampled on four circles. Weights = bell(r/R; 0.5, 0.15)
+  // times circumference, normalised below — a smooth halo, not a disc.
+  float acc = 0.0;
+  for (int i = 0; i < 8; i++) {
+    float a = float(i) / 8.0 * PI2;
+    acc += texture2D(u_prev, uv + vec2(cos(a), sin(a)) * 4.2 * px).r * 2.55;
+  }
+  for (int i = 0; i < 10; i++) {
+    float a = (float(i) + 0.5) / 10.0 * PI2;
+    acc += texture2D(u_prev, uv + vec2(cos(a), sin(a)) * 6.0 * px).r * 6.0;
+  }
+  for (int i = 0; i < 12; i++) {
+    float a = float(i) / 12.0 * PI2;
+    acc += texture2D(u_prev, uv + vec2(cos(a), sin(a)) * 7.8 * px).r * 4.73;
+  }
+  for (int i = 0; i < 14; i++) {
+    float a = (float(i) + 0.5) / 14.0 * PI2;
+    acc += texture2D(u_prev, uv + vec2(cos(a), sin(a)) * 10.2 * px).r * 0.67;
+  }
+  float u = acc / 146.3;
+
+  // Growth: alive around u = 0.15, dying everywhere else
+  float g = bell(u, 0.15, 0.022) * 2.0 - 1.0;
+  float dt = 0.12 + 0.05 * u_beat;
+  float next = clamp(here + dt * g, 0.0, 1.0);
+
+  // A click is a graft of living tissue
+  vec2 pd = (uv - u_pointer.xy) * vec2(u_res.x / u_res.y, 1.0);
+  next = max(next, u_pointer.z * 0.6 * exp(-dot(pd, pd) * 400.0));
+
+  gl_FragColor = vec4(next, 0.0, 0.0, 1.0);
+}
+`,
+    },
+    {
+      target: "screen",
+      inputs: ["world"],
+      source: `
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_res;
+  float f = texture2D(u_world, uv).r;
+  // Heat-map: void → accent → white-hot core
+  vec3 col = mix(u_accent * 0.05, u_accent, smoothstep(0.02, 0.45, f));
+  col = mix(col, vec3(1.0, 0.97, 0.9), smoothstep(0.55, 0.95, f) * 0.85);
+  col *= 0.8 + 0.35 * u_beat;
+  gl_FragColor = vec4(col, 1.0);
+}
+`,
+    },
+  ],
+};
+
 export const TRIP_PRESETS: TripPreset[] = [
   {
     id: "wormhole",
@@ -333,6 +644,30 @@ export const TRIP_PRESETS: TripPreset[] = [
     label: "Ink flow 🖋️",
     blurb: "Ink in a swirling current that never drains.",
     spec: INKFLOW,
+  },
+  {
+    id: "cyclic",
+    label: "Spirals 🌪️",
+    blurb: "Rock-paper-scissors between twelve states. Galaxies happen. Click to stir.",
+    spec: CYCLIC,
+  },
+  {
+    id: "kaliset",
+    label: "Cathedral 🕍",
+    blurb: "One folded formula from the demoscene. Your pointer bends it.",
+    spec: KALISET,
+  },
+  {
+    id: "smoothlife",
+    label: "Primordial 🧫",
+    blurb: "SmoothLife — Conway's Life gone continuous. Click to feed the soup.",
+    spec: SMOOTHLIFE,
+  },
+  {
+    id: "lenia",
+    label: "Lenia 🧬",
+    blurb: "Continuous life. Nothing is animated — it LIVES. Click to graft mass.",
+    spec: LENIA,
   },
 ];
 

@@ -15,6 +15,13 @@ import {
 export interface ThemeLook {
   /** Accent hex, or null = the preset's own accent */
   accent: string | null;
+  /**
+   * Background hex, or null = the preset's palette. Surfaces (cards, borders)
+   * are derived from it, so one pick restyles the whole depth stack.
+   */
+  background: string | null;
+  /** Text hex, or null = the preset's. Secondary text is derived. */
+  textColor: string | null;
   /** Palette base — only the Custom theme renders a switch for it */
   base: "dark" | "light";
   effects: {
@@ -72,6 +79,8 @@ export function presetLookFor(themeId: string): ThemeLook {
   const fx: ThemeEffects | null = theme?.effects ?? null;
   const look: ThemeLook = {
     accent: null,
+    background: null,
+    textColor: null,
     base: "dark",
     effects: {
       glow: fx?.glow ?? false,
@@ -101,6 +110,37 @@ function hexToRgba(hex: string, alpha: number): string {
   const g = Number.parseInt(hex.slice(3, 5), 16);
   const b = Number.parseInt(hex.slice(5, 7), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function channels(hex: string): [number, number, number] {
+  return [
+    Number.parseInt(hex.slice(1, 3), 16),
+    Number.parseInt(hex.slice(3, 5), 16),
+    Number.parseInt(hex.slice(5, 7), 16),
+  ];
+}
+
+/** Blend two hex colors; t = 1 is fully `to` */
+export function mixHex(from: string, to: string, t: number): string {
+  const a = channels(from);
+  const b = channels(to);
+  const hex = (v: number) =>
+    Math.round(v).toString(16).padStart(2, "0");
+  return `#${hex(a[0] + (b[0] - a[0]) * t)}${hex(a[1] + (b[1] - a[1]) * t)}${hex(a[2] + (b[2] - a[2]) * t)}`;
+}
+
+function luminance(hex: string): number {
+  const [r, g, b] = channels(hex);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/**
+ * Lift a surface off a background: dark bases get lighter, light bases get
+ * darker. This is what turns ONE picked background into a whole depth stack
+ * (card, elevated, border) that still reads as layers.
+ */
+export function elevate(hex: string, amount: number): string {
+  return mixHex(hex, luminance(hex) < 128 ? "#ffffff" : "#000000", amount);
 }
 
 /**
@@ -154,6 +194,12 @@ export function resolveTheme(
     shader: look.effects.shader || null,
   };
 
+  // One picked background restyles the whole depth stack; one picked text
+  // color keeps its secondary shade readable against exactly that background.
+  // Both exist because a loud effect layer can eat the preset's contrast.
+  const background = look.background ? normalizeHex(look.background) : null;
+  const textColor = look.textColor ? normalizeHex(look.textColor) : null;
+
   const custom = themeId === CUSTOM_THEME_ID;
   return {
     ...base,
@@ -166,7 +212,32 @@ export function resolveTheme(
       accent,
       accentLight: hexToRgba(accent, 0.13),
       borderFocused: accent,
+      ...(background
+        ? {
+            bgPrimary: background,
+            bgCard: elevate(background, 0.06),
+            bgElevated: elevate(background, 0.11),
+            border: elevate(background, 0.22),
+            secondary: elevate(background, 0.16),
+          }
+        : {}),
+      ...(textColor
+        ? {
+            textPrimary: textColor,
+            textSecondary: mixHex(
+              textColor,
+              background ?? base.colors.bgPrimary,
+              0.42,
+            ),
+          }
+        : {}),
     },
+    // The status bar follows the actual background, not the preset's
+    statusBar: background
+      ? luminance(background) < 128
+        ? "light"
+        : "dark"
+      : base.statusBar,
     effects,
   };
 }
@@ -191,6 +262,14 @@ export function parseLook(raw: unknown, themeId: string): ThemeLook | null {
   return {
     accent:
       typeof v.accent === "string" ? (normalizeHex(v.accent) ?? null) : null,
+    background:
+      typeof v.background === "string"
+        ? (normalizeHex(v.background) ?? null)
+        : null,
+    textColor:
+      typeof v.textColor === "string"
+        ? (normalizeHex(v.textColor) ?? null)
+        : null,
     base: v.base === "light" ? "light" : "dark",
     effects: {
       glow: bool(v.effects?.glow, preset.effects.glow),

@@ -70,6 +70,105 @@ const POINTER_OPTIONS = [
   },
 ] as const;
 
+/**
+ * Both exist because a loud effect layer can eat the preset's contrast:
+ * a solid dark background and bright text win against almost any shader.
+ */
+const BACKGROUND_SWATCHES = [
+  "#000000", // pure black — maximum contrast under any effect
+  "#0a0a12",
+  "#10131c",
+  "#04060c",
+  "#1c0433",
+  "#170a10",
+  "#12041f",
+  "#fafafa",
+];
+
+const TEXT_SWATCHES = [
+  "#ffffff",
+  "#e8e6e3",
+  "#fdf1ff",
+  "#ffe8c8",
+  "#9fe8ff",
+  "#5dff5d",
+  "#17191c",
+];
+
+/**
+ * A compact color override row: Auto (= the preset decides), swatches, and a
+ * free hex field. Shared by background and text color.
+ */
+function ColorRow({
+  title,
+  value,
+  swatches,
+  onChange,
+}: {
+  title: string;
+  value: string | null;
+  swatches: string[];
+  onChange: (hex: string | null) => void;
+}) {
+  const styles = useStyles();
+  const [draft, setDraft] = useState(value ?? "");
+  useEffect(() => {
+    setDraft(value ?? "");
+  }, [value]);
+  const valid = draft === "" || normalizeHex(draft) !== null;
+
+  return (
+    <>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.chipRow}>
+        <Chip
+          label="Auto"
+          selected={value === null}
+          onPress={() => onChange(null)}
+        />
+        {swatches.map((hex) => {
+          const selected = hex === value;
+          return (
+            <Pressable
+              key={hex}
+              onPress={() => onChange(hex)}
+              label={`${title} ${hex}`}
+              style={[
+                styles.smallSwatch,
+                { backgroundColor: hex },
+                selected && styles.swatchSelected,
+              ]}
+            >
+              {selected && (
+                <Text
+                  style={[styles.smallCheck, { color: checkColorFor(hex) }]}
+                >
+                  ✓
+                </Text>
+              )}
+            </Pressable>
+          );
+        })}
+      </View>
+      <Input
+        placeholder="#hex (empty = auto)"
+        label={`${title} hex value`}
+        value={draft}
+        onChangeText={(text) => {
+          setDraft(text);
+          if (text === "") onChange(null);
+          const normalized = normalizeHex(text);
+          if (normalized) onChange(normalized);
+        }}
+        autoCapitalize="none"
+        autoCorrect={false}
+        maxLength={7}
+        error={valid ? undefined : "Hex color like #101018"}
+      />
+    </>
+  );
+}
+
 /** A labelled 0–100% dial, shared by every intensity in the editor */
 export function IntensityRow({
   title,
@@ -204,6 +303,20 @@ export function ThemeEditor() {
         autoCorrect={false}
         maxLength={7}
         error={hexValid ? undefined : "Hex color like #ff6fae"}
+      />
+
+      {/* Contrast rescue: when the effects eat the UI, pin the surfaces */}
+      <ColorRow
+        title="Background"
+        value={look.background}
+        swatches={BACKGROUND_SWATCHES}
+        onChange={(hex) => updateLook({ background: hex })}
+      />
+      <ColorRow
+        title="Text color"
+        value={look.textColor}
+        swatches={TEXT_SWATCHES}
+        onChange={(hex) => updateLook({ textColor: hex })}
       />
 
       <Text style={styles.sectionTitle}>Effects</Text>
@@ -413,6 +526,19 @@ const useStyles = createThemedStyles((COLORS) =>
     },
     swatchSelected: {
       borderColor: COLORS.textPrimary,
+    },
+    smallSwatch: {
+      width: 32,
+      height: 32,
+      borderRadius: RADIUS.full,
+      borderWidth: 2,
+      borderColor: "rgba(127, 127, 127, 0.35)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    smallCheck: {
+      fontSize: FONT.size.sm,
+      fontWeight: FONT.weight.bold,
     },
     swatchCheck: {
       fontSize: FONT.size.lg,

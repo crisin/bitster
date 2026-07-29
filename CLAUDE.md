@@ -99,7 +99,8 @@ src/
     shader/                   # Fullscreen-Shader (Web; nativ = Stub)
       prelude.ts              # Geteiltes GLSL-Substrat (Uniforms, hash/noise/fbm)
       presets.ts              # 12 Single-Pass-Presets als GLSL-Bodies
-      advanced.ts             # Trip-Presets: Wormhole, Acid (RD), Mandelbulb, Ink Flow
+      advanced.ts             # 8 Trip-Presets: Wormhole, Acid (RD), Mandelbulb, Ink Flow,
+                              #   Spirals (Cyclic CA), Cathedral (Kaliset), SmoothLife, Lenia
       engine/                 # Multi-Pass-Engine: types + compile (PUR) + engine.web
       studio.ts               # Zustand – User-Shader (lokal, NIE über die Leitung)
       resolve.ts              # Ein Id-Raum: simple | trip | user:<id> → EffectSpec

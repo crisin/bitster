@@ -50,6 +50,37 @@ describe("resolveTheme", () => {
     expect(getTheme("minimal")!.effects.rainbow).toBe(false);
   });
 
+  it("derives the whole depth stack from one background pick", () => {
+    const look = { ...presetLookFor("classic"), background: "#101018" };
+    const theme = resolveTheme("classic", look);
+    expect(theme.colors.bgPrimary).toBe("#101018");
+    // Surfaces lift OFF the background instead of coming from the preset
+    expect(theme.colors.bgCard).not.toBe(getTheme("classic")!.colors.bgCard);
+    expect(theme.colors.bgCard).not.toBe("#101018");
+    expect(theme.statusBar).toBe("light");
+    // A light background flips the depth direction and the status bar
+    const light = resolveTheme("classic", {
+      ...presetLookFor("classic"),
+      background: "#fafafa",
+    });
+    expect(light.statusBar).toBe("dark");
+  });
+
+  it("derives secondary text from the chosen text color", () => {
+    const look = {
+      ...presetLookFor("classic"),
+      background: "#000000",
+      textColor: "#ffe8c8",
+    };
+    const theme = resolveTheme("classic", look);
+    expect(theme.colors.textPrimary).toBe("#ffe8c8");
+    // Secondary sits between text and background — readable on exactly this bg
+    expect(theme.colors.textSecondary).not.toBe("#ffe8c8");
+    expect(theme.colors.textSecondary).not.toBe(
+      getTheme("classic")!.colors.textSecondary,
+    );
+  });
+
   it("builds custom from the neutral base palettes", () => {
     const dark = resolveTheme("custom", undefined);
     expect(dark.id).toBe("custom");

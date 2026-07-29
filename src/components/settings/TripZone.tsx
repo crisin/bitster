@@ -36,8 +36,9 @@ export function TripZone() {
       <View style={styles.teaser}>
         <Text style={styles.teaserEmoji}>🌀</Text>
         <Text style={styles.teaserText}>
-          Multi-pass shaders. Video feedback. Growing reaction-diffusion
-          colonies. A raymarched fractal. Your own GLSL editor.
+          Multi-pass shaders. Video feedback. Reaction-diffusion, SmoothLife
+          and Lenia colonies. Folded and raymarched fractals. Your own GLSL
+          editor.
         </Text>
         <Pressable
           onPress={() => setAsking(true)}
