@@ -153,9 +153,11 @@ export function specFromUserShader(user: {
 
 /**
  * The readability guard: reroute the screen pass into a buffer and append a
- * tone-map that compresses highlights. Bright shader + white text was the
- * whole "I can't read the lobby" problem — this caps how bright any region
- * may stay while leaving the dark 90% of the picture untouched.
+ * tone-map. What actually eats text under a screen-blended layer is not peak
+ * highlights but large bright AREAS — a huge reaction-diffusion blob lifts
+ * the whole background, while a thin spark line never hurt anyone. So the
+ * map keys on the brightness of a wide neighbourhood: big features dim hard,
+ * fine detail keeps its punch.
  */
 export function withGuard(spec: EffectSpec): EffectSpec {
   const passes = [...spec.passes];
@@ -167,12 +169,23 @@ export function withGuard(spec: EffectSpec): EffectSpec {
     target: "screen",
     inputs: [GUARD_BUFFER],
     source:
+      "float guardLuma(vec2 uv) {\n" +
+      `  return dot(texture2D(u_${GUARD_BUFFER}, uv).rgb, vec3(0.2126, 0.7152, 0.0722));\n` +
+      "}\n" +
       "void main() {\n" +
       "  vec2 uv = gl_FragCoord.xy / u_res;\n" +
       `  vec3 c = texture2D(u_${GUARD_BUFFER}, uv).rgb;\n` +
-      "  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));\n" +
-      "  // Reinhard on the luma: darks pass through, highlights compress\n" +
-      "  gl_FragColor = vec4(c / (1.0 + l * 1.6), 1.0);\n" +
+      "  // Brightness of the SURROUNDINGS, not the pixel: a wide 5-tap cross.\n" +
+      "  // Inside a big blob every tap is hot; on a thin line most are dark.\n" +
+      "  float area = guardLuma(uv);\n" +
+      "  area += guardLuma(uv + vec2(0.025, 0.0));\n" +
+      "  area += guardLuma(uv - vec2(0.025, 0.0));\n" +
+      "  area += guardLuma(uv + vec2(0.0, 0.025));\n" +
+      "  area += guardLuma(uv - vec2(0.0, 0.025));\n" +
+      "  area /= 5.0;\n" +
+      "  // Soft-cap: dark regions pass (factor ~1), a solid bright area drops\n" +
+      "  // to roughly a quarter — text stays legible on top of anything\n" +
+      "  gl_FragColor = vec4(c * (0.3 / (0.3 + area)), 1.0);\n" +
       "}\n",
   });
   return { id: spec.id, passes };

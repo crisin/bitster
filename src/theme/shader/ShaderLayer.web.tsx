@@ -328,8 +328,9 @@ export function ShaderLayer({
         // stays readable even at full intensity
         mixBlendMode: "screen",
         // Gentler than it used to be: 100% intensity peaked at 0.8 opacity,
-        // which is exactly the "I can't read the lobby" screenshot
-        opacity: 0.2 + intensity * 0.5,
+        // which is exactly the "I can't read the lobby" screenshot. The
+        // guard shaves another slice on top of its in-shader tone-map.
+        opacity: (0.2 + intensity * 0.5) * (guard ? 0.85 : 1),
       }}
     />
   );
