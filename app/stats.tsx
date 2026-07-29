@@ -438,7 +438,7 @@ function Tile({ value, label }: { value: string; label: string }) {
 
 const useStyles = createThemedStyles((COLORS) =>
   StyleSheet.create({
-    safe: { flex: 1, backgroundColor: COLORS.bgPrimary },
+    safe: { flex: 1, backgroundColor: "transparent" },
     header: {
       flexDirection: "row",
       alignItems: "center",

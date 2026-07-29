@@ -432,7 +432,8 @@ const useStyles = createThemedStyles((COLORS) =>
   StyleSheet.create({
     safe: {
       flex: 1,
-      backgroundColor: COLORS.bgPrimary,
+      // Transparent on purpose: the Stack paints the veil over the shader
+      backgroundColor: "transparent",
     },
     header: {
       height: LAYOUT.headerHeight,

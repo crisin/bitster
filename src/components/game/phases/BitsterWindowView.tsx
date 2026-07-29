@@ -3,6 +3,7 @@ import { BuzzerButton } from "@/components/game/BuzzerButton";
 import { CountdownPill } from "@/components/game/CountdownPill";
 import { NowPlaying } from "@/components/game/NowPlaying";
 import { PlayedSongs } from "@/components/game/PlayedSongs";
+import { GuessVerdict } from "@/components/game/GuessVerdict";
 import { Stage } from "@/components/game/Stage";
 import { Timeline } from "@/components/game/Timeline";
 import { Button } from "@/components/ui/Button";
@@ -41,7 +42,6 @@ export function BitsterWindowView({
   const currentPlayerId = useGameStore((s) => s.currentPlayerId);
   const currentSongId = useGameStore((s) => s.currentSongId);
   const playedSongs = useGameStore((s) => s.playedSongs);
-  const guessResult = useGameStore((s) => s.guessResult);
   const playbackError = useStreamingStore((s) => s.playbackError);
   const {
     isMyTurn,
@@ -106,33 +106,9 @@ export function BitsterWindowView({
 
   return (
     <View style={styles.container}>
-      {/* Guess feedback for the active player('s device) */}
-      {guessResult && actsForCurrent && (() => {
-        const reward =
-          (guessResult.titleCorrect && guessResult.artistCorrect ? 1 : 0) +
-          (guessResult.yearCorrect === true ? 1 : 0);
-        return (
-          <View
-            style={[
-              styles.guessResultBanner,
-              reward > 0 ? styles.guessResultSuccess : styles.guessResultPartial,
-            ]}
-            accessibilityRole="alert"
-          >
-            <Text style={styles.guessResultText}>
-              {guessResult.titleCorrect ? "✓ Title" : "✗ Title"}
-              {"  "}
-              {guessResult.artistCorrect ? "✓ Artist" : "✗ Artist"}
-              {guessResult.yearCorrect !== null
-                ? guessResult.yearCorrect
-                  ? "  ✓ Year"
-                  : "  ✗ Year"
-                : ""}
-              {reward > 0 ? `  +${reward}★ at reveal` : ""}
-            </Text>
-          </View>
-        );
-      })()}
+      {/* Guess feedback for the active player('s device) — the year verdict
+          would hint challengers, so nobody else sees it until the reveal */}
+      {actsForCurrent && <GuessVerdict stage="pending" />}
 
       {/* The mystery card sits in the active player's timeline, year hidden */}
       <Stage title={stageTitle} hot={actsForCurrent}>
@@ -318,28 +294,6 @@ const useStyles = createThemedStyles((COLORS) =>
       alignItems: "center",
       gap: SPACE.xl,
       width: "100%",
-    },
-    guessResultBanner: {
-      paddingVertical: SPACE.sm,
-      paddingHorizontal: SPACE.lg,
-      borderRadius: RADIUS.md,
-      width: "100%",
-      alignItems: "center",
-    },
-    guessResultSuccess: {
-      backgroundColor: COLORS.successLight,
-      borderWidth: 1,
-      borderColor: COLORS.success,
-    },
-    guessResultPartial: {
-      backgroundColor: COLORS.warningLight,
-      borderWidth: 1,
-      borderColor: COLORS.warning,
-    },
-    guessResultText: {
-      fontSize: FONT.size.md,
-      fontWeight: FONT.weight.semibold,
-      color: COLORS.textPrimary,
     },
     buzzSection: {
       alignItems: "center",

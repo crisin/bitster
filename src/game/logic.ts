@@ -110,6 +110,22 @@ function scoreOf(timeline: Song[], penalties: number): number {
   return Math.max(0, timeline.length - penalties);
 }
 
+/**
+ * Settle every score from what is actually on the timelines. Called when a
+ * round resolves: placements are tentative until the reveal, so placeSong
+ * deliberately does NOT touch the score — this is the single place where the
+ * number catches up with the verdict.
+ */
+export function recomputeScores(room: Room): Room {
+  return {
+    ...room,
+    players: room.players.map((p) => ({
+      ...p,
+      score: scoreOf(p.timeline, p.penalties),
+    })),
+  };
+}
+
 export function addPlayer(
   room: Room,
   id: string,
@@ -299,14 +315,12 @@ export function placeSong(
     ...player.timeline.slice(position),
   ];
 
+  // The card is only TENTATIVE until the reveal — the score must not credit
+  // it yet, or the scoreboard flashes a point that a wrong placement never
+  // earned. The timeline shows the card (that is the point of the window);
+  // recomputeScores settles the number when the verdict lands.
   const updatedPlayers = room.players.map((p) =>
-    p.id === playerId
-      ? {
-          ...p,
-          timeline: updatedTimeline,
-          score: scoreOf(updatedTimeline, p.penalties),
-        }
-      : p,
+    p.id === playerId ? { ...p, timeline: updatedTimeline } : p,
   );
 
   return {

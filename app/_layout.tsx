@@ -7,8 +7,10 @@ import { useP2PStore } from "@/p2p/store";
 import { initSpotify } from "@/streaming/providers/spotify";
 import { useStreamingStore } from "@/streaming/store";
 import { useShaderStudioStore } from "@/theme/shader/studio";
-import { hydrateTheme, useThemeStore } from "@/theme/store";
+import { veilFor } from "@/theme/look";
+import { hydrateTheme, useCurrentLook, useThemeStore } from "@/theme/store";
 import { useTheme } from "@/theme/themedStyles";
+import { ShaderBackdrop } from "@/theme/ShaderBackdrop";
 import { ThemeOverlay } from "@/theme/ThemeOverlay";
 import { FONT_ASSETS } from "@/theme/typography";
 import { interceptConsole, log } from "@/utils/logger";
@@ -21,6 +23,8 @@ export default function RootLayout() {
   // Non-blocking: the UI renders with the fallback font until loaded
   useFonts({ BebasNeue_400Regular, ...FONT_ASSETS });
   const theme = useTheme();
+  // Shader behind, veil between: the readability architecture (see veilFor)
+  const look = useCurrentLook();
 
   useEffect(() => {
     interceptConsole();
@@ -69,10 +73,11 @@ export default function RootLayout() {
   return (
     <>
       <StatusBar style={theme.statusBar} />
+      <ShaderBackdrop />
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: theme.colors.bgPrimary },
+          contentStyle: { backgroundColor: veilFor(theme, look) },
           animation: "fade",
         }}
       />

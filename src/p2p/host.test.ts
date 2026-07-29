@@ -1449,6 +1449,41 @@ describe("HostSession — round log and recap", () => {
   });
 });
 
+describe("HostSession — score timing", () => {
+  it("does not flash a point for the tentative card during the window", async () => {
+    const session = makeSession();
+    await startDemoGameWith(session, [
+      { id: "peer-2", name: "Bob" },
+      { id: "peer-3", name: "Cleo" },
+    ]);
+    await giveEveryoneACard(session, ["host-1", "peer-2", "peer-3"]);
+    const before = lastBroadcastState().players.find(
+      (p) => p.id === "host-1",
+    )!.score;
+
+    // Second card placed → bitster-window. The card shows in the timeline,
+    // but the SCORE must wait for the verdict — this was the "+1 too many
+    // after lock-in" bug.
+    await session.handleAction(
+      { type: "place-song", payload: { position: 0 } },
+      "host-1",
+    );
+    const during = lastBroadcastState();
+    expect(during.phase).toBe("bitster-window");
+    expect(during.timelines["host-1"]).toHaveLength(before + 1);
+    expect(during.players.find((p) => p.id === "host-1")?.score).toBe(before);
+
+    // The reveal settles it: right card counts, wrong card vanishes — either
+    // way score === timeline length from here on
+    await session.handleAction({ type: "reveal-song" }, "host-1");
+    const after = lastBroadcastState();
+    expect(after.phase).toBe("reveal");
+    const host = after.players.find((p) => p.id === "host-1")!;
+    expect(host.score).toBe(after.timelines["host-1"]!.length);
+    session.destroy();
+  });
+});
+
 describe("HostSession — game modes", () => {
   /** Push one rule group and start the demo game with it */
   async function startWithRules(

@@ -1258,13 +1258,15 @@ export class HostSession {
         : null;
     this.pendingResult = { ...this.pendingResult, awardedTo };
 
-    // Transition to reveal
-    this.room = {
+    // Transition to reveal. Scores settle HERE — placements were tentative
+    // (placeSong leaves the score alone), and by now undo/steal have shaped
+    // the timelines into their final form for this round.
+    this.room = logic.recomputeScores({
       ...this.room,
       phase: "reveal",
       buzzerId: null,
       buzzDeadline: null,
-    };
+    });
     this.broadcastState(this.pendingResult);
     this.pendingResult = null;
     this.pendingPosition = null;

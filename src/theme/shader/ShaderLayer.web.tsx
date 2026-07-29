@@ -324,13 +324,11 @@ export function ShaderLayer({
         width: "100%",
         height: "100%",
         pointerEvents: "none",
-        // Screen-blend so it lights the UI up instead of veiling it — text
-        // stays readable even at full intensity
-        mixBlendMode: "screen",
-        // Gentler than it used to be: 100% intensity peaked at 0.8 opacity,
-        // which is exactly the "I can't read the lobby" screenshot. The
-        // guard shaves another slice on top of its in-shader tone-map.
-        opacity: (0.2 + intensity * 0.5) * (guard ? 0.85 : 1),
+        // BACKDROP mode: the canvas sits BEHIND the app now, so no blend
+        // tricks — it paints at full vibrance and the screens' veil
+        // (look.ts/veilFor) decides how much reaches the UI. The intensity
+        // dial fades the world itself in and out.
+        opacity: 0.35 + intensity * 0.65,
       }}
     />
   );

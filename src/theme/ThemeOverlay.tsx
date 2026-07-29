@@ -10,9 +10,6 @@ import {
 import { resolveEffectTempo, type EffectTempo } from "./effectTempo";
 import { GlitchEffect } from "./GlitchEffect";
 import { PointerEffects } from "./PointerEffects";
-import { useGamePulse } from "@/hooks/useGamePulse";
-import { ShaderLayer } from "./shader/ShaderLayer";
-import { getShaderScale } from "./shader/quality";
 import { MeltEffect } from "./MeltEffect";
 import { useCurrentLook, useThemeStore } from "./store";
 import { useTheme } from "./themedStyles";
@@ -340,12 +337,7 @@ export function ThemeOverlay() {
     warpIntensity,
     flashlightIntensity,
     clickGlitchIntensity,
-    shaderIntensity,
-    shaderGuard,
   } = look;
-  // The only thing the effect layer knows about the game — three numbers
-  const pulse = useGamePulse();
-  const shaderQualityId = useThemeStore((s) => s.shaderQualityId);
   const { width, height } = useWindowDimensions();
   const fx = theme.effects;
 
@@ -369,26 +361,14 @@ export function ThemeOverlay() {
     fx.floaties ||
     fx.cursorWarp ||
     fx.flashlight ||
-    fx.clickGlitch ||
-    fx.shader;
+    fx.clickGlitch;
   if (!hasAny) return null;
 
   return (
     <Animated.View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-      {/* Bottom of the effect stack: the shader paints its own world and the
-          other layers ride on top of it */}
-      {fx.shader && (
-        <ShaderLayer
-          preset={fx.shader}
-          accent={theme.colors.accent}
-          intensity={shaderIntensity}
-          renderScale={getShaderScale(shaderQualityId)}
-          factor={tempo.factor}
-          bpm={tempo.bpm}
-          pulse={pulse}
-          guard={shaderGuard}
-        />
-      )}
+      {/* The shader is NOT here anymore: it renders as a backdrop BEHIND the
+          app (ShaderBackdrop in the root layout). Only the translucent
+          decorations stay on top. */}
       {fx.melt && (
         <MeltEffect
           intensity={meltIntensity}

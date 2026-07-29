@@ -52,8 +52,14 @@ function serve(res, filePath) {
   return true;
 }
 
+const feedback = require("./feedback");
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
+
+  // The feedback board — a separate module, still zero game logic here
+  if (feedback.handle(req, res, url)) return;
+
   let filePath = path.join(DIST, url.pathname);
 
   // Try exact file

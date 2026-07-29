@@ -232,6 +232,13 @@ export default function HomeScreen() {
               </Pressable>
             )}
             <Pressable
+              onPress={() => router.push("/feedback")}
+              label="Open the public feedback board"
+              style={styles.aboutBtn}
+            >
+              <Text style={styles.aboutLink}>💬 Feedback</Text>
+            </Pressable>
+            <Pressable
               onPress={() => router.push("/about")}
               label="Open info and licenses"
               style={styles.aboutBtn}
@@ -249,7 +256,8 @@ const useStyles = createThemedStyles((COLORS) =>
   StyleSheet.create({
     safe: {
       flex: 1,
-      backgroundColor: COLORS.bgPrimary,
+      // Transparent on purpose: the Stack paints the veil over the shader
+      backgroundColor: "transparent",
     },
     container: {
       flex: 1,

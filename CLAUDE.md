@@ -40,12 +40,14 @@ funktionieren in jedem Netz, in dem WSS funktioniert.
 
 ```
 server.js                     # WebSocket-Relay + Static Hosting (Railway), KEINE Spiellogik
+feedback.js                   # Feedback-Board-API (JSON-Store, Votes) — eigenes Modul
 app/                          # Expo Router screens
   _layout.tsx                 # Root Layout (Fonts, Theme, Debug-Bridge __bitsterStores)
   index.tsx                   # Home – Connect Spotify, Create/Join Room
   game.tsx                    # Game Screen (Phase-Switch + BottomBar)
   about.tsx                   # Info & Licenses
   stats.tsx                   # Historie + Allzeit-Statistik (local-first)
+  feedback.tsx                # Öffentliches Feedback-Board (Bugs/Ideen + Votes)
   auth/callback.tsx           # Streaming Auth Callback (Deep Link, Web + nativ)
 
 src/
@@ -73,6 +75,9 @@ src/
     protocol.ts               # P2PAction Types + Wire-Validierung (Action/GameState/Recap/Room)
     session.ts                # Reload-Persistenz: Session (Raum/ID/Token) + Host-Room-Snapshot
     store.ts                  # Zustand – Connection Status, Peer List, Peer ID, Uhr-Offset
+
+  feedback/                   # === Feedback-Board-Client ===
+    api.ts                    # fetch/submit/vote; Geräte-UUID nur zur Vote-Dedup
 
   history/                    # === Lokale Spielhistorie (local-first, kein Server) ===
     types.ts                  # StoredGame/StoredRound + Limits (50 Spiele, 400 KB)
@@ -253,6 +258,12 @@ Die 12 einfachen Presets sind der Trivialfall (1 Pass → screen). Der pure Teil
 `engine.web.ts` führt nur aus. Preset-Quellen sind GLSL-**Bodies** — das
 Prelude (`prelude.ts`) prependet ausschließlich der Assembler, sonst
 Redefinition-Fehler.
+
+**Backdrop-Architektur:** Der Shader rendert HINTER der App (`ShaderBackdrop`
+vor dem Stack), die Screens malen nur noch einen Schleier (`veilFor`: Guard an
+= 0.82, aus = 0.45), Karten bleiben opak. Text kämpft nie gegen den Shader —
+dazwischen liegt immer eine Fläche. Das ist DIE Lesbarkeits-Entscheidung; der
+Tonemap-Guard ist nur noch Feinschliff obendrauf.
 
 **Lesbarkeits-Guard:** `withGuard()` leitet den Screen-Pass in einen Buffer um
 und hängt einen Reinhard-Tonemap an, der Highlights komprimiert — heller
@@ -455,6 +466,8 @@ npx tsc --noEmit                  # Type Check
   entsprechende Fehlermeldung).
 - Nativ braucht der Client `EXPO_PUBLIC_RELAY_URL` (Web nimmt automatisch den eigenen Origin)
 - Das Dockerfile kopiert `node_modules/ws` explizit ins Runtime-Image (kein npm ci dort)
+- **Feedback-Board:** Railway-Volume mounten und `FEEDBACK_PATH` darauf zeigen,
+  sonst resetten die Einträge bei jedem Redeploy (Container-FS ist flüchtig)
 - iOS: Background Audio läuft über die jeweilige Streaming-App, nicht über die bitster-App
 - Rate Limits: Streaming API Calls bündeln, nicht bei jedem State-Update
 - Neuen Provider hinzufügen: `StreamingProvider` implementieren, in `registry.ts` registrieren

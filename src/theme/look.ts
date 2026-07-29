@@ -214,11 +214,14 @@ export function resolveTheme(
       borderFocused: accent,
       ...(background
         ? {
+            // Steeper steps than the presets use: a hand-picked background is
+            // usually the contrast rescue, so the cards must clearly stand
+            // off it (the #000 screenshots had near-invisible panels)
             bgPrimary: background,
-            bgCard: elevate(background, 0.06),
-            bgElevated: elevate(background, 0.11),
-            border: elevate(background, 0.22),
-            secondary: elevate(background, 0.16),
+            bgCard: elevate(background, 0.09),
+            bgElevated: elevate(background, 0.15),
+            border: elevate(background, 0.3),
+            secondary: elevate(background, 0.2),
           }
         : {}),
       ...(textColor
@@ -240,6 +243,23 @@ export function resolveTheme(
       : base.statusBar,
     effects,
   };
+}
+
+/**
+ * The screen veil that sits between the shader BACKDROP and the UI. The
+ * shader renders BEHIND the app at full vibrance; the veil decides how much
+ * of it reaches through the empty parts of the screen. Cards stay opaque
+ * either way — that split, not tone-mapping, is what makes text reliably
+ * readable. Guard on = UI first, guard off = the shader is the show.
+ */
+export function veilFor(theme: Theme, look: ThemeLook | undefined): string {
+  const shaderOn = Boolean(look?.effects.shader);
+  if (!shaderOn) return theme.colors.bgPrimary;
+  const alpha = (look?.shaderGuard ?? true) ? 0.82 : 0.45;
+  const bg = theme.colors.bgPrimary;
+  // Non-hex backgrounds (rgba strings) keep their own translucency story
+  if (!/^#[0-9a-fA-F]{6}$/.test(bg)) return bg;
+  return hexToRgba(bg, alpha);
 }
 
 /** Clamp helper shared by the store's intensity setters */

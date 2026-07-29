@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useGameStore } from "@/game/store";
 import { useP2PStore } from "@/p2p/store";
+import { GuessVerdict } from "@/components/game/GuessVerdict";
 import { RevealCard } from "@/components/game/RevealCard";
 import { AllPlayerTimelines } from "@/components/game/AllPlayerTimelines";
 import { createThemedStyles } from "@/theme/themedStyles";
@@ -11,9 +12,16 @@ export function RevealView() {
   const styles = useStyles();
   const lastResult = useGameStore((s) => s.lastResult);
   const players = useGameStore((s) => s.players);
+  const currentPlayerId = useGameStore((s) => s.currentPlayerId);
   const myPeerId = useP2PStore((s) => s.myPeerId);
 
   if (!lastResult) return null;
+
+  // The guess is always the round's active player's — the answer is public
+  // now, so everyone gets to see how close they came
+  const guesser = players.find((p) => p.id === currentPlayerId);
+  const guesserLabel =
+    guesser && guesser.id !== myPeerId ? guesser.name : undefined;
 
   // undefined = an older host that doesn't report the winner at all; null = it
   // reported that nobody kept the card. Only the second deserves a line.
@@ -29,6 +37,8 @@ export function RevealView() {
         song={lastResult.song}
         timedOut={lastResult.timedOut}
       />
+
+      <GuessVerdict stage="settled" who={guesserLabel} />
 
       {showOutcome && (
         <Text style={[styles.outcome, winner ? styles.won : styles.lost]}>

@@ -29,6 +29,7 @@ import {
   skipSong,
   pickRandomSong,
   placeSong,
+  recomputeScores,
   recordPass,
   removePlayer,
   resolveBuzz,
@@ -226,7 +227,7 @@ describe("checkPlacement", () => {
 });
 
 describe("placeSong", () => {
-  it("places song correctly and updates score", () => {
+  it("places the card but leaves the score alone until the reveal", () => {
     let room = makeTestRoom();
     const songs = [makeSong(2000), makeSong(1990)];
     room = startGame(room, songs);
@@ -235,8 +236,12 @@ describe("placeSong", () => {
     const { room: updated, result } = placeSong(room, "host-1", 0);
     expect(result.correct).toBe(true);
     expect(updated.players[0].timeline).toHaveLength(1);
-    expect(updated.players[0].score).toBe(1);
+    // The card is TENTATIVE — a wrong one gets undone at reveal, so crediting
+    // it here would flash a phantom point on every wrong placement
+    expect(updated.players[0].score).toBe(0);
     expect(updated.phase).toBe("bitster-window");
+    // The reveal settles the number
+    expect(recomputeScores(updated).players[0].score).toBe(1);
   });
 
   it("tentatively adds song to timeline even on wrong placement", () => {
@@ -598,7 +603,10 @@ describe("resolveBuzz — counter-placement in the active player's timeline", ()
     const buzzerIndex = next.players.findIndex((p) => p.id === "peer-2");
     next = { ...next, currentPlayerIndex: buzzerIndex };
     const { room: placed } = placeSong(next, "peer-2", 1);
-    const buzzer = placed.players.find((p) => p.id === "peer-2")!;
+    // Scores settle at the reveal, so run the settle step before asserting
+    const buzzer = recomputeScores(placed).players.find(
+      (p) => p.id === "peer-2",
+    )!;
     expect(buzzer.timeline).toHaveLength(2);
     expect(buzzer.score).toBe(1);
   });
