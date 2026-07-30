@@ -483,7 +483,10 @@ npx tsc --noEmit                  # Type Check
   `http://127.0.0.1:5173/auth/callback` im Dashboard registrieren (Login wirft sonst eine
   entsprechende Fehlermeldung).
 - Nativ braucht der Client `EXPO_PUBLIC_RELAY_URL` (Web nimmt automatisch den eigenen Origin)
-- Das Dockerfile kopiert `node_modules/ws` explizit ins Runtime-Image (kein npm ci dort)
+- Das Dockerfile kopiert `node_modules/ws` explizit ins Runtime-Image (kein npm ci dort).
+  Achtung: Das gilt für JEDE Server-Datei — `server.js` und `feedback.js` werden einzeln
+  kopiert, ein neues Server-Modul braucht seine eigene COPY-Zeile (sonst crasht der
+  Deploy mit MODULE_NOT_FOUND)
 - **Feedback-Board:** Railway-Volume mounten und `FEEDBACK_PATH` darauf zeigen,
   sonst resetten die Einträge bei jedem Redeploy (Container-FS ist flüchtig)
 - iOS: Background Audio läuft über die jeweilige Streaming-App, nicht über die bitster-App
