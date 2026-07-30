@@ -29,7 +29,14 @@ interface Target {
   /** Written by its pass, then swapped */
   write: WebGLTexture;
   writeFbo: WebGLFramebuffer;
+  /**
+   * Ping-pong is only needed when a pass READS its own output (feedback or
+   * multiple iterations). A plain intermediate — like the guard's buffer —
+   * gets a single texture; read === write and the swap is skipped.
+   */
+  buffered: boolean;
   scale: number;
+  fixedHeight: number | null;
   half: boolean;
   width: number;
   height: number;
@@ -39,6 +46,18 @@ interface CompiledPass {
   spec: PassSpec;
   program: WebGLProgram;
   uniforms: Map<string, WebGLUniformLocation>;
+}
+
+/**
+ * Whether half-float textures may use LINEAR filtering. This matters more
+ * than it sounds: the sim kernels sample sparse rings, and with NEAREST each
+ * pixel reads a slightly different set of texels — neighbours decorrelate
+ * and the simulation flickers as salt-and-pepper noise instead of organizing
+ * into blobs. LINEAR turns every tap into a 4-texel average and smooths the
+ * effective kernel for free.
+ */
+function probeHalfFloatLinear(gl: WebGLRenderingContext): boolean {
+  return gl.getExtension("OES_texture_half_float_linear") !== null;
 }
 
 /** Cached: whether this context can render into half-float textures */
@@ -103,6 +122,7 @@ export class ShaderEngine {
   private readonly targets = new Map<string, Target>();
   private readonly buffer: WebGLBuffer;
   private readonly halfFloatType: number | null;
+  private readonly halfLinear: boolean;
   private frame = 0;
   private width = 0;
   private height = 0;
@@ -112,6 +132,7 @@ export class ShaderEngine {
     spec: EffectSpec,
   ) {
     this.halfFloatType = probeHalfFloat(gl);
+    this.halfLinear = probeHalfFloatLinear(gl);
 
     const vs = compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER);
     if ("error" in vs) throw new EngineBuildError(vs.error, -1);
@@ -179,23 +200,26 @@ export class ShaderEngine {
       const fbo = gl.createFramebuffer();
       if (!tex || !fbo) throw new EngineBuildError("target alloc failed", -1);
       gl.bindTexture(gl.TEXTURE_2D, tex);
-      // Sims sample exact texels (NEAREST is correct); everything visual
-      // wants LINEAR for smooth feedback zooms
-      const filter = half ? gl.NEAREST : gl.LINEAR;
+      // LINEAR everywhere it is legal: sparse sim kernels NEED the 4-texel
+      // averaging to keep neighbours correlated (see probeHalfFloatLinear)
+      const filter = half && !this.halfLinear ? gl.NEAREST : gl.LINEAR;
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       return { tex, fbo };
     };
+    const buffered = Boolean(pass.feedback) || (pass.iterations ?? 1) > 1;
     const a = make();
-    const b = make();
+    const b = buffered ? make() : a;
     this.targets.set(pass.target, {
       read: a.tex,
       readFbo: a.fbo,
       write: b.tex,
       writeFbo: b.fbo,
+      buffered,
       scale: pass.scale ?? 1,
+      fixedHeight: pass.fixedHeight ?? null,
       half,
       width: 0,
       height: 0,
@@ -207,14 +231,25 @@ export class ShaderEngine {
     const gl = this.gl;
     this.width = width;
     this.height = height;
+    const aspect = width / Math.max(1, height);
     for (const target of this.targets.values()) {
-      target.width = Math.max(1, Math.round(width * target.scale));
-      target.height = Math.max(1, Math.round(height * target.scale));
+      if (target.fixedHeight !== null) {
+        // Fixed sim grid: the physics no longer depends on the screen
+        target.height = target.fixedHeight;
+        target.width = Math.max(1, Math.round(target.fixedHeight * aspect));
+      } else {
+        target.width = Math.max(1, Math.round(width * target.scale));
+        target.height = Math.max(1, Math.round(height * target.scale));
+      }
       const type =
         target.half && this.halfFloatType !== null
           ? this.halfFloatType
           : gl.UNSIGNED_BYTE;
-      for (const tex of [target.read, target.write]) {
+      const textures =
+        target.read === target.write
+          ? [target.read]
+          : [target.read, target.write];
+      for (const tex of textures) {
         gl.bindTexture(gl.TEXTURE_2D, tex);
         gl.texImage2D(
           gl.TEXTURE_2D, 0, gl.RGBA,
@@ -275,6 +310,8 @@ export class ShaderEngine {
         if (uGame) gl.uniform3f(uGame, u.game[0], u.game[1], u.game[2]);
         const uFrame = loc("u_frame");
         if (uFrame) gl.uniform1f(uFrame, this.frame);
+        const uSim = loc("u_sim");
+        if (uSim) gl.uniform3f(uSim, u.sim[0], u.sim[1], u.sim[2]);
         const uPointer = loc("u_pointer");
         if (uPointer)
           gl.uniform4f(
@@ -308,7 +345,7 @@ export class ShaderEngine {
 
         gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-        if (target) {
+        if (target && target.buffered) {
           // What was written becomes what readers (and u_prev) see next
           const t = target.read;
           const f = target.readFbo;
@@ -322,15 +359,22 @@ export class ShaderEngine {
     this.frame++;
   }
 
+  /** Restart every simulation: the next frame re-seeds (u_frame < 1). */
+  reseed(): void {
+    this.frame = 0;
+  }
+
   dispose(): void {
     const gl = this.gl;
     if (gl.isContextLost()) return;
     for (const pass of this.passes) gl.deleteProgram(pass.program);
     for (const target of this.targets.values()) {
       gl.deleteTexture(target.read);
-      gl.deleteTexture(target.write);
       gl.deleteFramebuffer(target.readFbo);
-      gl.deleteFramebuffer(target.writeFbo);
+      if (target.buffered) {
+        gl.deleteTexture(target.write);
+        gl.deleteFramebuffer(target.writeFbo);
+      }
     }
     gl.deleteBuffer(this.buffer);
   }

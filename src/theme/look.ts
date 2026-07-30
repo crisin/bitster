@@ -246,16 +246,60 @@ export function resolveTheme(
 }
 
 /**
+ * Identity-stable resolution for React. resolveTheme allocates a fresh Theme
+ * per call — fed straight into a zustand selector that would re-render every
+ * themed component on EVERY look change, including the five intensity dials
+ * that don't influence the palette at all (a slider drag used to re-render
+ * the whole mounted app for nothing). This wrapper returns the SAME object
+ * while the palette-relevant fields are unchanged.
+ */
+let themeCacheKey = "";
+let themeCacheValue: Theme | null = null;
+
+function paletteKeyOf(themeId: string, look: ThemeLook | undefined): string {
+  if (!look) return themeId;
+  const fx = look.effects;
+  return [
+    themeId,
+    look.accent ?? "",
+    look.background ?? "",
+    look.textColor ?? "",
+    look.base,
+    // Effects feed the resolved Theme too (toggles, floaties, shader id) —
+    // only the intensities and the guard stay out, by design
+    +fx.glow, +fx.blur, +fx.pulse, +fx.rainbow, +fx.swirl, +fx.melt,
+    +fx.glitch, +fx.flicker, +fx.scanlines, +fx.vignette,
+    +fx.cursorWarp, +fx.flashlight, +fx.clickGlitch,
+    fx.floaties,
+    fx.shader,
+  ].join("|");
+}
+
+export function resolveThemeCached(
+  themeId: string,
+  look: ThemeLook | undefined,
+): Theme {
+  const key = paletteKeyOf(themeId, look);
+  if (key === themeCacheKey && themeCacheValue) return themeCacheValue;
+  themeCacheValue = resolveTheme(themeId, look);
+  themeCacheKey = key;
+  return themeCacheValue;
+}
+
+/**
  * The screen veil that sits between the shader BACKDROP and the UI. The
  * shader renders BEHIND the app at full vibrance; the veil decides how much
  * of it reaches through the empty parts of the screen. Cards stay opaque
  * either way — that split, not tone-mapping, is what makes text reliably
  * readable. Guard on = UI first, guard off = the shader is the show.
  */
-export function veilFor(theme: Theme, look: ThemeLook | undefined): string {
-  const shaderOn = Boolean(look?.effects.shader);
+export function veilFor(
+  theme: Theme,
+  shaderOn: boolean,
+  shaderGuard: boolean,
+): string {
   if (!shaderOn) return theme.colors.bgPrimary;
-  const alpha = (look?.shaderGuard ?? true) ? 0.82 : 0.45;
+  const alpha = shaderGuard ? 0.82 : 0.45;
   const bg = theme.colors.bgPrimary;
   // Non-hex backgrounds (rgba strings) keep their own translucency story
   if (!/^#[0-9a-fA-F]{6}$/.test(bg)) return bg;

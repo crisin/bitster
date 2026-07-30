@@ -64,6 +64,12 @@ interface ThemeStore {
   effectFactor: number;
   /** Shader resolution: the single biggest performance lever */
   shaderQualityId: string;
+  /** Sim dials 0..1 (speed / seed density / kernel zoom), mapped at use */
+  simSpeedDial: number;
+  simDensityDial: number;
+  simScaleDial: number;
+  /** Bumped by the reseed button — not persisted, purely a signal */
+  simReseedNonce: number;
   setTheme: (id: string) => void;
   updateLook: (patch: Partial<Omit<ThemeLook, "effects">>) => void;
   updateLookEffects: (patch: Partial<ThemeLook["effects"]>) => void;
@@ -77,6 +83,11 @@ interface ThemeStore {
   setEffectBpm: (bpm: number) => void;
   setEffectFactor: (factor: number) => void;
   setShaderQuality: (id: string) => void;
+  setSimDial: (
+    key: "simSpeedDial" | "simDensityDial" | "simScaleDial",
+    value: number,
+  ) => void;
+  reseedSims: () => void;
 }
 
 function persist(): void {
@@ -90,6 +101,9 @@ function persist(): void {
     effectBpm,
     effectFactor,
     shaderQualityId,
+    simSpeedDial,
+    simDensityDial,
+    simScaleDial,
   } = useThemeStore.getState();
   AsyncStorage.setItem(
     STORAGE_KEY,
@@ -104,6 +118,9 @@ function persist(): void {
       effectBpm,
       effectFactor,
       shaderQualityId,
+      simSpeedDial,
+      simDensityDial,
+      simScaleDial,
     }),
   ).catch(() => {
     /* persistence is best-effort */
@@ -140,6 +157,10 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
   effectBpm: DEFAULT_EFFECT_BPM,
   effectFactor: 1,
   shaderQualityId: DEFAULT_SHADER_QUALITY_ID,
+  simSpeedDial: 0.5,
+  simDensityDial: 0.5,
+  simScaleDial: 0.5,
+  simReseedNonce: 0,
 
   setTheme: (id) => {
     if (!isValidThemeId(id)) return;
@@ -251,6 +272,13 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
     set({ effectFactor: clamped, effectSpeedId: CUSTOM_SPEED_ID });
     persistDebounced();
   },
+  setSimDial: (key, value) => {
+    const clamped = clamp01(value);
+    if (get()[key] === clamped) return;
+    set({ [key]: clamped } as Pick<ThemeStore, typeof key>);
+    persistDebounced();
+  },
+  reseedSims: () => set((s) => ({ simReseedNonce: s.simReseedNonce + 1 })),
   setShaderQuality: (id) => {
     if (!SHADER_QUALITIES.some((q) => q.id === id)) return;
     set({ shaderQualityId: id });
@@ -345,6 +373,9 @@ export async function hydrateTheme(): Promise<void> {
           )
             ? (s.shaderQualityId as string)
             : DEFAULT_SHADER_QUALITY_ID,
+          simSpeedDial: clamp01(s.simSpeedDial),
+          simDensityDial: clamp01(s.simDensityDial),
+          simScaleDial: clamp01(s.simScaleDial),
         });
         return;
       }

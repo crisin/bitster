@@ -9,7 +9,12 @@ import {
   validateSpec,
   withGuard,
 } from "./compile";
-import { GUARD_BUFFER, MAX_PASSES } from "./types";
+import {
+  GUARD_BUFFER,
+  MAX_FIXED_HEIGHT,
+  MAX_PASSES,
+  MIN_FIXED_HEIGHT,
+} from "./types";
 
 const MAIN = "void main() { gl_FragColor = vec4(1.0); }";
 
@@ -77,6 +82,31 @@ describe("validateSpec", () => {
       ],
     });
     expect(errors.join()).toMatch(/feedback/);
+  });
+
+  it("rejects buffer names that shadow prelude uniforms", () => {
+    const errors = validateSpec({
+      id: "x",
+      passes: [
+        { target: "sim", source: MAIN, feedback: true },
+        { target: "screen", source: MAIN, inputs: ["sim"] },
+      ],
+    });
+    expect(errors.join()).toMatch(/u_sim/);
+  });
+
+  it("bounds fixedHeight — a sim grid must stay a sim grid", () => {
+    const sim = (fixedHeight: number) =>
+      validateSpec({
+        id: "x",
+        passes: [
+          { target: "buf", source: MAIN, feedback: true, fixedHeight },
+          { target: "screen", source: MAIN, inputs: ["buf"] },
+        ],
+      });
+    expect(sim(220)).toEqual([]);
+    expect(sim(MIN_FIXED_HEIGHT - 1).join()).toMatch(/fixedHeight/);
+    expect(sim(MAX_FIXED_HEIGHT + 1).join()).toMatch(/fixedHeight/);
   });
 
   it("rejects the reserved guard buffer and too many passes", () => {

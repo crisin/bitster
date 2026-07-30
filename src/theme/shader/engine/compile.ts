@@ -2,9 +2,11 @@ import { PRELUDE } from "../prelude";
 import {
   BUFFER_NAME_RE,
   GUARD_BUFFER,
+  MAX_FIXED_HEIGHT,
   MAX_ITERATIONS,
   MAX_PASSES,
   MAX_SOURCE_LENGTH,
+  MIN_FIXED_HEIGHT,
   type EffectSpec,
   type PassSpec,
 } from "./types";
@@ -14,6 +16,24 @@ import {
  * mapping. Everything here is testable without a GPU — the WebGL half
  * (engine.web.ts) only executes what this module has already shaped.
  */
+
+/**
+ * Buffer names whose sampler declaration (u_<name>) would collide with a
+ * prelude uniform — the driver error ("u_sim redefinition") is baffling from
+ * inside the Studio, so the validator catches it with a real message.
+ */
+const RESERVED_BUFFER_NAMES = new Set([
+  "res",
+  "time",
+  "beat",
+  "intensity",
+  "accent",
+  "game",
+  "frame",
+  "pointer",
+  "sim",
+  "prev",
+]);
 
 /** Human-readable problems; an empty array means the spec is runnable */
 export function validateSpec(spec: EffectSpec): string[] {
@@ -29,6 +49,10 @@ export function validateSpec(spec: EffectSpec): string[] {
         errors.push(`Bad buffer name "${pass.target}"`);
       } else if (pass.target === GUARD_BUFFER) {
         errors.push(`"${GUARD_BUFFER}" is reserved for the readability guard`);
+      } else if (RESERVED_BUFFER_NAMES.has(pass.target)) {
+        errors.push(
+          `Buffer name "${pass.target}" collides with the u_${pass.target} uniform`,
+        );
       } else if (buffers.has(pass.target)) {
         errors.push(`Two passes write "${pass.target}"`);
       }
@@ -53,6 +77,13 @@ export function validateSpec(spec: EffectSpec): string[] {
     const scale = pass.scale ?? 1;
     if (!(scale > 0 && scale <= 1)) {
       errors.push(`Pass "${pass.target}" scale out of range`);
+    }
+    if (
+      pass.fixedHeight !== undefined &&
+      (pass.fixedHeight < MIN_FIXED_HEIGHT ||
+        pass.fixedHeight > MAX_FIXED_HEIGHT)
+    ) {
+      errors.push(`Pass "${pass.target}" fixedHeight out of range`);
     }
   }
 
@@ -177,7 +208,8 @@ export function withGuard(spec: EffectSpec): EffectSpec {
       `  vec3 c = texture2D(u_${GUARD_BUFFER}, uv).rgb;\n` +
       "  // Brightness of the SURROUNDINGS, not the pixel: a wide 5-tap cross.\n" +
       "  // Inside a big blob every tap is hot; on a thin line most are dark.\n" +
-      "  float area = guardLuma(uv);\n" +
+      "  // The centre reuses the fetch above instead of sampling again.\n" +
+      "  float area = dot(c, vec3(0.2126, 0.7152, 0.0722));\n" +
       "  area += guardLuma(uv + vec2(0.025, 0.0));\n" +
       "  area += guardLuma(uv - vec2(0.025, 0.0));\n" +
       "  area += guardLuma(uv + vec2(0.0, 0.025));\n" +

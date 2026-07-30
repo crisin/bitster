@@ -36,6 +36,8 @@ uniform float u_frame;
  * Clicks also spike u_beat globally, so beat-reactive presets punch for free.
  */
 uniform vec4 u_pointer;
+/** Sim dials: x = speed multiplier, y = seed density 0..1, z = kernel zoom */
+uniform vec3 u_sim;
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);

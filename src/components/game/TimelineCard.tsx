@@ -60,7 +60,12 @@ function MysteryMark() {
   );
 }
 
-export function TimelineCard({
+/**
+ * Memoized: on every broadcast the parent timeline re-renders, but a card
+ * whose song/highlight props are unchanged (references survive via the
+ * store reconcile) skips its Animated re-evaluation entirely.
+ */
+export const TimelineCard = React.memo(function TimelineCard({
   song,
   highlighted = false,
   highlightColor,
@@ -125,7 +130,7 @@ export function TimelineCard({
       </View>
     </Animated.View>
   );
-}
+});
 
 const COVER_SIZE = CARD_WIDTH - SPACE.sm * 2;
 

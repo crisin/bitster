@@ -14,6 +14,35 @@ export interface TripPreset {
   label: string;
   blurb: string;
   spec: EffectSpec;
+  /** Simulation presets get the sim tuning dials + the reseed button */
+  sim?: boolean;
+}
+
+/**
+ * Precompute a sampling ring in JS. The pass sources are template strings,
+ * and the ring angles are compile-time constants — the GPU has no business
+ * paying two trig ops per tap per pixel per sim step for numbers we can
+ * bake in here. SmoothLife/Lenia dropped 32-44 sin/cos pairs per pixel this
+ * way, with numerically identical output.
+ */
+function ringTaps(
+  into: string,
+  count: number,
+  radius: number,
+  weight: number,
+  halfStep: boolean,
+): string {
+  const lines: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const a = ((i + (halfStep ? 0.5 : 0)) / count) * Math.PI * 2;
+    const x = (Math.cos(a) * radius).toFixed(4);
+    const y = (Math.sin(a) * radius).toFixed(4);
+    const w = weight === 1 ? "" : ` * ${weight.toFixed(4)}`;
+    lines.push(
+      `  ${into} += texture2D(u_prev, uv + vec2(${x}, ${y}) * px).r${w};`,
+    );
+  }
+  return lines.join("\n");
 }
 
 /**
@@ -90,17 +119,19 @@ const ACID: EffectSpec = {
   id: "acid",
   passes: [
     {
-      target: "sim",
+      target: "dish",
       feedback: true,
-      iterations: 10,
+      // 6 steps grow the same corals as 10 did — just 40% cheaper
+      iterations: 6,
       scale: 0.5,
       precision: "high",
       source: `
 void main() {
   vec2 uv = gl_FragCoord.xy / u_res;
   if (u_frame < 1.0) {
-    // Primordial soup: substrate everywhere, activator islands
-    float b = step(0.84, noise(uv * 26.0)) + step(0.995, hash(uv * u_res));
+    // Primordial soup: substrate everywhere, activator islands — the
+    // density dial decides how crowded the dish starts
+    float b = step(mix(0.9, 0.76, u_sim.y), noise(uv * 26.0 + u_time)) + step(0.995, hash(uv * u_res + u_time));
     gl_FragColor = vec4(1.0, min(b, 1.0), 0.0, 1.0);
     return;
   }
@@ -134,9 +165,12 @@ void main() {
   vec2 pd = (uv - u_pointer.xy) * vec2(u_res.x / u_res.y, 1.0);
   float inject = u_pointer.z * exp(-dot(pd, pd) * 600.0);
 
+  // Speed dial, capped at 1: explicit Gray-Scott sits AT the diffusion
+  // stability edge — faster explodes, slower is slow-motion coral growth
+  float dt = min(u_sim.x, 1.0);
   gl_FragColor = vec4(
-    clamp(A + dA, 0.0, 1.0),
-    clamp(B + dB + inject * 0.5, 0.0, 1.0),
+    clamp(A + dA * dt, 0.0, 1.0),
+    clamp(B + dB * dt + inject * 0.5, 0.0, 1.0),
     0.0, 1.0
   );
 }
@@ -144,11 +178,11 @@ void main() {
     },
     {
       target: "screen",
-      inputs: ["sim"],
+      inputs: ["dish"],
       source: `
 void main() {
   vec2 uv = gl_FragCoord.xy / u_res;
-  float b = texture2D(u_sim, uv).g;
+  float b = texture2D(u_dish, uv).g;
   // Colour by activator concentration: dark substrate, hot membranes
   float body = smoothstep(0.12, 0.42, b);
   float edge = smoothstep(0.14, 0.3, b) - smoothstep(0.3, 0.55, b);
@@ -325,19 +359,31 @@ const CYCLIC: EffectSpec = {
       scale: 0.5,
       precision: "high",
       source: `
-const float STATES = 14.0;
-
 void main() {
   vec2 uv = gl_FragCoord.xy / u_res;
   vec2 px = 1.0 / u_res;
+  // The density dial picks the SPECIES: few states = chunky fast waves,
+  // many states = fine intricate spirals. Turning it mid-run reinterprets
+  // the stored values — transient chaos that condenses into new spirals.
+  float STATES = floor(mix(9.0, 19.0, u_sim.y) + 0.5);
   if (u_frame < 1.0) {
     // Pure noise — the spirals assemble themselves out of this
-    float s = floor(hash(floor(gl_FragCoord.xy)) * STATES);
+    float s = floor(hash(floor(gl_FragCoord.xy) + fract(u_time * 0.618) * 71.0) * STATES);
     gl_FragColor = vec4(s / STATES, 0.0, 0.0, 1.0);
     return;
   }
 
   float here = floor(texture2D(u_prev, uv).r * STATES + 0.5);
+
+  // Slow-motion: skip whole steps in sync. Per-cell async gating was tried
+  // first and fragments the wave fronts into a frozen mosaic — this CA
+  // lives off synchronized neighbourhoods.
+  float rate = clamp(u_sim.x, 0.25, 1.0);
+  if (fract((u_frame + 1.0) * rate) >= rate) {
+    gl_FragColor = vec4(here / STATES, 0.0, 0.0, 1.0);
+    return;
+  }
+
   // The state that EATS this one
   float hunter = mod(here + 1.0, STATES);
 
@@ -374,17 +420,25 @@ void main() {
 void main() {
   vec2 uv = gl_FragCoord.xy / u_res;
   vec2 px = 1.0 / u_res;
-  float s = texture2D(u_ca, uv).r * (14.0 / 13.0);
+  // Same STATES formula as the sim pass — the palette must wrap where the
+  // state cycle wraps
+  float STATES = floor(mix(9.0, 19.0, u_sim.y) + 0.5);
+  // Snap back onto the state lattice: the buffer is LINEAR-filtered now, and
+  // upsampling interpolates between discrete states — unquantized that turns
+  // the whole dish into muddy in-between colours
+  float raw = floor(texture2D(u_ca, uv).r * STATES + 0.5) / STATES;
+  float s = raw * (STATES / (STATES - 1.0));
 
   // Cosine palette around the state cycle, pulled toward the accent
   vec3 pal = 0.5 + 0.5 * cos(6.2831853 * (s + vec3(0.0, 0.33, 0.67)));
   float tone = dot(pal, vec3(0.299, 0.587, 0.114));
   vec3 col = mix(pal * 0.45, u_accent * (0.4 + tone), 0.5);
 
-  // State borders are the spiral fronts — light them up
-  float n1 = texture2D(u_ca, uv + vec2(px.x, 0.0)).r;
-  float n2 = texture2D(u_ca, uv + vec2(0.0, px.y)).r;
-  float edge = step(0.01, abs(s * (13.0/14.0) - n1) + abs(s * (13.0/14.0) - n2));
+  // State borders are the spiral fronts — light them up (same quantize,
+  // otherwise every interpolated pixel counts as an edge)
+  float n1 = floor(texture2D(u_ca, uv + vec2(px.x, 0.0)).r * STATES + 0.5) / STATES;
+  float n2 = floor(texture2D(u_ca, uv + vec2(0.0, px.y)).r * STATES + 0.5) / STATES;
+  float edge = step(0.01, abs(raw - n1) + abs(raw - n2));
   col += mix(u_accent, vec3(1.0), 0.45) * edge * 0.3;
 
   col *= 0.75 + 0.4 * u_beat;
@@ -455,7 +509,10 @@ const SMOOTHLIFE: EffectSpec = {
       target: "life",
       feedback: true,
       iterations: 2,
-      scale: 0.4,
+      // A FIXED grid: kernel radii live in texels, so a screen-relative
+      // buffer changes the physics with the window size — on a big screen
+      // the rings shrink relative to the world and the soup never organizes
+      fixedHeight: 220,
       precision: "high",
       source: `
 const float PI2 = 6.2831853;
@@ -474,36 +531,37 @@ float rule(float n, float m) {
 
 void main() {
   vec2 uv = gl_FragCoord.xy / u_res;
-  vec2 px = 1.0 / u_res;
+  // The zoom dial scales the texel step — and with it every ring radius
+  vec2 px = u_sim.z / u_res;
   if (u_frame < 1.0) {
-    gl_FragColor = vec4(smoothstep(0.55, 0.8, fbm(uv * 7.0 + 3.7)), 0.0, 0.0, 1.0);
+    // SMOOTH mid-density patches. High-frequency seed grain never organizes:
+    // it just flickers as salt-and-pepper until it starves.
+    // Sparse floor 0.56, not 0.62 — below that the whole dish starves and
+    // the density dial's bottom end is just a black screen
+    float cover = mix(0.56, 0.42, u_sim.y);
+    gl_FragColor = vec4(
+      smoothstep(cover, cover + 0.22, fbm(uv * 5.0 + 3.7 + u_time * 0.31)),
+      0.0, 0.0, 1.0);
     return;
   }
 
   float here = texture2D(u_prev, uv).r;
 
-  // Inner filling m: centre + one ring (the "cell body")
+  // Inner filling m: centre + one ring (the "cell body").
+  // Tap offsets are baked in from JS — no per-pixel trig.
   float msum = here;
-  for (int i = 0; i < 8; i++) {
-    float a = float(i) / 8.0 * PI2;
-    msum += texture2D(u_prev, uv + vec2(cos(a), sin(a)) * 2.6 * px).r;
-  }
+${ringTaps("msum", 8, 2.6, 1, false)}
   float m = msum / 9.0;
 
   // Outer filling n: two rings (the "neighbourhood")
   float nsum = 0.0;
-  for (int i = 0; i < 10; i++) {
-    float a = (float(i) + 0.5) / 10.0 * PI2;
-    nsum += texture2D(u_prev, uv + vec2(cos(a), sin(a)) * 6.0 * px).r * 0.8;
-  }
-  for (int i = 0; i < 14; i++) {
-    float a = float(i) / 14.0 * PI2;
-    nsum += texture2D(u_prev, uv + vec2(cos(a), sin(a)) * 9.5 * px).r * 1.2;
-  }
+${ringTaps("nsum", 10, 6.0, 0.8, true)}
+${ringTaps("nsum", 14, 9.5, 1.2, false)}
   float n = nsum / 24.8;
 
-  // Smooth time stepping — life speeds up on the downbeat
-  float dt = 0.28 + 0.1 * u_beat;
+  // Smooth time stepping — life speeds up on the downbeat and follows
+  // the speed dial (capped: SmoothLife destabilizes past dt ~0.45)
+  float dt = min((0.26 + 0.1 * u_beat) * u_sim.x, 0.45);
   float next = clamp(here + dt * (2.0 * rule(n, m) - 1.0), 0.0, 1.0);
 
   // The click is the feeding hand
@@ -545,7 +603,9 @@ const LENIA: EffectSpec = {
       target: "world",
       feedback: true,
       iterations: 2,
-      scale: 0.4,
+      // Fixed grid — same reasoning as SmoothLife: the kernel-to-world
+      // ratio IS the species, and it must not depend on the screen
+      fixedHeight: 220,
       precision: "high",
       source: `
 const float PI2 = 6.2831853;
@@ -557,41 +617,44 @@ float bell(float x, float mu, float s) {
 
 void main() {
   vec2 uv = gl_FragCoord.xy / u_res;
-  vec2 px = 1.0 / u_res;
+  // The zoom dial scales the texel step — and with it the whole kernel
+  vec2 px = u_sim.z / u_res;
   if (u_frame < 1.0) {
-    // Patchy soup at mid concentration — Lenia's favourite starting point
-    float f0 = smoothstep(0.5, 0.85, fbm(uv * 5.0)) *
-      (0.4 + 0.4 * noise(uv * 30.0));
+    // SMOOTH patches of mid concentration. The old seed multiplied in
+    // noise(uv*30) — exactly the high-frequency grain a sparse kernel can
+    // never smooth away, which is why it read as static on real screens.
+    float cover = mix(0.58, 0.38, u_sim.y);
+    float f0 = smoothstep(cover, cover + 0.3, fbm(uv * 4.0 + u_time * 0.37)) * 0.85;
     gl_FragColor = vec4(f0, 0.0, 0.0, 1.0);
     return;
   }
 
-  float here = texture2D(u_prev, uv).r;
+  // Half-texel cross average — with LINEAR filtering these 4 taps are a
+  // 9-texel tent, damping the checkerboard modes the ring kernel is blind
+  // to (its inner radius skips the immediate neighbourhood entirely)
+  float here = 0.25 * (
+    texture2D(u_prev, uv + vec2( 0.75, 0.0) * px).r +
+    texture2D(u_prev, uv + vec2(-0.75, 0.0) * px).r +
+    texture2D(u_prev, uv + vec2(0.0,  0.75) * px).r +
+    texture2D(u_prev, uv + vec2(0.0, -0.75) * px).r);
 
   // The ring kernel, sampled on four circles. Weights = bell(r/R; 0.5, 0.15)
   // times circumference, normalised below — a smooth halo, not a disc.
+  // Tap offsets are baked in from JS — no per-pixel trig.
   float acc = 0.0;
-  for (int i = 0; i < 8; i++) {
-    float a = float(i) / 8.0 * PI2;
-    acc += texture2D(u_prev, uv + vec2(cos(a), sin(a)) * 4.2 * px).r * 2.55;
-  }
-  for (int i = 0; i < 10; i++) {
-    float a = (float(i) + 0.5) / 10.0 * PI2;
-    acc += texture2D(u_prev, uv + vec2(cos(a), sin(a)) * 6.0 * px).r * 6.0;
-  }
-  for (int i = 0; i < 12; i++) {
-    float a = float(i) / 12.0 * PI2;
-    acc += texture2D(u_prev, uv + vec2(cos(a), sin(a)) * 7.8 * px).r * 4.73;
-  }
-  for (int i = 0; i < 14; i++) {
-    float a = (float(i) + 0.5) / 14.0 * PI2;
-    acc += texture2D(u_prev, uv + vec2(cos(a), sin(a)) * 10.2 * px).r * 0.67;
-  }
+${ringTaps("acc", 8, 4.2, 2.55, false)}
+${ringTaps("acc", 10, 6.0, 6.0, true)}
+${ringTaps("acc", 12, 7.8, 4.73, false)}
+${ringTaps("acc", 14, 10.2, 0.67, true)}
   float u = acc / 146.3;
 
-  // Growth: alive around u = 0.15, dying everywhere else
-  float g = bell(u, 0.15, 0.022) * 2.0 - 1.0;
-  float dt = 0.12 + 0.05 * u_beat;
+  // Growth: alive around u = 0.15, dying everywhere else. The window width
+  // is the knife edge: 0.022 snapped the field binary at texel scale
+  // (44-tap quadrature wobbles u by about that much) — 0.034 lets the
+  // field sit at intermediate values, which is what reads as "Lenia"
+  float g = bell(u, 0.15, 0.034) * 2.0 - 1.0;
+  // Speed dial capped — Lenia overshoots into flicker past dt ~0.3
+  float dt = min((0.11 + 0.04 * u_beat) * u_sim.x, 0.3);
   float next = clamp(here + dt * g, 0.0, 1.0);
 
   // A click is a graft of living tissue
@@ -629,6 +692,7 @@ export const TRIP_PRESETS: TripPreset[] = [
   },
   {
     id: "acid",
+    sim: true,
     label: "Acid 🧪",
     blurb: "Reaction-diffusion. Nothing is animated, it all grows.",
     spec: ACID,
@@ -647,6 +711,7 @@ export const TRIP_PRESETS: TripPreset[] = [
   },
   {
     id: "cyclic",
+    sim: true,
     label: "Spirals 🌪️",
     blurb: "Rock-paper-scissors between twelve states. Galaxies happen. Click to stir.",
     spec: CYCLIC,
@@ -659,12 +724,14 @@ export const TRIP_PRESETS: TripPreset[] = [
   },
   {
     id: "smoothlife",
+    sim: true,
     label: "Primordial 🧫",
     blurb: "SmoothLife — Conway's Life gone continuous. Click to feed the soup.",
     spec: SMOOTHLIFE,
   },
   {
     id: "lenia",
+    sim: true,
     label: "Lenia 🧬",
     blurb: "Continuous life. Nothing is animated — it LIVES. Click to graft mass.",
     spec: LENIA,

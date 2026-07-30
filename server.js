@@ -129,8 +129,13 @@ function send(ws, msg) {
 }
 
 function sendToRoom(room, msg, exceptId) {
+  // Serialize ONCE per fan-out — a late-game state broadcast is tens of KB,
+  // and stringifying it per member multiplied that by the room size
+  const str = JSON.stringify(msg);
   for (const [id, ws] of room.members) {
-    if (id !== exceptId) send(ws, msg);
+    if (id !== exceptId && ws && ws.readyState === ws.OPEN) {
+      ws.send(str);
+    }
   }
 }
 

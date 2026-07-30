@@ -39,6 +39,12 @@ export interface ShaderLayerProps {
   pulse: GamePulse;
   /** Tone-map pass that keeps the UI readable underneath */
   guard: boolean;
+  /** Quality-tier multiplier on sim iterations (potato/low halve them) */
+  iterationScale: number;
+  /** Sim dials: [speed, seed density, kernel zoom] — see u_sim */
+  sim: readonly [number, number, number];
+  /** Bumping this restarts every simulation (u_frame back to 0) */
+  reseedNonce: number;
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -89,17 +95,21 @@ export function ShaderLayer({
   bpm,
   pulse,
   guard,
+  iterationScale,
+  sim,
+  reseedNonce,
 }: ShaderLayerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const glRef = useRef<WebGLRenderingContext | null>(null);
+  const engineRef = useRef<ShaderEngine | null>(null);
   const lostRef = useRef(false);
   // Bumped when the driver hands the context back — every GL object died with
   // it, so the pipeline effect has to build everything again
   const [generation, setGeneration] = useState(0);
   // Values the render loop reads every frame — kept in a ref so a settings
   // change never tears down and recompiles the pipeline
-  const live = useRef({ accent, intensity, factor, bpm, renderScale, pulse });
-  live.current = { accent, intensity, factor, bpm, renderScale, pulse };
+  const live = useRef({ accent, intensity, factor, bpm, renderScale, pulse, sim });
+  live.current = { accent, intensity, factor, bpm, renderScale, pulse, sim };
 
   // Mouse/finger, tracked in a ref: position at 60 Hz through React state
   // would re-render the world — the draw loop just reads the latest value
@@ -131,6 +141,11 @@ export function ShaderLayer({
     };
   }, []);
 
+  // The reseed button: frame counter back to 0, sims re-run their seed branch
+  useEffect(() => {
+    engineRef.current?.reseed();
+  }, [reseedNonce]);
+
   // A user shader edited in the Studio rebuilds the pipeline live
   const userShaders = useShaderStudioStore((s) => s.shaders);
   const spec: EffectSpec | null = useMemo(() => {
@@ -141,8 +156,18 @@ export function ShaderLayer({
       log.warn("theme", `Shader "${preset}" invalid: ${problems.join("; ")}`);
       return null;
     }
-    return guard ? withGuard(resolved) : resolved;
-  }, [preset, userShaders, guard]);
+    // Low quality tiers halve sim iterations — resolution x iterations is
+    // the real cost of the CA presets, and quality owns both dials
+    const scaled: EffectSpec = {
+      ...resolved,
+      passes: resolved.passes.map((p) =>
+        (p.iterations ?? 1) > 1
+          ? { ...p, iterations: Math.max(1, Math.round(p.iterations! * iterationScale)) }
+          : p,
+      ),
+    };
+    return guard ? withGuard(scaled) : scaled;
+  }, [preset, userShaders, guard, iterationScale]);
 
   // The context outlives every preset switch. Creating it here — once per
   // mounted canvas — is what keeps `loseContext()` in the teardown from
@@ -195,6 +220,7 @@ export function ShaderLayer({
     let engine: ShaderEngine;
     try {
       engine = new ShaderEngine(gl, spec);
+      engineRef.current = engine;
     } catch (err) {
       if (err instanceof EngineBuildError) {
         log.error(
@@ -207,11 +233,15 @@ export function ShaderLayer({
       return;
     }
 
+    // Size comes from a ResizeObserver, NOT from reading clientWidth in the
+    // draw loop: layout-property reads force a synchronous reflow whenever
+    // React dirtied the DOM this frame — a per-frame tax paid as a safety
+    // net for a resize that happens roughly never.
+    let cssW = canvas.clientWidth || window.innerWidth;
+    let cssH = canvas.clientHeight || window.innerHeight;
     let width = 0;
     let height = 0;
-    const resize = () => {
-      const cssW = canvas.clientWidth || window.innerWidth;
-      const cssH = canvas.clientHeight || window.innerHeight;
+    const applySize = () => {
       // Deliberately NOT devicePixelRatio: a phone at 3x would render nine
       // times the pixels for an effect nobody looks at that closely
       const scale = live.current.renderScale;
@@ -224,8 +254,18 @@ export function ShaderLayer({
       canvas.height = h;
       engine.resize(w, h);
     };
-    resize();
-    window.addEventListener("resize", resize);
+    applySize();
+    const observer =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver((entries) => {
+            const rect = entries[0]?.contentRect;
+            if (!rect) return;
+            cssW = rect.width || window.innerWidth;
+            cssH = rect.height || window.innerHeight;
+            applySize();
+          })
+        : null;
+    observer?.observe(canvas);
 
     // Accumulated, not derived from wall clock: a speed change must not make
     // the animation jump, and neither must a backgrounded tab
@@ -264,7 +304,8 @@ export function ShaderLayer({
       shaderTime += (dt / 1000) * speed * reacted.timeScale;
       elapsed += dt;
 
-      resize();
+      // Quality-dial change is the only per-frame size trigger left
+      applySize();
       engine.render({
         time: shaderTime,
         beat: reacted.beat,
@@ -272,6 +313,7 @@ export function ShaderLayer({
         accent: reacted.accent,
         game: reacted.game,
         pointer,
+        sim: live.current.sim,
       });
 
       if (!still) frame = requestAnimationFrame(draw);
@@ -281,8 +323,9 @@ export function ShaderLayer({
 
     // Dev bridge, same idea as __bitsterStores: lets e2e checks drive a frame
     // by hand — a hidden preview tab never gets a real animation frame
+    let bridge: unknown;
     if (__DEV__) {
-      (window as unknown as Record<string, unknown>).__bitsterShaderDebug = {
+      bridge = (window as unknown as Record<string, unknown>).__bitsterShaderDebug = {
         specId: spec.id,
         canvas,
         step: (u: {
@@ -292,20 +335,25 @@ export function ShaderLayer({
           accent: [number, number, number];
           game: [number, number, number];
           pointer?: [number, number, number, number];
+          sim?: [number, number, number];
         }) => {
-          resize();
-          engine.render({ pointer: [0.5, 0.5, 0, 0], ...u });
+          applySize();
+          engine.render({ pointer: [0.5, 0.5, 0, 0], sim: [1, 0.5, 1], ...u });
         },
+        reseed: () => engine.reseed(),
       };
     }
 
     return () => {
       if (frame) cancelAnimationFrame(frame);
-      window.removeEventListener("resize", resize);
+      observer?.disconnect();
       if (__DEV__) {
-        delete (window as unknown as Record<string, unknown>)
-          .__bitsterShaderDebug;
+        const w = window as unknown as Record<string, unknown>;
+        // During an HMR remount the NEW instance's bridge is already
+        // installed by the time this cleanup runs — only remove our own
+        if (w.__bitsterShaderDebug === bridge) delete w.__bitsterShaderDebug;
       }
+      engineRef.current = null;
       engine.dispose();
     };
     // A different spec — or a context back from the dead — rebuilds the

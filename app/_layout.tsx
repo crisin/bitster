@@ -8,7 +8,8 @@ import { initSpotify } from "@/streaming/providers/spotify";
 import { useStreamingStore } from "@/streaming/store";
 import { useShaderStudioStore } from "@/theme/shader/studio";
 import { veilFor } from "@/theme/look";
-import { hydrateTheme, useCurrentLook, useThemeStore } from "@/theme/store";
+import { hydrateTheme, useThemeStore } from "@/theme/store";
+import { presetLookFor } from "@/theme/look";
 import { useTheme } from "@/theme/themedStyles";
 import { ShaderBackdrop } from "@/theme/ShaderBackdrop";
 import { ThemeOverlay } from "@/theme/ThemeOverlay";
@@ -17,14 +18,29 @@ import { interceptConsole, log } from "@/utils/logger";
 import { BebasNeue_400Regular, useFonts } from "@expo-google-fonts/bebas-neue";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo } from "react";
 
 export default function RootLayout() {
   // Non-blocking: the UI renders with the fallback font until loaded
   useFonts({ BebasNeue_400Regular, ...FONT_ASSETS });
   const theme = useTheme();
-  // Shader behind, veil between: the readability architecture (see veilFor)
-  const look = useCurrentLook();
+  // Shader behind, veil between (see veilFor). Deliberately NARROW
+  // selectors: subscribing to the whole look here would re-render the
+  // navigator on every intensity-slider step.
+  const shaderOn = useThemeStore((s) =>
+    Boolean((s.looks[s.themeId] ?? presetLookFor(s.themeId)).effects.shader),
+  );
+  const shaderGuard = useThemeStore(
+    (s) => (s.looks[s.themeId] ?? presetLookFor(s.themeId)).shaderGuard,
+  );
+  const screenOptions = useMemo(
+    () => ({
+      headerShown: false,
+      contentStyle: { backgroundColor: veilFor(theme, shaderOn, shaderGuard) },
+      animation: "fade" as const,
+    }),
+    [theme, shaderOn, shaderGuard],
+  );
 
   useEffect(() => {
     interceptConsole();
@@ -74,13 +90,7 @@ export default function RootLayout() {
     <>
       <StatusBar style={theme.statusBar} />
       <ShaderBackdrop />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: veilFor(theme, look) },
-          animation: "fade",
-        }}
-      />
+      <Stack screenOptions={screenOptions} />
       <ThemeOverlay />
       <SettingsMenu />
       {isDev && <DevLogButton />}

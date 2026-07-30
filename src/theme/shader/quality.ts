@@ -25,3 +25,13 @@ export function getShaderScale(id: string): number {
     SHADER_QUALITIES.find((q) => q.id === DEFAULT_SHADER_QUALITY_ID)!.scale
   );
 }
+
+/**
+ * Simulation presets (reaction-diffusion, SmoothLife, Lenia) burn their
+ * budget in ITERATIONS per frame, not just pixels — so the low quality tiers
+ * halve those too. Resolution × iterations is the full cost, and quality is
+ * the one user-facing lever for both.
+ */
+export function getSimIterationScale(id: string): number {
+  return id === "potato" || id === "low" ? 0.5 : 1;
+}

@@ -49,7 +49,8 @@ export function Timeline({
     return (
       <View style={styles.emptyContainer}>
         <TimelineGap
-          onPress={() => handleGapPress(0)}
+          position={0}
+          onPress={handleGapPress}
           selected={selectedGap === 0}
           label="Place here"
         />
@@ -75,7 +76,8 @@ export function Timeline({
     >
       {interactive && (
         <TimelineGap
-          onPress={() => handleGapPress(0)}
+          position={0}
+          onPress={handleGapPress}
           selected={selectedGap === 0}
           disputed={disputedGap === 0}
         />
@@ -102,7 +104,8 @@ export function Timeline({
             />
             {interactive && !sameYearAsNext && (
               <TimelineGap
-                onPress={() => handleGapPress(gap)}
+                position={gap}
+                onPress={handleGapPress}
                 selected={selectedGap === gap}
                 disputed={disputedGap === gap}
               />

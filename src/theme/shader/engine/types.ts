@@ -21,7 +21,15 @@ export interface PassSpec {
   iterations?: number;
   /** Target resolution relative to the canvas (0 < scale <= 1) */
   scale?: number;
-  /** "high" = half-float textures + nearest filtering (for simulations) */
+  /**
+   * Fixed sim-grid height in texels; width follows the canvas aspect.
+   * Kernel radii are measured in texels, so a screen-proportional buffer
+   * means the PHYSICS changes with the window — a Lenia that lives on a
+   * laptop turns to noise on a 4K screen. Fixing the grid decouples the
+   * simulation from the display entirely (and caps its cost for free).
+   */
+  fixedHeight?: number;
+  /** "high" = half-float textures (simulations need the precision) */
   precision?: "default" | "high";
 }
 
@@ -39,7 +47,12 @@ export interface EngineUniforms {
   game: readonly [number, number, number];
   /** xy position (0..1, y up), z click impulse, w pointer-on-screen */
   pointer: readonly [number, number, number, number];
+  /** Sim dials: x = speed multiplier, y = seed density 0..1, z = kernel zoom */
+  sim: readonly [number, number, number];
 }
+
+export const MIN_FIXED_HEIGHT = 32;
+export const MAX_FIXED_HEIGHT = 1024;
 
 export const MAX_PASSES = 6;
 export const MAX_ITERATIONS = 24;

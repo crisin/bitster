@@ -35,6 +35,7 @@ export const STARTER_SOURCE = `// Your canvas. Every pixel asks this code what c
 //   u_res        resolution of the target
 //   u_frame      frames since (re)start — seed feedback with u_frame < 1.0
 //   u_pointer    xy = mouse/finger (0..1, y up), z = click impulse, w = on-screen
+//   u_sim        the sim dials: x = speed, y = seed density, z = kernel zoom
 //   hash(p) noise(p) fbm(p) centred()
 //
 // Feedback ON also gives you:  texture2D(u_prev, uv)  — last frame

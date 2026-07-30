@@ -277,6 +277,24 @@ ALLE Beat-reaktiven Presets beim Tap, ohne den Pointer zu kennen. Die vier
 Trip-Presets nutzen die Position direkt (Wormhole-Zentrum folgt, Acid-Klick
 sät Kolonien, Mandelbulb-Kamera dreht mit, Ink-Pointer schreibt).
 
+**Simulations-Substrat:** Die Sim-Presets (`sim: true` — Acid, Spirals,
+SmoothLife, Lenia) rechnen auf FESTEN Grids (`fixedHeight`, Breite folgt dem
+Aspect): die Kernel-zu-Welt-Relation IST die Spezies und darf nicht von der
+Fenstergröße abhängen. Half-Float-Buffer werden LINEAR gefiltert, sobald
+`OES_texture_half_float_linear` da ist — sonst dekorrelieren die spärlichen
+Ring-Taps zu Salz-und-Pfeffer, das nie organisiert (genau das war „Lenia
+sieht aus wie Noise"). Seeds sind GLATT (fbm statt Pixel-Grain) und mit
+`u_time` gejittert, damit Reseed wirklich neu würfelt. Diskrete CAs (Spirals)
+müssen im Screen-Pass zurück aufs Zustandsgitter quantisieren, sonst
+interpoliert LINEAR die States zu Matsch. `u_sim` (Speed / Seed-Dichte /
+Kernel-Zoom) kommt aus drei globalen Dials im Theme-Store; die Sim-Bank samt
+Reseed-Knopf (`reseedSims()` → `engine.reseed()`) zeigt die TripZone bei
+Sim-Presets und User-Shadern. Jeder Speed-Regler respektiert seine
+Stabilitätsgrenze (Gray-Scott dt ≤ 1, Lenia ≤ 0.3, Spirals skippt ganze
+Steps synchron — asynchrones Per-Pixel-Gating friert die Fronten ein).
+Puffernamen, die mit Prelude-Uniforms kollidieren (`sim`, `time`, …), lehnt
+der Validator ab.
+
 **Trip-Mode** (`tripMode` im Store) schaltet die Advanced-Presets
 (`advanced.ts`) und das Shader Studio frei — hinter einem Consent-Modal
 („Kommste mit aufn Trip?" → mimimi/ABFAHRT), wegen Blitz-Effekten und

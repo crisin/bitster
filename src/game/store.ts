@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { GameState, GameSettings, Phase, Song, PlacementResult } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
+import { reconcileGameState } from "./reconcile";
 
 interface GameStore {
   roomCode: string | null;
@@ -59,29 +60,36 @@ export const useGameStore = create<GameStore>((set) => ({
 
   setRoomCode: (code) => set({ roomCode: code }),
 
-  applyGameState: (state) =>
-    set({
-      roomCode: state.roomCode,
-      phase: state.phase,
-      players: state.players,
-      currentPlayerId: state.currentPlayerId,
-      currentSongUri: state.currentSongUri,
-      currentSongId: state.currentSongId,
-      timelines: state.timelines,
-      failedTimelines: state.failedTimelines,
-      lastResult: state.lastResult,
-      hostId: state.hostId,
-      settings: state.settings,
-      playedSongs: state.playedSongs,
-      buzzerId: state.buzzerId,
-      buzzDeadline: state.buzzDeadline,
-      placeDeadline: state.placeDeadline,
-      passedIds: state.passedIds,
-      playlistName: state.playlistName,
-      playlistImageUrl: state.playlistImageUrl,
-      playlistUrl: state.playlistUrl,
-      playlistTrackCount: state.playlistTrackCount,
-      guessResult: state.guessResult,
+  applyGameState: (incoming) =>
+    set((prev) => {
+      // Structural sharing: every broadcast arrives freshly parsed, so
+      // without this each one re-renders the whole game UI even when only
+      // one scalar moved (see reconcile.ts). Unchanged slices keep their
+      // old identity and never wake their subscribers.
+      const state = reconcileGameState(prev, incoming);
+      return {
+        roomCode: state.roomCode,
+        phase: state.phase,
+        players: state.players,
+        currentPlayerId: state.currentPlayerId,
+        currentSongUri: state.currentSongUri,
+        currentSongId: state.currentSongId,
+        timelines: state.timelines,
+        failedTimelines: state.failedTimelines,
+        lastResult: state.lastResult,
+        hostId: state.hostId,
+        settings: state.settings,
+        playedSongs: state.playedSongs,
+        buzzerId: state.buzzerId,
+        buzzDeadline: state.buzzDeadline,
+        placeDeadline: state.placeDeadline,
+        passedIds: state.passedIds,
+        playlistName: state.playlistName,
+        playlistImageUrl: state.playlistImageUrl,
+        playlistUrl: state.playlistUrl,
+        playlistTrackCount: state.playlistTrackCount,
+        guessResult: state.guessResult,
+      };
     }),
 
   reset: () => set(initialState),

@@ -1,6 +1,5 @@
-import { useMemo } from "react";
 import { useThemeStore } from "./store";
-import { resolveTheme } from "./look";
+import { resolveThemeCached } from "./look";
 import type { Theme, ThemeColors } from "./themes";
 import {
   getBrowserFontScale,
@@ -11,12 +10,14 @@ import {
 
 /**
  * The currently selected theme (reactive). Every theme resolves through the
- * same path now — preset plus the user's per-theme look, if any.
+ * same path — preset plus the user's per-theme look, if any.
+ *
+ * Uses the identity-stable cache: a look change that doesn't touch the
+ * palette (all five intensity dials, the guard) yields the SAME Theme object,
+ * so none of the ~46 style hooks re-render during a slider drag.
  */
 export function useTheme(): Theme {
-  const themeId = useThemeStore((s) => s.themeId);
-  const look = useThemeStore((s) => s.looks[s.themeId]);
-  return useMemo(() => resolveTheme(themeId, look), [themeId, look]);
+  return useThemeStore((s) => resolveThemeCached(s.themeId, s.looks[s.themeId]));
 }
 
 /** Just the palette — for inline color props outside of StyleSheets */

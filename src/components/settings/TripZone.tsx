@@ -21,6 +21,11 @@ export function TripZone() {
   const look = useCurrentLook();
   const updateLookEffects = useThemeStore((s) => s.updateLookEffects);
   const setLookIntensity = useThemeStore((s) => s.setLookIntensity);
+  const simSpeedDial = useThemeStore((s) => s.simSpeedDial);
+  const simDensityDial = useThemeStore((s) => s.simDensityDial);
+  const simScaleDial = useThemeStore((s) => s.simScaleDial);
+  const setSimDial = useThemeStore((s) => s.setSimDial);
+  const reseedSims = useThemeStore((s) => s.reseedSims);
   const [asking, setAsking] = useState(false);
 
   if (Platform.OS !== "web") {
@@ -121,6 +126,46 @@ export function TripZone() {
           value={look.shaderIntensity}
           onChange={(v) => setLookIntensity("shaderIntensity", v)}
         />
+      )}
+
+      {/* The lab bench — simulations have physics to tune, and user shaders
+          get the dials too since the Studio documents u_sim */}
+      {(activeTrip?.sim || look.effects.shader.startsWith("user:")) && (
+        <View style={styles.simBench}>
+          <Text style={styles.sectionTitle}>Sim tuning</Text>
+          <IntensityRow
+            title="Speed"
+            low="🐌"
+            high="⚡"
+            value={simSpeedDial}
+            onChange={(v) => setSimDial("simSpeedDial", v)}
+          />
+          <IntensityRow
+            title="Zoom"
+            low="🔬"
+            high="🔭"
+            value={simScaleDial}
+            onChange={(v) => setSimDial("simScaleDial", v)}
+          />
+          <IntensityRow
+            title="Seed density"
+            low="🌵"
+            high="🌴"
+            value={simDensityDial}
+            onChange={(v) => setSimDial("simDensityDial", v)}
+          />
+          <Pressable
+            onPress={reseedSims}
+            label="Restart the simulation with a fresh seed"
+            style={styles.reseedBtn}
+          >
+            <Text style={styles.reseedText}>🌱 Reseed the dish</Text>
+          </Pressable>
+          <Text style={styles.hint}>
+            Speed and zoom are live; seed density kicks in at the next
+            reseed.
+          </Text>
+        </View>
       )}
 
       <ShaderStudio />
@@ -256,6 +301,28 @@ const useStyles = createThemedStyles((COLORS) =>
       minHeight: 40,
       justifyContent: "center",
       marginTop: SPACE.sm,
+    },
+    simBench: {
+      gap: SPACE.xs,
+      padding: SPACE.md,
+      borderRadius: RADIUS.md,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.bgCard,
+    },
+    reseedBtn: {
+      minHeight: 40,
+      borderRadius: RADIUS.md,
+      borderWidth: 1,
+      borderColor: COLORS.success,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: SPACE.xs,
+    },
+    reseedText: {
+      fontSize: FONT.size.sm,
+      fontWeight: FONT.weight.bold,
+      color: COLORS.success,
     },
     leaveText: {
       fontSize: FONT.size.sm,

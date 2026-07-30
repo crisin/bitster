@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseLook, presetLookFor, resolveTheme } from "./look";
+import { parseLook, presetLookFor, resolveTheme, resolveThemeCached } from "./look";
 import { getTheme } from "./themes";
 
 describe("presetLookFor", () => {
@@ -90,6 +90,38 @@ describe("resolveTheme", () => {
       base: "light",
     });
     expect(light.colors.bgPrimary).toBe(getTheme("minimal")!.colors.bgPrimary);
+  });
+});
+
+describe("resolveThemeCached", () => {
+  it("returns the SAME object when only intensities or the guard change", () => {
+    const look = presetLookFor("classic");
+    const a = resolveThemeCached("classic", { ...look, shaderIntensity: 0.2 });
+    const b = resolveThemeCached("classic", {
+      ...look,
+      shaderIntensity: 0.9,
+      meltIntensity: 0.1,
+      shaderGuard: false,
+    });
+    // Identity, not equality — this is what keeps a slider drag from
+    // re-rendering every themed component in the app
+    expect(b).toBe(a);
+  });
+
+  it("returns a new object when the palette actually changes", () => {
+    const look = presetLookFor("classic");
+    const a = resolveThemeCached("classic", look);
+    const b = resolveThemeCached("classic", { ...look, accent: "#00b8d9" });
+    expect(b).not.toBe(a);
+    expect(b.colors.accent).toBe("#00b8d9");
+    // Effects toggles are palette-relevant too (they land in Theme.effects)
+    const c = resolveThemeCached("classic", {
+      ...look,
+      accent: "#00b8d9",
+      effects: { ...look.effects, rainbow: true },
+    });
+    expect(c).not.toBe(b);
+    expect(c.effects.rainbow).toBe(true);
   });
 });
 

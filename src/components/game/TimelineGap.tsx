@@ -8,7 +8,9 @@ import { CARD_HEIGHT } from "./TimelineCard";
 const NATIVE_DRIVER = Platform.OS !== "web";
 
 interface TimelineGapProps {
-  onPress: () => void;
+  /** Which gap this is — handed back on press, so the handler can be stable */
+  position: number;
+  onPress: (position: number) => void;
   selected?: boolean;
   disabled?: boolean;
   label?: string;
@@ -21,8 +23,14 @@ interface TimelineGapProps {
   disputed?: boolean;
 }
 
-/** A vertical drop slot between two cards in the horizontal timeline */
-export function TimelineGap({
+/**
+ * A vertical drop slot between two cards in the horizontal timeline.
+ * Memoized: timelines re-render on every broadcast, and N+1 gaps with fresh
+ * closures used to re-render along even when nothing about them changed —
+ * the position prop is what makes a stable parent handler possible.
+ */
+export const TimelineGap = React.memo(function TimelineGap({
+  position,
   onPress,
   selected = false,
   disabled = false,
@@ -75,7 +83,7 @@ export function TimelineGap({
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => onPress(position)}
       disabled={disabled}
       label={label ?? "Place song here"}
       style={[
@@ -108,7 +116,7 @@ export function TimelineGap({
       {wide && <Text style={styles.label}>{label}</Text>}
     </Pressable>
   );
-}
+});
 
 const useStyles = createThemedStyles((COLORS) => StyleSheet.create({
   slot: {

@@ -211,8 +211,18 @@ export async function saveHostSnapshot(snapshot: HostSnapshot): Promise<void> {
 }
 
 /**
+ * The dedupe key: the snapshot with its timestamp neutralized. Comparing the
+ * raw JSON was dead code — serialize() stamps savedAt with Date.now(), so no
+ * two snapshots were EVER byte-identical and every throttle tick wrote the
+ * full room to storage even when nothing had changed.
+ */
+function contentKeyOf(snapshot: HostSnapshot): string {
+  return JSON.stringify({ ...snapshot, savedAt: 0 });
+}
+
+/**
  * Called from every broadcast, so it coalesces: at most one write per
- * PERSIST_THROTTLE_MS, and byte-identical states are skipped entirely.
+ * PERSIST_THROTTLE_MS, and content-identical states are skipped entirely.
  */
 export function persistSnapshotThrottled(snapshot: HostSnapshot): void {
   pendingSnapshot = snapshot;
@@ -222,10 +232,10 @@ export function persistSnapshotThrottled(snapshot: HostSnapshot): void {
     const snap = pendingSnapshot;
     pendingSnapshot = null;
     if (!snap) return;
-    const json = JSON.stringify(snap);
-    if (json === lastSnapshotJson) return;
-    lastSnapshotJson = json;
-    void write(SNAPSHOT_KEY, json);
+    const key = contentKeyOf(snap);
+    if (key === lastSnapshotJson) return;
+    lastSnapshotJson = key;
+    void write(SNAPSHOT_KEY, JSON.stringify(snap));
   }, PERSIST_THROTTLE_MS);
 }
 
@@ -242,9 +252,11 @@ export function flushSync(): void {
     throttleTimer = null;
   }
   try {
-    const json = JSON.stringify(snap);
-    if (json === lastSnapshotJson) return;
-    if (storage.setSync(SNAPSHOT_KEY, json)) lastSnapshotJson = json;
+    const key = contentKeyOf(snap);
+    if (key === lastSnapshotJson) return;
+    if (storage.setSync(SNAPSHOT_KEY, JSON.stringify(snap))) {
+      lastSnapshotJson = key;
+    }
   } catch (err) {
     logger.warn("p2p", `Could not flush the host snapshot: ${err}`);
   }

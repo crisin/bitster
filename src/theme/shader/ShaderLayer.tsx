@@ -9,6 +9,9 @@ export interface ShaderLayerProps {
   bpm: number | null;
   pulse: GamePulse;
   guard: boolean;
+  iterationScale: number;
+  sim: readonly [number, number, number];
+  reseedNonce: number;
 }
 
 /**

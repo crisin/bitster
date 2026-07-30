@@ -1,11 +1,17 @@
 import type { GamePulse } from "@/hooks/useGamePulse";
 import { describe, expect, it } from "vitest";
-import { CLICK_MS, FLASH_MS, pointerUniform, reactToGame } from "./reaction";
+import {
+  CLICK_MS,
+  FLASH_MS,
+  pointerUniform,
+  reactToGame,
+  URGENCY_WINDOW_MS,
+} from "./reaction";
 
 const NOW = 1_700_000_000_000;
 
 function pulse(over: Partial<GamePulse> = {}): GamePulse {
-  return { phase: 0.25, urgency: 0, result: 0, resultAt: 0, ...over };
+  return { phase: 0.25, deadlineAt: null, result: 0, resultAt: 0, ...over };
 }
 
 const BASE = {
@@ -26,15 +32,27 @@ describe("shader reaction", () => {
   });
 
   it("winds the layer up as a countdown runs out", () => {
-    const calm = reactToGame(pulse({ urgency: 0 }), BASE);
-    const panic = reactToGame(pulse({ urgency: 1 }), BASE);
+    const calm = reactToGame(pulse({ deadlineAt: null }), BASE);
+    const panic = reactToGame(pulse({ deadlineAt: NOW }), BASE);
     expect(panic.intensity).toBeGreaterThan(calm.intensity);
     expect(panic.timeScale).toBeGreaterThan(calm.timeScale);
     expect(panic.game[1]).toBe(1);
+    // Urgency is derived per frame now — halfway into the window sits between
+    const mid = reactToGame(
+      pulse({ deadlineAt: NOW + URGENCY_WINDOW_MS / 2 }),
+      BASE,
+    );
+    expect(mid.game[1]).toBeCloseTo(0.5);
+    // A deadline still far beyond the window reads as calm
+    const far = reactToGame(
+      pulse({ deadlineAt: NOW + URGENCY_WINDOW_MS * 2 }),
+      BASE,
+    );
+    expect(far.game[1]).toBe(0);
   });
 
   it("never pushes intensity past what a shader expects", () => {
-    const out = reactToGame(pulse({ urgency: 1 }), { ...BASE, intensity: 1 });
+    const out = reactToGame(pulse({ deadlineAt: NOW }), { ...BASE, intensity: 1 });
     expect(out.intensity).toBe(1);
   });
 
@@ -87,7 +105,7 @@ describe("shader reaction", () => {
 
   it("never animates when the player asked for no motion", () => {
     const out = reactToGame(
-      pulse({ urgency: 1, result: -1, resultAt: NOW }),
+      pulse({ deadlineAt: NOW, result: -1, resultAt: NOW }),
       { ...BASE, still: true },
     );
     // Reduced motion outranks every dramatic thing the game wants

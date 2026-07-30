@@ -15,6 +15,15 @@ import type { GamePulse } from "@/hooks/useGamePulse";
 /** How long a right/wrong verdict keeps colouring the screen */
 export const FLASH_MS = 900;
 
+/** A countdown starts reading as urgent this many ms before it expires */
+export const URGENCY_WINDOW_MS = 12_000;
+
+/** 0 far from the deadline → 1 at (or past) it. Derived per frame, per draw. */
+function urgencyAt(deadlineAt: number | null, now: number): number {
+  if (deadlineAt === null) return 0;
+  return Math.min(1, Math.max(0, 1 - (deadlineAt - now) / URGENCY_WINDOW_MS));
+}
+
 /** How long a click/tap keeps punching the shaders */
 export const CLICK_MS = 600;
 
@@ -95,7 +104,7 @@ export function reactToGame(
     };
   }
 
-  const urgency = Math.min(1, Math.max(0, pulse.urgency));
+  const urgency = urgencyAt(pulse.deadlineAt, input.now);
   // Squared decay: a hard hit that fades fast, not a slow wash
   const age = pulse.resultAt === 0 ? Infinity : input.now - pulse.resultAt;
   const flash =
