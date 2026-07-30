@@ -16,9 +16,28 @@ import { ThemeOverlay } from "@/theme/ThemeOverlay";
 import { FONT_ASSETS } from "@/theme/typography";
 import { interceptConsole, log } from "@/utils/logger";
 import { BebasNeue_400Regular, useFonts } from "@expo-google-fonts/bebas-neue";
+import { DarkTheme, ThemeProvider } from "@react-navigation/native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useMemo } from "react";
+import { Platform } from "react-native";
+
+/**
+ * React-navigation paints every screen WRAPPER with its nav theme's
+ * background — an OPAQUE layer that sits between our translucent veil
+ * (contentStyle) and the shader canvas behind the stack. Without making it
+ * transparent the backdrop architecture is a lie: the canvas renders, the
+ * veil is translucent, and an invisible #f2f2f2 wall between them swallows
+ * everything.
+ */
+const NAV_THEME = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: "transparent",
+    card: "transparent",
+  },
+};
 
 export default function RootLayout() {
   // Non-blocking: the UI renders with the fallback font until loaded
@@ -27,8 +46,12 @@ export default function RootLayout() {
   // Shader behind, veil between (see veilFor). Deliberately NARROW
   // selectors: subscribing to the whole look here would re-render the
   // navigator on every intensity-slider step.
-  const shaderOn = useThemeStore((s) =>
-    Boolean((s.looks[s.themeId] ?? presetLookFor(s.themeId)).effects.shader),
+  // Web-only: on native the ShaderLayer is a stub, so screens must stay
+  // opaque — a translucent veil there would show the bare root view.
+  const shaderOn = useThemeStore(
+    (s) =>
+      Platform.OS === "web" &&
+      Boolean((s.looks[s.themeId] ?? presetLookFor(s.themeId)).effects.shader),
   );
   const shaderGuard = useThemeStore(
     (s) => (s.looks[s.themeId] ?? presetLookFor(s.themeId)).shaderGuard,
@@ -87,13 +110,13 @@ export default function RootLayout() {
   const isDev = __DEV__;
 
   return (
-    <>
+    <ThemeProvider value={NAV_THEME}>
       <StatusBar style={theme.statusBar} />
       <ShaderBackdrop />
       <Stack screenOptions={screenOptions} />
       <ThemeOverlay />
       <SettingsMenu />
       {isDev && <DevLogButton />}
-    </>
+    </ThemeProvider>
   );
 }

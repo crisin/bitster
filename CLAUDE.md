@@ -261,7 +261,14 @@ Redefinition-Fehler.
 
 **Backdrop-Architektur:** Der Shader rendert HINTER der App (`ShaderBackdrop`
 vor dem Stack), die Screens malen nur noch einen Schleier (`veilFor`: Guard an
-= 0.82, aus = 0.45), Karten bleiben opak. Text kämpft nie gegen den Shader —
+= 0.82, aus = 0.45), Karten bleiben opak. Voraussetzung dafür: das
+react-navigation-Theme in `_layout.tsx` (`NAV_THEME`) setzt `background` und
+`card` auf transparent — der Screen-WRAPPER des Navigators ist sonst eine
+opake Wand zwischen Schleier und Canvas, und der Backdrop ist unsichtbar,
+obwohl er korrekt rendert (genau so gemerkt: „Trip-Effekte funktionieren
+nicht mehr"). Verifikation von Layer-Fragen daher IMMER über die komponierte
+Seite (`document.elementsFromPoint` + Background-Alphas), nie nur über
+readPixels vom Canvas. Text kämpft nie gegen den Shader —
 dazwischen liegt immer eine Fläche. Das ist DIE Lesbarkeits-Entscheidung; der
 Tonemap-Guard ist nur noch Feinschliff obendrauf.
 
